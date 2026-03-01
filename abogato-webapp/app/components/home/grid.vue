@@ -22,6 +22,10 @@ const cards = ref([
 </script>
 
 <template>
+    <UPageHero
+    description="Nuestro sistema de autogestion legal te permitira iniicar tus tramites legales en minutos, con un aistente virtual que te guiara en todo momento a la hota de crear la solucitud"
+    headline="Quienes somos?"
+  />
   <UPageGrid>
     <UPageCard
       v-for="(card, index) in cards"
