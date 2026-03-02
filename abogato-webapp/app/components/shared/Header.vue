@@ -1,38 +1,7 @@
-<script setup lang="ts">
-import type { NavigationMenuItem } from "@nuxt/ui";
-
-const route = useRoute();
-
-const items = computed<NavigationMenuItem[]>(() => [
-  {
-    label: "Productos",
-    to: "/products",
-    icon: "i-lucide-book-open",
-    active: route.path.startsWith("/products"),
-  },
-  {
-    label: "Preciso",
-    to: "/pricing",
-    icon: "i-lucide-box",
-    active: route.path.startsWith("/princing"),
-  },
-  {
-    label: "Nosotros",
-    icon: "i-simple-icons-figma",
-    to: "/about",
-  },
-  {
-    label: "Contacto",
-    icon: "i-lucide-rocket",
-    to: "/contact",
-  },
-]);
-</script>
-
 <template>
   <UHeader>
     <template #title>
-      <IconsNuxtui />
+      <IconsLogo />
     </template>
 
     <UNavigationMenu :items="items" />
@@ -40,17 +9,21 @@ const items = computed<NavigationMenuItem[]>(() => [
     <template #right>
       <UColorModeButton />
 
-      <UTooltip text="Open on GitHub" :kbds="['meta', 'G']">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          to="https://github.com/nuxt/ui"
-          target="_blank"
-          icon="i-simple-icons-github"
-          aria-label="GitHub"
-        />
-      </UTooltip>
-      <UButton color="primary"variant="solid"icon="i-simple-icons-github"to="/login"label="Login"/>
+      <UButton
+        color="primary"
+        variant="ghost"
+        icon="mdi:account"
+        to="/sigin"
+        label="Registrarte"
+      />
+
+      <UButton
+        color="primary"
+        variant="solid"
+        icon="mdi:login"
+        to="/login"
+        label="Inicia sesion"
+      />
     </template>
 
     <template #body>
@@ -58,3 +31,37 @@ const items = computed<NavigationMenuItem[]>(() => [
     </template>
   </UHeader>
 </template>
+
+<script setup lang="ts">
+import type { NavigationMenuItem } from "@nuxt/ui";
+
+const route = useRoute();
+
+const items = computed<NavigationMenuItem[]>(() => [
+  {
+    label: "Servicios",
+    to: "/servicios/servicios",
+    active: route.path.startsWith("/servicios"),
+  },
+  {
+    label: "Sobre Nosotros",
+    to: "/about/about",
+    active: route.path.startsWith("/about"),
+  },
+  {
+    label: "Contacto",
+    to: "/contact/contact",
+    active: route.path.startsWith("/contact"),
+  },
+  {
+    label: "Recursos",
+    to: "/recurso/recursos",
+    active: route.path.startsWith("/recursos"),
+  },
+  {
+    label: "Prueba componentes",
+    to: "/pruebaComponentes",
+    active: route.path.startsWith("/pruebasComponentest"),
+  },
+]);
+</script>

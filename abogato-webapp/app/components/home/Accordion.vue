@@ -3,18 +3,18 @@ import type { AccordionItem } from '@nuxt/ui'
 
 const items = ref<AccordionItem[]>([
   {
-    label: 'Icons',
-    icon: 'i-lucide-smile',
+    label: 'Como funciona?',
+    icon: '',
     content: 'You have nothing to do, @nuxt/icon will handle it automatically.'
   },
   {
-    label: 'Colors',
-    icon: 'i-lucide-swatch-book',
+    label: 'Tiene valides legal?',
+    icon: '',
     content: 'Choose a primary and a neutral color from your Tailwind CSS theme.'
   },
   {
-    label: 'Components',
-    icon: 'i-lucide-box',
+    label: 'Cuanto dura en resolver un caso?',
+    icon: '',
     content: 'You can customize components by using the `class` / `ui` props or in your app.config.ts.'
   }
 ])

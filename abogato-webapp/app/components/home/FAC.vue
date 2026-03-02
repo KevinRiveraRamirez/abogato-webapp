@@ -1,3 +1,13 @@
+<template>
+    <UPageSection
+    title="Preguntas?"
+    description="Aqui tienes un seleccion de nuestras preguntas frecuentes!"
+  />
+  <UAccordion :unmount-on-hide="false" :items="items" />
+</template>
+
+
+
 <script setup lang="ts">
 import type { AccordionItem } from '@nuxt/ui'
 
@@ -19,7 +29,3 @@ const items = ref<AccordionItem[]>([
   }
 ])
 </script>
-
-<template>
-  <UAccordion :unmount-on-hide="false" :items="items" />
-</template>

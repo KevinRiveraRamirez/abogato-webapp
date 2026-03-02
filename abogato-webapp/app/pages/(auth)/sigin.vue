@@ -23,11 +23,6 @@ const fields: AuthFormField[] = [
     placeholder: "Enter your password",
     required: true,
   },
-  {
-    name: "remember",
-    label: "Remember me",
-    type: "checkbox",
-  },
 ];
 
 const schema = z.object({
@@ -49,19 +44,14 @@ function onSubmit(payload: FormSubmitEvent<Schema>) {
     <UPageCard class="w-full max-w-md">
       <UAuthForm
         :schema="schema"
-        title="Login"
+        title="Registro"
         description="Enter your credentials to access your account."
-        icon="i-lucide-user"
+        icon=""
         :fields="fields"
         @submit="onSubmit"
       />
     </UPageCard>
-    <UButton
-      color="primary"
-      variant="ghost"
-      label="No tienes cuenta?"
-      to="/sigin"
-    >
+    <UButton color="primary" variant="ghost" label="Tienes cuenta?" to="/login">
     </UButton>
     <UButton color="primary" variant="ghost" label="Volver a inicio" to="/">
     </UButton>

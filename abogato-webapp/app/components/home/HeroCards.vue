@@ -1,4 +1,5 @@
 <template>
+  <div>
   <section class="max-w-6xl mx-auto px-4 py-16">
     <!-- 1 columna en móvil, 2 columnas en desktop -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
@@ -51,6 +52,7 @@
       </div>
     </div>
   </section>
+</div>
 </template>
 
 <script setup>
