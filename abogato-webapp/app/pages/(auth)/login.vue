@@ -1,61 +1,94 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'login-layout' }) 
+definePageMeta({ layout: "login-layout" });
 
-const supabase = useSupabaseClient()
-const user = useSupabaseUser()
+const supabase = useSupabaseClient();
+const user = useSupabaseUser();
 
-const email = ref("")
-const password = ref("")
-const loading = ref(false)
-const errorMsg = ref("")
+const email = ref("");
+const password = ref("");
+const loading = ref(false);
+const errorMsg = ref("");
 
-const ensureProfile = useEnsureProfile()
+const ensureProfile = useEnsureProfile();
 
 watch(
   () => user.value,
   async (u) => {
     if (u) {
-      await ensureProfile("cliente")
+      await ensureProfile("cliente");
     }
   },
-  { immediate: true }
-)
+  { immediate: true },
+);
 
 async function signUp() {
-  errorMsg.value = ""
-  loading.value = true
+  errorMsg.value = "";
+  loading.value = true;
   try {
-    const { error } = await supabase.auth.signUp({
-      email: email.value,
-      password: password.value
-    })
-    if (error) errorMsg.value = error.message
+    const { data, error } = await supabase.auth.signUp({
+      email: email.value.trim(),
+      password: password.value,
+    });
+
+    if (error) {
+      errorMsg.value = error.message;
+      return;
+    }
+
+    const identities = data.user?.identities ?? [];
+    if (data.user && identities.length === 0) {
+      errorMsg.value = "Este correo ya está registrado. Inicia sesión.";
+      return;
+    }
+
+    errorMsg.value =
+      "Cuenta creada. Revisa tu correo para confirmar el registro.";
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
+const { getMyProfile } = useMyProfile();
+
 async function signIn() {
-  errorMsg.value = ""
-  loading.value = true
+  errorMsg.value = "";
+  loading.value = true;
   try {
     const { error } = await supabase.auth.signInWithPassword({
-      email: email.value,
-      password: password.value
-    })
-    if (error) errorMsg.value = error.message
-    if (!error) await navigateTo("/tickets")
+      email: email.value.trim(),
+      password: password.value,
+    });
+
+    if (error) {
+      errorMsg.value = error.message;
+      return;
+    }
+
+    // Asegura perfil (si no existe lo crea)
+    await ensureProfile("cliente");
+
+    // Lee rol real y redirige
+    const profile = await getMyProfile();
+
+    const role = profile?.role ?? "cliente";
+
+    if (role === "abogado" || role === "lawyer") {
+      await navigateTo("/lawyer/tickets", { replace: true });
+      return;
+    }
+
+    await navigateTo("/tickets", { replace: true });
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function signOut() {
-  loading.value = true
+  loading.value = true;
   try {
-    await supabase.auth.signOut()
+    await supabase.auth.signOut();
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 </script>
@@ -113,12 +146,7 @@ async function signOut() {
       />
 
       <div class="flex gap-2">
-        <UButton
-          block
-          size="lg"
-          :loading="loading"
-          @click="signIn"
-        >
+        <UButton block size="lg" :loading="loading" @click="signIn">
           Iniciar sesión
         </UButton>
 
@@ -148,9 +176,8 @@ async function signOut() {
       <UDivider />
 
       <div class="grid gap-2 text-sm">
-        <NuxtLink class="link" to="/instruments">Ir a instruments</NuxtLink>
-        <NuxtLink class="link" to="/tickets">Ir a tickets cliente</NuxtLink>
-        <NuxtLink class="link" to="/lawyer/tickets">Ir a tickets abogado</NuxtLink>
+
+    
       </div>
     </div>
   </UCard>
@@ -169,7 +196,9 @@ async function signOut() {
 
 .link {
   opacity: 0.85;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 .link:hover {
   opacity: 1;
