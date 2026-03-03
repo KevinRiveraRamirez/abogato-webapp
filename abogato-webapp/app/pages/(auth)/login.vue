@@ -28,11 +28,9 @@ async function signOut() {
   await supabase.auth.signOut();
 }
 
+const ensureProfile = useEnsureProfile();
 
-const ensureProfile = useEnsureProfile()
-// tras login exitoso:
-await ensureProfile('cliente')
-
+await ensureProfile("cliente");
 </script>
 
 <template>
@@ -53,5 +51,7 @@ await ensureProfile('cliente')
     </div>
 
     <NuxtLink to="/instruments">Ir a instruments</NuxtLink>
+    <NuxtLink to="/tickets">Ir a tickets cliente</NuxtLink>
+    <NuxtLink to="/lawyer/tickets">Ir a tickets abogado</NuxtLink>
   </div>
 </template>
