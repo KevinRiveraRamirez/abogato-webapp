@@ -1,3 +1,5 @@
+<!-- Header que se usa para las vistas SIN LogIn -->
+
 <template>
   <UHeader>
     <template #title>

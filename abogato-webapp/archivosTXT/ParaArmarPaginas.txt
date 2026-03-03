@@ -1,0 +1,18 @@
+¿Cómo decides qué layout usar?
+
+Página pública (ej: pages/pricing.vue)
+<script setup>
+definePageMeta({ layout: 'public' })
+</script>
+
+Página privada (ej: pages/app/tickets.vue)
+<script setup>
+definePageMeta({ layout: 'app' })
+</script>
+
+
+Y en páginas privadas para proteger usando middleware:
+
+<script setup>
+definePageMeta({ layout: 'app', middleware: 'auth' })
+</script>

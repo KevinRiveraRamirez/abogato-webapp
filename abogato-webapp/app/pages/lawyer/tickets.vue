@@ -1,4 +1,7 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'app', middleware: 'auth' })
+
+
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
 

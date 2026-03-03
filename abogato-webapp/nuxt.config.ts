@@ -22,4 +22,5 @@ export default defineNuxtConfig({
   supabase: {
     redirect: false, // opcional, evita redirecciones automáticas
   },
+  
 });

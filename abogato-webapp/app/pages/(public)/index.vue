@@ -1,3 +1,5 @@
+<!-- Pagina Princilpal cuando se entra desde la web, index -->
+
 <template>
   <HomeHero />
 
@@ -22,6 +24,8 @@
 </template>
 
 <script setup>
+definePageMeta({ layout: "public" });
+
 const cards = [
   {
     title: "Traspaso Casa",

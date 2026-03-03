@@ -1,3 +1,7 @@
+<!-- Login
+Este layout se usa para paginas de login 
+-->
+
 <script setup lang="ts">
 import { dashboardNavbar, dashboardSidebar } from "#build/ui";
 </script>
