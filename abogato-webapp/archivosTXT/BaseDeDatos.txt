@@ -1,0 +1,33 @@
+Ya la base de datos esta completa, aquí hay un remplazo para app.vue que comprueba eso:
+
+<script setup lang="ts">
+const supabase = useSupabaseClient()
+const instruments = ref<any[]>([])
+
+async function getInstruments() {
+  const { data, error } = await supabase.from('instruments').select('*')
+
+  if (error) {
+    console.error('Supabase error:', error.message)
+    instruments.value = []
+    return
+  }
+
+  instruments.value = data ?? []
+}
+
+onMounted(() => {
+  getInstruments()
+})
+</script>
+
+<template>
+  <ul>
+    <li v-for="instrument in instruments" :key="instrument.id">
+      {{ instrument.name }}
+    </li>
+  </ul>
+</template>
+
+Sacado de: https://supabase.com/docs/guides/getting-started/quickstarts/nuxtjs
+
