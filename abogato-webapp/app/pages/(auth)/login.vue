@@ -1,69 +1,57 @@
 <script setup lang="ts">
-import * as z from "zod";
-import type { FormSubmitEvent, AuthFormField } from "@nuxt/ui";
+const supabase = useSupabaseClient();
+const user = useSupabaseUser();
 
-definePageMeta({
-  layout: "login-layout",
-});
+const email = ref("");
+const password = ref("");
+const errorMsg = ref("");
 
-const toast = useToast();
-
-const fields: AuthFormField[] = [
-  {
-    name: "email",
-    type: "email",
-    label: "Email",
-    placeholder: "Enter your email",
-    required: true,
-  },
-  {
-    name: "password",
-    label: "Password",
-    type: "password",
-    placeholder: "Enter your password",
-    required: true,
-  },
-  {
-    name: "remember",
-    label: "Remember me",
-    type: "checkbox",
-  },
-];
-
-const schema = z.object({
-  email: z.email("Invalid email"),
-  password: z
-    .string("Password is required")
-    .min(8, "Must be at least 8 characters"),
-});
-
-type Schema = z.output<typeof schema>;
-
-function onSubmit(payload: FormSubmitEvent<Schema>) {
-  console.log("Submitted", payload);
+async function signUp() {
+  errorMsg.value = "";
+  const { error } = await supabase.auth.signUp({
+    email: email.value,
+    password: password.value,
+  });
+  if (error) errorMsg.value = error.message;
 }
+
+async function signIn() {
+  errorMsg.value = "";
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.value,
+    password: password.value,
+  });
+  if (error) errorMsg.value = error.message;
+}
+
+async function signOut() {
+  await supabase.auth.signOut();
+}
+
+
+const ensureProfile = useEnsureProfile()
+// tras login exitoso:
+await ensureProfile('cliente')
+
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center gap-4 p-4">
-    <UPageCard class="w-full max-w-md">
-      <UAuthForm
-        :schema="schema"
-        title="Login"
-        description="Enter your credentials to access your account."
-        icon="i-lucide-user"
-        :fields="fields"
-        @submit="onSubmit"
-      />
-    </UPageCard>
-    <UButton
-      color="primary"
-      variant="ghost"
-      label="No tienes cuenta?"
-      to="/sigin"
-    >
-    </UButton>
-    <UButton color="primary" variant="ghost" label="Volver a inicio" to="/">
-    </UButton>
+  <div style="max-width: 520px; margin: 24px auto; padding: 16px">
+    <h1>Login</h1>
+
+    <p v-if="user">Sesión activa: {{ user.email }}</p>
+
+    <div style="display: grid; gap: 8px; margin: 12px 0">
+      <input v-model="email" placeholder="email" />
+      <input v-model="password" placeholder="password" type="password" />
+      <div style="display: flex; gap: 8px">
+        <button @click="signIn">Sign in</button>
+        <button @click="signUp">Sign up</button>
+        <button v-if="user" @click="signOut">Sign out</button>
+      </div>
+      <p v-if="errorMsg" style="color: #b00020">{{ errorMsg }}</p>
+    </div>
+
+    <NuxtLink to="/instruments">Ir a instruments</NuxtLink>
   </div>
 </template>

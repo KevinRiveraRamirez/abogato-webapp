@@ -31,3 +31,4 @@ onMounted(() => {
 
 Sacado de: https://supabase.com/docs/guides/getting-started/quickstarts/nuxtjs
 
+Nuxt te inyecta el cliente y tú lo consumes con useSupabaseClient()
