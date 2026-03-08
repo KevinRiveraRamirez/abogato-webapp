@@ -9,6 +9,10 @@ const password = ref("");
 const loading = ref(false);
 const errorMsg = ref("");
 
+const mostrarRecuperacion = ref(false);
+const emailRecuperacion = ref("");
+const mensajeRecuperacion = ref("");
+
 const ensureProfile = useEnsureProfile();
 
 watch(
@@ -23,6 +27,13 @@ watch(
 
 async function signUp() {
   errorMsg.value = "";
+
+  if (!email.value.trim()) { errorMsg.value = "El correo es obligatorio."; return; }
+  if (!password.value) { errorMsg.value = "La contraseña es obligatoria."; return; }
+  if (password.value.length < 8) { errorMsg.value = "La contraseña debe tener al menos 8 caracteres."; return; }
+  if (!/[A-Z]/.test(password.value)) { errorMsg.value = "La contraseña debe incluir al menos una mayúscula."; return; }
+  if (!/[0-9]/.test(password.value)) { errorMsg.value = "La contraseña debe incluir al menos un número."; return; }
+
   loading.value = true;
   try {
     const { data, error } = await supabase.auth.signUp({
@@ -37,12 +48,11 @@ async function signUp() {
 
     const identities = data.user?.identities ?? [];
     if (data.user && identities.length === 0) {
-      errorMsg.value = "Este correo ya está registrado. Inicia sesión.";
+      errorMsg.value = "Este correo ya está registrado. Iniciá sesión.";
       return;
     }
 
-    errorMsg.value =
-      "Cuenta creada. Revisa tu correo para confirmar el registro.";
+    errorMsg.value = "Cuenta creada. Revisá tu correo para confirmar el registro.";
   } finally {
     loading.value = false;
   }
@@ -52,6 +62,10 @@ const { getMyProfile } = useMyProfile();
 
 async function signIn() {
   errorMsg.value = "";
+
+  if (!email.value.trim()) { errorMsg.value = "El correo es obligatorio."; return; }
+  if (!password.value) { errorMsg.value = "La contraseña es obligatoria."; return; }
+
   loading.value = true;
   try {
     const { error } = await supabase.auth.signInWithPassword({
@@ -60,19 +74,16 @@ async function signIn() {
     });
 
     if (error) {
-      errorMsg.value = error.message;
+      errorMsg.value = "Credenciales incorrectas. Verificá tu correo y contraseña.";
       return;
     }
 
-    // Asegura perfil (si no existe lo crea)
     await ensureProfile("cliente");
 
-    // Lee rol real y redirige
     const profile = await getMyProfile();
-
     const role = profile?.role ?? "cliente";
 
-    if (role === "abogado" || role === "lawyer") {
+    if (role === "abogado") {
       await navigateTo("/lawyer/tickets", { replace: true });
       return;
     }
@@ -81,6 +92,27 @@ async function signIn() {
   } finally {
     loading.value = false;
   }
+}
+
+async function enviarRecuperacion() {
+  mensajeRecuperacion.value = "";
+  errorMsg.value = "";
+
+  const correo = emailRecuperacion.value.trim();
+  if (!correo) { errorMsg.value = "Ingresá tu correo."; return; }
+
+  loading.value = true;
+  const { error } = await supabase.auth.resetPasswordForEmail(correo, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+  loading.value = false;
+
+  if (error) {
+    errorMsg.value = error.message;
+    return;
+  }
+
+  mensajeRecuperacion.value = "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.";
 }
 
 async function signOut() {
@@ -176,8 +208,26 @@ async function signOut() {
       <UDivider />
 
       <div class="grid gap-2 text-sm">
+        <button
+          class="text-sm text-gray-500 hover:underline text-left"
+          @click="mostrarRecuperacion = !mostrarRecuperacion"
+        >
+          ¿Olvidaste tu contraseña?
+        </button>
 
-    
+        <div v-if="mostrarRecuperacion" class="grid gap-2 mt-1">
+          <UInput
+            v-model="emailRecuperacion"
+            type="email"
+            placeholder="Tu correo registrado"
+          />
+          <UButton variant="soft" :loading="loading" @click="enviarRecuperacion">
+            Enviar enlace de recuperación
+          </UButton>
+          <p v-if="mensajeRecuperacion" class="text-green-600 text-xs">
+            {{ mensajeRecuperacion }}
+          </p>
+        </div>
       </div>
     </div>
   </UCard>

@@ -1,14 +1,16 @@
-<!-- /pages/account/profile.vue -->
 <script setup lang="ts">
+definePageMeta({ layout: 'app', middleware: 'auth' })
+
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
 
+const displayName = ref('')
 const newEmail = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
 
-function validateEmail(email: string) {
+function validarEmail(email: string): string {
   const v = email.trim()
   if (!v) return 'El correo no puede estar vacío.'
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -16,79 +18,103 @@ function validateEmail(email: string) {
   return ''
 }
 
-watch(
-  user,
-  () => {
-    newEmail.value = user.value?.email ?? ''
-  },
-  { immediate: true }
-)
+watch(user, async () => {
+  if (!user.value) return
+  newEmail.value = user.value.email ?? ''
 
-async function changeEmail() {
+  const { data } = await supabase
+    .from('profiles')
+    .select('display_name')
+    .eq('user_id', user.value.id)
+    .maybeSingle()
+
+  displayName.value = data?.display_name ?? ''
+}, { immediate: true })
+
+async function guardarCambios() {
   errorMsg.value = ''
   successMsg.value = ''
 
-  if (!user.value) {
-    errorMsg.value = 'Debes iniciar sesión.'
-    return
-  }
+  if (!user.value) return
 
-  const email = newEmail.value.trim()
-  const validation = validateEmail(email)
-  if (validation) {
-    errorMsg.value = validation
-    return
-  }
-
-  if (email === (user.value.email ?? '')) {
-    errorMsg.value = 'Ese correo ya es tu correo actual.'
-    return
-  }
+  const emailError = validarEmail(newEmail.value)
+  if (emailError) { errorMsg.value = emailError; return }
 
   loading.value = true
 
-  const { error } = await supabase.auth.updateUser({ email })
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .update({ display_name: displayName.value.trim() || null })
+    .eq('user_id', user.value.id)
 
-  loading.value = false
-
-  if (error) {
-    errorMsg.value = error.message
+  if (profileError) {
+    errorMsg.value = profileError.message
+    loading.value = false
     return
   }
 
- 
-  successMsg.value =
-    'Solicitud enviada. Revisa tu correo para confirmar el cambio (si tu proyecto requiere confirmación).'
+  if (newEmail.value.trim() !== user.value.email) {
+    const { error: emailError } = await supabase.auth.updateUser({
+      email: newEmail.value.trim()
+    })
+
+    if (emailError) {
+      errorMsg.value = emailError.message
+      loading.value = false
+      return
+    }
+  }
+
+  loading.value = false
+  successMsg.value = 'Datos actualizados correctamente.'
 }
 </script>
 
 <template>
-  <div style="max-width: 520px; margin: 24px auto; padding: 16px;">
-    <h1>Perfil</h1>
+  <div class="max-w-lg mx-auto py-8 px-4">
+    <h1 class="text-2xl font-semibold mb-6">Mi perfil</h1>
 
-    <div v-if="!user">
-      <p>Debes iniciar sesión.</p>
-      <NuxtLink to="/login">Ir a login</NuxtLink>
-    </div>
+    <div class="border rounded p-6 grid gap-4">
+      <div class="grid gap-1">
+        <label class="text-sm font-medium">Nombre</label>
+        <input
+          v-model="displayName"
+          class="border rounded px-3 py-2 w-full"
+          placeholder="Tu nombre"
+        />
+      </div>
 
-    <div v-else style="display:grid; gap: 10px;">
-      <p style="font-size: 12px; opacity: 0.8;">
-        Correo actual: {{ user.email }}
-      </p>
+      <div class="grid gap-1">
+        <label class="text-sm font-medium">Correo electrónico</label>
+        <input
+          v-model="newEmail"
+          type="email"
+          class="border rounded px-3 py-2 w-full"
+          placeholder="correo@ejemplo.com"
+        />
+        <p class="text-xs text-gray-400">
+          Si cambiás el correo, recibirás una confirmación en el nuevo correo.
+        </p>
+      </div>
 
-      <label>
-        Nuevo correo
-        <input v-model="newEmail" placeholder="nuevo@correo.com" />
-      </label>
+      <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded text-sm">
+        {{ errorMsg }}
+      </div>
+      <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded text-sm">
+        {{ successMsg }}
+      </div>
 
-      <button @click="changeEmail" :disabled="loading">
-        {{ loading ? 'Actualizando...' : 'Actualizar correo' }}
+      <button
+        class="bg-green-600 text-white px-4 py-2 rounded text-sm w-fit"
+        :disabled="loading"
+        @click="guardarCambios"
+      >
+        {{ loading ? 'Guardando...' : 'Guardar cambios' }}
       </button>
 
-      <p v-if="errorMsg" style="color:#b00020;">{{ errorMsg }}</p>
-      <p v-if="successMsg" style="color:#0a7a2f;">{{ successMsg }}</p>
-
-      <NuxtLink to="/account/security">Cambiar contraseña</NuxtLink>
+      <NuxtLink to="/account/security" class="text-sm text-gray-500 hover:underline">
+        Cambiar contraseña →
+      </NuxtLink>
     </div>
   </div>
 </template>

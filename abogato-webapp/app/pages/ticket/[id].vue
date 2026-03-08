@@ -15,7 +15,7 @@ type Ticket = {
   created_by: string
   assigned_to: string | null
   created_at: string
-  updated_at: string
+  reopen_requested: boolean
 }
 
 type Historial = {
@@ -28,10 +28,31 @@ type Historial = {
   created_at: string
 }
 
+type Adjunto = {
+  name: string
+  id: string
+}
+
+type Comentario = {
+  id: string
+  content: string
+  is_internal: boolean
+  author_id: string
+  created_at: string
+}
+
 const ticket = ref<Ticket | null>(null)
 const historial = ref<Historial[]>([])
+const adjuntos = ref<(Adjunto & { url: string })[]>([])
+const comentarios = ref<Comentario[]>([])
+
+const nuevoComentario = ref('')
+const comentarioInterno = ref(false)
+const loadingComentario = ref(false)
+
 const loading = ref(false)
 const errorMsg = ref('')
+const successMsg = ref('')
 
 const editando = ref(false)
 const editTitulo = ref('')
@@ -58,8 +79,17 @@ const etiquetaPrioridad: Record<string, string> = {
 }
 
 const esCliente = computed(() => ticket.value?.created_by === user.value?.id)
-const esAbogado = computed(() => ticket.value?.assigned_to === user.value?.id)
 const esAdmin = computed(() => profile.value?.role === 'admin')
+
+const puedeEditar = computed(() =>
+  (esCliente.value || esAdmin.value) && ticket.value?.status === 'open'
+)
+
+const puedeReabrir = computed(() =>
+  esCliente.value &&
+  (ticket.value?.status === 'resolved' || ticket.value?.status === 'closed') &&
+  !ticket.value?.reopen_requested
+)
 
 async function cargarTicket() {
   if (!user.value) return
@@ -81,6 +111,7 @@ async function cargarTicket() {
 
   const t = data as Ticket
   const tieneAcceso = t.created_by === user.value.id || t.assigned_to === user.value.id || esAdmin.value
+
   if (!tieneAcceso) {
     errorMsg.value = 'No tenés acceso a este ticket.'
     loading.value = false
@@ -91,7 +122,7 @@ async function cargarTicket() {
   editTitulo.value = t.title
   editDescripcion.value = t.description ?? ''
 
-  await cargarHistorial()
+  await Promise.all([cargarHistorial(), cargarAdjuntos(), cargarComentarios()])
   loading.value = false
 }
 
@@ -103,6 +134,63 @@ async function cargarHistorial() {
     .order('created_at', { ascending: false })
 
   historial.value = (data ?? []) as Historial[]
+}
+
+async function cargarAdjuntos() {
+  const { data } = await supabase.storage
+    .from('ticket-adjuntos')
+    .list(route.params.id as string)
+
+  const archivos = (data ?? []) as Adjunto[]
+
+  adjuntos.value = await Promise.all(
+    archivos.map(async (a) => {
+      const { data: signed } = await supabase.storage
+        .from('ticket-adjuntos')
+        .createSignedUrl(`${ticket.value!.id}/${a.name}`, 60)
+      return { ...a, url: signed?.signedUrl ?? '' }
+    })
+  )
+}
+
+async function cargarComentarios() {
+  const esAdminOAbogado = esAdmin.value || profile.value?.role === 'abogado'
+
+  let query = supabase
+    .from('ticket_comments')
+    .select('*')
+    .eq('ticket_id', route.params.id as string)
+    .order('created_at', { ascending: true })
+
+  if (!esAdminOAbogado) {
+    query = query.eq('is_internal', false)
+  }
+
+  const { data } = await query
+  comentarios.value = (data ?? []) as Comentario[]
+}
+
+async function agregarComentario() {
+  if (!ticket.value || !user.value) return
+
+  const texto = nuevoComentario.value.trim()
+  if (!texto) return
+
+  loadingComentario.value = true
+
+  const { error } = await supabase.from('ticket_comments').insert([{
+    ticket_id: ticket.value.id,
+    author_id: user.value.id,
+    content: texto,
+    is_internal: esAdmin.value || profile.value?.role === 'abogado' ? comentarioInterno.value : false
+  }])
+
+  loadingComentario.value = false
+  if (error) { errorMsg.value = error.message; return }
+
+  nuevoComentario.value = ''
+  comentarioInterno.value = false
+  await cargarComentarios()
 }
 
 async function guardarEdicion() {
@@ -118,8 +206,8 @@ async function guardarEdicion() {
     .eq('id', ticket.value.id)
 
   loading.value = false
-
   if (error) { errorMsg.value = error.message; return }
+
   editando.value = false
   await cargarTicket()
 }
@@ -131,13 +219,46 @@ async function solicitarReapertura() {
   loading.value = true
   const { error } = await supabase
     .from('tickets')
-    .update({ status: 'open' })
+    .update({ reopen_requested: true })
     .eq('id', ticket.value.id)
 
   loading.value = false
+  if (error) { errorMsg.value = error.message; return }
+
+  await cargarTicket()
+}
+
+async function subirArchivo(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !ticket.value) return
+
+  if (file.size > 10 * 1024 * 1024) {
+    errorMsg.value = 'El archivo no puede superar 10MB.'
+    return
+  }
+
+  const tiposPermitidos = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+  if (!tiposPermitidos.includes(file.type)) {
+    errorMsg.value = 'Solo se permiten archivos PDF, JPG o PNG.'
+    return
+  }
+
+  loading.value = true
+  errorMsg.value = ''
+
+  const ruta = `${ticket.value.id}/${Date.now()}-${file.name}`
+  const { error } = await supabase.storage
+    .from('ticket-adjuntos')
+    .upload(ruta, file)
+
+  loading.value = false
+  input.value = ''
 
   if (error) { errorMsg.value = error.message; return }
-  await cargarTicket()
+
+  successMsg.value = 'Archivo subido correctamente.'
+  await cargarAdjuntos()
 }
 
 onMounted(async () => {
@@ -154,6 +275,9 @@ onMounted(async () => {
 
     <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
       {{ errorMsg }}
+    </div>
+    <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm">
+      {{ successMsg }}
     </div>
 
     <p v-if="loading" class="text-gray-500 text-sm">Cargando...</p>
@@ -173,18 +297,21 @@ onMounted(async () => {
           <p class="text-xs text-gray-400 mt-1">
             Creado: {{ new Date(ticket.created_at).toLocaleString('es-CR') }}
           </p>
+          <p v-if="ticket.reopen_requested" class="text-xs text-amber-600 mt-1">
+            Solicitud de reapertura enviada — esperando respuesta del abogado.
+          </p>
         </div>
 
         <div class="flex gap-2 flex-wrap">
           <button
-            v-if="esCliente && ticket.status === 'open' && !editando"
+            v-if="puedeEditar && !editando"
             class="text-sm border px-3 py-1 rounded"
             @click="editando = true"
           >
             Editar
           </button>
           <button
-            v-if="esCliente && (ticket.status === 'resolved' || ticket.status === 'closed')"
+            v-if="puedeReabrir"
             class="text-sm border px-3 py-1 rounded"
             :disabled="loading"
             @click="solicitarReapertura"
@@ -216,10 +343,7 @@ onMounted(async () => {
             >
               Guardar
             </button>
-            <button
-              class="border px-4 py-2 rounded text-sm"
-              @click="editando = false"
-            >
+            <button class="border px-4 py-2 rounded text-sm" @click="editando = false">
               Cancelar
             </button>
           </div>
@@ -229,6 +353,84 @@ onMounted(async () => {
       <div v-else class="mb-6">
         <p v-if="ticket.description" class="text-gray-700">{{ ticket.description }}</p>
         <p v-else class="text-gray-400 italic text-sm">Sin descripción.</p>
+      </div>
+
+      <div class="mb-6">
+        <h2 class="font-medium mb-3">Documentos adjuntos</h2>
+
+        <div v-if="adjuntos.length" class="grid gap-2 mb-3">
+          <div
+            v-for="a in adjuntos"
+            :key="a.id"
+            class="flex items-center justify-between border rounded px-3 py-2 text-sm"
+          >
+            <span class="text-gray-700 truncate">{{ a.name }}</span>
+            <a
+              :href="a.url"
+              target="_blank"
+              class="text-green-600 hover:underline ml-4 shrink-0"
+            >
+              Descargar
+            </a>
+          </div>
+        </div>
+        <p v-else class="text-sm text-gray-400 mb-3">No hay archivos adjuntos.</p>
+
+        <label class="flex items-center gap-2 cursor-pointer w-fit">
+          <span class="border px-3 py-1 rounded text-sm">Adjuntar archivo</span>
+          <input
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            class="hidden"
+            :disabled="loading"
+            @change="subirArchivo"
+          />
+        </label>
+        <p class="text-xs text-gray-400 mt-1">PDF, JPG o PNG. Máximo 10MB.</p>
+      </div>
+
+      <div class="mt-6">
+        <h2 class="font-medium mb-3">Comentarios</h2>
+
+        <div v-if="comentarios.length" class="grid gap-3 mb-4">
+          <div
+            v-for="c in comentarios"
+            :key="c.id"
+            class="border rounded px-3 py-2 text-sm"
+            :class="c.is_internal ? 'bg-amber-50 border-amber-200' : 'bg-white'"
+          >
+            <p class="text-gray-700">{{ c.content }}</p>
+            <div class="flex gap-2 mt-1 items-center">
+              <span v-if="c.is_internal" class="text-xs text-amber-600">Interno</span>
+              <span class="text-xs text-gray-400">
+                {{ new Date(c.created_at).toLocaleString('es-CR') }}
+              </span>
+            </div>
+          </div>
+        </div>
+        <p v-else class="text-sm text-gray-400 mb-4">Sin comentarios.</p>
+
+        <div class="grid gap-2">
+          <textarea
+            v-model="nuevoComentario"
+            class="border rounded px-3 py-2 w-full text-sm"
+            placeholder="Escribir comentario..."
+            rows="3"
+          />
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <label v-if="esAdmin || profile?.role === 'abogado'" class="flex items-center gap-2 text-sm">
+              <input v-model="comentarioInterno" type="checkbox" />
+              Solo interno (no visible al cliente)
+            </label>
+            <button
+              class="bg-green-600 text-white px-4 py-2 rounded text-sm w-fit"
+              :disabled="loadingComentario || !nuevoComentario.trim()"
+              @click="agregarComentario"
+            >
+              Agregar
+            </button>
+          </div>
+        </div>
       </div>
 
       <div v-if="historial.length" class="mt-6">
