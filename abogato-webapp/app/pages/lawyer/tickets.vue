@@ -64,7 +64,7 @@ const ticketsConReapertura = computed(() =>
 )
 
 async function cargarTickets() {
-  if (!user.value) return
+  if (!user.value?.id) return
 
   loading.value = true
   errorMsg.value = ''

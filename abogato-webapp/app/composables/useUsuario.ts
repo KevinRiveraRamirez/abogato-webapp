@@ -10,7 +10,7 @@ export function useUsuario() {
   const profile = ref<Profile | null>(null)
 
   async function cargarPerfil() {
-    if (!authUser.value) {
+    if (!authUser.value?.id) {
       profile.value = null
       return
     }

@@ -2,7 +2,6 @@
 definePageMeta({ layout: "login-layout" });
 
 const supabase = useSupabaseClient();
-const user = useSupabaseUser();
 
 const email = ref("");
 const password = ref("");
@@ -12,18 +11,6 @@ const errorMsg = ref("");
 const mostrarRecuperacion = ref(false);
 const emailRecuperacion = ref("");
 const mensajeRecuperacion = ref("");
-
-const ensureProfile = useEnsureProfile();
-
-watch(
-  () => user.value,
-  async (u) => {
-    if (u) {
-      await ensureProfile("cliente");
-    }
-  },
-  { immediate: true },
-);
 
 async function signUp() {
   errorMsg.value = "";
@@ -41,14 +28,20 @@ async function signUp() {
       password: password.value,
     });
 
-    if (error) {
-      errorMsg.value = error.message;
-      return;
-    }
+    if (error) { errorMsg.value = error.message; return; }
 
     const identities = data.user?.identities ?? [];
     if (data.user && identities.length === 0) {
       errorMsg.value = "Este correo ya está registrado. Iniciá sesión.";
+      return;
+    }
+
+    if (data.user?.id) {
+      await supabase
+        .from('profiles')
+        .upsert([{ user_id: data.user.id, role: 'cliente' }], { onConflict: 'user_id' })
+
+      await navigateTo("/tickets", { replace: true });
       return;
     }
 
@@ -58,8 +51,6 @@ async function signUp() {
   }
 }
 
-const { getMyProfile } = useMyProfile();
-
 async function signIn() {
   errorMsg.value = "";
 
@@ -68,7 +59,7 @@ async function signIn() {
 
   loading.value = true;
   try {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.value.trim(),
       password: password.value,
     });
@@ -78,12 +69,27 @@ async function signIn() {
       return;
     }
 
-    await ensureProfile("cliente");
+    const userId = data.user?.id;
+    if (!userId) { errorMsg.value = "No se pudo obtener el usuario."; return; }
 
-    const profile = await getMyProfile();
-    const role = profile?.role ?? "cliente";
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('user_id', userId)
+      .maybeSingle();
 
-    if (role === "abogado") {
+    if (!profile) {
+      await supabase.from('profiles').insert([{ user_id: userId, role: 'cliente' }]);
+    }
+
+    const role = profile?.role ?? 'cliente';
+
+    if (role === 'abogado') {
+      await navigateTo("/lawyer/tickets", { replace: true });
+      return;
+    }
+
+    if (role === 'admin') {
       await navigateTo("/lawyer/tickets", { replace: true });
       return;
     }
@@ -107,21 +113,9 @@ async function enviarRecuperacion() {
   });
   loading.value = false;
 
-  if (error) {
-    errorMsg.value = error.message;
-    return;
-  }
+  if (error) { errorMsg.value = error.message; return; }
 
   mensajeRecuperacion.value = "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.";
-}
-
-async function signOut() {
-  loading.value = true;
-  try {
-    await supabase.auth.signOut();
-  } finally {
-    loading.value = false;
-  }
 }
 </script>
 
@@ -135,20 +129,11 @@ async function signOut() {
             Inicia sesión para continuar.
           </p>
         </div>
-
         <UColorModeButton />
       </div>
     </template>
 
     <div class="space-y-4">
-      <UAlert
-        v-if="user"
-        color="primary"
-        variant="soft"
-        title="Sesión activa"
-        :description="user.email"
-      />
-
       <UFormGroup label="Correo" name="email">
         <UInput
           v-model="email"
@@ -173,7 +158,7 @@ async function signOut() {
         v-if="errorMsg"
         color="warning"
         variant="soft"
-        title="No se pudo iniciar sesión"
+        title="Atención"
         :description="errorMsg"
       />
 
@@ -192,18 +177,6 @@ async function signOut() {
           Crear cuenta
         </UButton>
       </div>
-
-      <UButton
-        v-if="user"
-        color="warning"
-        variant="soft"
-        size="lg"
-        block
-        :loading="loading"
-        @click="signOut"
-      >
-        Cerrar sesión
-      </UButton>
 
       <UDivider />
 
@@ -231,6 +204,12 @@ async function signOut() {
       </div>
     </div>
   </UCard>
+
+  <div class="text-center mt-4">
+    <NuxtLink to="/" class="text-sm text-gray-500 hover:underline">
+      ← Volver al inicio
+    </NuxtLink>
+  </div>
 </template>
 
 <style scoped>
@@ -242,16 +221,5 @@ async function signOut() {
 .dark .auth-card {
   background: rgba(17, 17, 17, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.link {
-  opacity: 0.85;
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-.link:hover {
-  opacity: 1;
-  transform: translateY(-1px);
 }
 </style>

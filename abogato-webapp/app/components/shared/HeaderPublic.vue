@@ -1,5 +1,3 @@
-<!-- Header que se usa para las vistas SIN LogIn -->
-
 <template>
   <UHeader>
     <template #title>
@@ -11,21 +9,15 @@
     <template #right>
       <UColorModeButton />
 
-      <UButton
-        color="primary"
-        variant="ghost"
-        icon="mdi:account"
-        to="/sigin"
-        label="Registrarte"
-      />
+      <template v-if="user">
+        <UButton color="primary" variant="ghost" to="/tickets" label="Mi panel" />
+        <UButton color="error" variant="soft" :loading="loading" @click="cerrarSesion" label="Cerrar sesión" />
+      </template>
 
-      <UButton
-        color="primary"
-        variant="solid"
-        icon="mdi:login"
-        to="/login"
-        label="Inicia sesion"
-      />
+      <template v-else>
+        <UButton color="primary" variant="ghost" to="/login" label="Registrarte" />
+        <UButton color="primary" variant="solid" to="/login" label="Iniciar sesión" />
+      </template>
     </template>
 
     <template #body>
@@ -37,33 +29,22 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from "@nuxt/ui";
 
+const supabase = useSupabaseClient();
+const user = useSupabaseUser();
+const loading = ref(false);
 const route = useRoute();
 
+async function cerrarSesion() {
+  loading.value = true;
+  await supabase.auth.signOut();
+  loading.value = false;
+  await navigateTo("/login", { replace: true });
+}
+
 const items = computed<NavigationMenuItem[]>(() => [
-  {
-    label: "Servicios",
-    to: "/servicios/servicios",
-    active: route.path.startsWith("/servicios"),
-  },
-  {
-    label: "Sobre Nosotros",
-    to: "/about/about",
-    active: route.path.startsWith("/about"),
-  },
-  {
-    label: "Contacto",
-    to: "/contact/contact",
-    active: route.path.startsWith("/contact"),
-  },
-  {
-    label: "Recursos",
-    to: "/recurso/recursos",
-    active: route.path.startsWith("/recursos"),
-  },
-  {
-    label: "Prueba componentes",
-    to: "/pruebaComponentes",
-    active: route.path.startsWith("/pruebasComponentest"),
-  },
+  { label: "Servicios", to: "/servicios/servicios", active: route.path.startsWith("/servicios") },
+  { label: "Sobre Nosotros", to: "/about/about", active: route.path.startsWith("/about") },
+  { label: "Contacto", to: "/contact/contact", active: route.path.startsWith("/contact") },
+  { label: "Recursos", to: "/recurso/recursos", active: route.path.startsWith("/recursos") },
 ]);
 </script>

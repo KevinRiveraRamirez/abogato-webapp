@@ -7,16 +7,13 @@ export const useMyProfile = () => {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, role")
-      .eq("id", user.value.id)
-      .single()
+      .select("user_id, role")
+      .eq("user_id", user.value.id)
+      .maybeSingle()
 
-    if (error) {
-      // Si el perfil no existe todavía, retorna null y lo resolvemos con ensureProfile
-      return null
-    }
+    if (error) return null
 
-    return data as { id: string; role: string }
+    return data as { user_id: string; role: string }
   }
 
   return { getMyProfile }

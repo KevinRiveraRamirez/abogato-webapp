@@ -92,7 +92,7 @@ const puedeReabrir = computed(() =>
 )
 
 async function cargarTicket() {
-  if (!user.value) return
+  if (!user.value?.id) return
 
   loading.value = true
   errorMsg.value = ''

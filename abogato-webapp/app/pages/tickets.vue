@@ -64,7 +64,8 @@ async function cargarAbogados() {
 }
 
 async function cargarTickets() {
-  if (!user.value) return
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser?.id) return
 
   loading.value = true
   errorMsg.value = ''
@@ -72,7 +73,7 @@ async function cargarTickets() {
   const { data, error } = await supabase
     .from('tickets')
     .select('*')
-    .eq('created_by', user.value.id)
+    .eq('created_by', authUser.id)
     .order('created_at', { ascending: false })
 
   loading.value = false
@@ -101,10 +102,11 @@ async function abogadoMenosCargado(): Promise<string | null> {
 }
 
 async function crearTicket() {
-  if (!user.value) return
-
   const titulo = nuevoTitulo.value.trim()
   if (!titulo) { errorMsg.value = 'El título es obligatorio.'; return }
+
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser?.id) { errorMsg.value = 'Sesión no válida.'; return }
 
   loading.value = true
   errorMsg.value = ''
@@ -112,7 +114,7 @@ async function crearTicket() {
   const assignedTo = nuevoAbogado.value || await abogadoMenosCargado()
 
   const { error } = await supabase.from('tickets').insert([{
-    created_by: user.value.id,
+    created_by: authUser.id,
     assigned_to: assignedTo || null,
     title: titulo,
     description: nuevaDescripcion.value.trim() || null,
@@ -165,46 +167,60 @@ onMounted(async () => {
       {{ errorMsg }}
     </div>
 
-    <div v-if="mostrarFormulario" class="border rounded p-4 mb-6 bg-gray-50">
-      <h2 class="font-medium mb-3">Crear ticket</h2>
-      <div class="grid gap-3">
-        <input
-          v-model="nuevoTitulo"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Título *"
-        />
-        <textarea
-          v-model="nuevaDescripcion"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Descripción"
-          rows="3"
-        />
+    <div v-if="mostrarFormulario" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">Nuevo ticket</h2>
+      <div class="grid gap-4">
+        <div class="grid gap-1">
+          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Título <span class="text-red-500">*</span></label>
+          <input
+            v-model="nuevoTitulo"
+            class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 w-full bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            placeholder="Describí brevemente tu consulta"
+          />
+        </div>
+        <div class="grid gap-1">
+          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Descripción</label>
+          <textarea
+            v-model="nuevaDescripcion"
+            class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 w-full bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            placeholder="Detallá tu situación con la mayor información posible"
+            rows="4"
+          />
+        </div>
         <div class="flex gap-4 flex-wrap">
-          <label class="flex items-center gap-2 text-sm">
-            Prioridad:
-            <select v-model="nuevaPrioridad" class="border rounded px-2 py-1">
+          <div class="grid gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Prioridad</label>
+            <select v-model="nuevaPrioridad" class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-sm">
               <option value="low">Baja</option>
               <option value="normal">Normal</option>
               <option value="high">Alta</option>
             </select>
-          </label>
-          <label class="flex items-center gap-2 text-sm">
-            Abogado:
-            <select v-model="nuevoAbogado" class="border rounded px-2 py-1">
+          </div>
+          <div class="grid gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Abogado</label>
+            <select v-model="nuevoAbogado" class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-sm">
               <option value="">Asignar automáticamente</option>
               <option v-for="a in abogados" :key="a.user_id" :value="a.user_id">
                 {{ a.display_name ?? 'Abogado' }}
               </option>
             </select>
-          </label>
+          </div>
         </div>
-        <button
-          class="bg-green-600 text-white px-4 py-2 rounded w-fit text-sm"
-          :disabled="loading"
-          @click="crearTicket"
-        >
-          Crear
-        </button>
+        <div class="flex gap-2 pt-1">
+          <button
+            class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"
+            :disabled="loading"
+            @click="crearTicket"
+          >
+            {{ loading ? 'Creando...' : 'Crear ticket' }}
+          </button>
+          <button
+            class="border border-gray-300 dark:border-gray-600 px-5 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            @click="mostrarFormulario = false"
+          >
+            Cancelar
+          </button>
+        </div>
       </div>
     </div>
 

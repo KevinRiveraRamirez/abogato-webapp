@@ -2,7 +2,6 @@
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
 const supabase = useSupabaseClient()
-const user = useSupabaseUser()
 
 const displayName = ref('')
 const newEmail = ref('')
@@ -18,34 +17,37 @@ function validarEmail(email: string): string {
   return ''
 }
 
-watch(user, async () => {
-  if (!user.value) return
-  newEmail.value = user.value.email ?? ''
+onMounted(async () => {
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser?.id) return
+
+  newEmail.value = authUser.email ?? ''
 
   const { data } = await supabase
     .from('profiles')
     .select('display_name')
-    .eq('user_id', user.value.id)
+    .eq('user_id', authUser.id)
     .maybeSingle()
 
   displayName.value = data?.display_name ?? ''
-}, { immediate: true })
+})
 
 async function guardarCambios() {
   errorMsg.value = ''
   successMsg.value = ''
 
-  if (!user.value) return
-
   const emailError = validarEmail(newEmail.value)
   if (emailError) { errorMsg.value = emailError; return }
+
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser?.id) { errorMsg.value = 'Sesión no válida.'; return }
 
   loading.value = true
 
   const { error: profileError } = await supabase
     .from('profiles')
     .update({ display_name: displayName.value.trim() || null })
-    .eq('user_id', user.value.id)
+    .eq('user_id', authUser.id)
 
   if (profileError) {
     errorMsg.value = profileError.message
@@ -53,7 +55,7 @@ async function guardarCambios() {
     return
   }
 
-  if (newEmail.value.trim() !== user.value.email) {
+  if (newEmail.value.trim() !== authUser.email) {
     const { error: emailError } = await supabase.auth.updateUser({
       email: newEmail.value.trim()
     })
