@@ -1,31 +1,31 @@
 <script setup lang="ts">
 const cards = ref([
   {
-    title: 'Icons',
-    description: 'Nuxt UI integrates with Nuxt Icon to access over 200,000+ icons from Iconify.',
-    icon: '',
-    to: '/docs/getting-started/integrations/icons'
+    title: 'Asesoría Legal',
+    description: 'Consultoría personalizada en derecho civil, familiar y comercial con abogados especializados.',
+    icon: 'i-lucide-scale',
+    to: '/servicios/servicios'
   },
   {
-    title: 'Fonts',
-    description: 'Nuxt UI integrates with Nuxt Fonts to provide plug-and-play font optimization.',
-    icon: '',
-    to: '/docs/getting-started/integrations/fonts'
+    title: 'Trámites Notariales',
+    description: 'Gestión completa de escrituras, traspasos y documentos con validez legal ante notario.',
+    icon: 'i-lucide-file-text',
+    to: '/servicios/servicios'
   },
   {
-    title: 'Color Mode',
-    description: 'Nuxt UI integrates with Nuxt Color Mode to switch between light and dark.',
-    icon: '',
-    to: '/docs/getting-started/integrations/color-mode'
+    title: 'Seguimiento Digital',
+    description: 'Revisá el estado de tus trámites en tiempo real desde cualquier dispositivo.',
+    icon: 'i-lucide-monitor-check',
+    to: '/tickets'
   }
 ])
 </script>
 
 <template>
   <UPageSection
-    title="Abogato"
-    description="Nuestro sistema de autogestion legal te permitira inicar tus tramites legales en minutos, con un aistente virtual que te guiara en todo momento a la hota de crear la solucitud"
-    headline="Quienes somos?"
+    title="¿Por qué elegirnos?"
+    description="Combinamos experiencia jurídica con tecnología para ofrecerte un servicio legal ágil, transparente y accesible."
+    headline="¿Quiénes somos?"
   />
   <UPageGrid>
     <UPageCard
@@ -35,4 +35,3 @@ const cards = ref([
     />
   </UPageGrid>
 </template>
-

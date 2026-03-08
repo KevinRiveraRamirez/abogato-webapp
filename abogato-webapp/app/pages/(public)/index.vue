@@ -11,14 +11,14 @@
 
   <HomeHeroCards
     title="Trámites fáciles y seguros"
-    description="Simplificamos los procesos legales para que puedas resolver tus trámites sin complicaciones ni pérdidas de tiempo. Te acompañamos en cada etapa con asesoría profesional, gestión digital eficiente y total respaldo jurídico, garantizando seguridad, transparencia y cumplimiento normativo."
-    ctaText="Ver todos los trámites"
-    ctaHref="/tramites"
+    description="Simplificamos los procesos legales para que puedas resolver tus trámites sin complicaciones ni pérdidas de tiempo. Te acompañamos en cada etapa con asesoría profesional, gestión digital eficiente y total respaldo jurídico."
+    ctaText="Ver todos los servicios"
+    ctaHref="/servicios/servicios"
     :cards="cards"
   />
   <UPageSection
-    title="Preguntas?"
-    description="Aqui tienes un seleccion de nuestras preguntas frecuentes!"
+    title="Preguntas frecuentes"
+    description="Algunas dudas comunes sobre nuestros servicios y cómo funciona la plataforma."
   />
   <HomeAccordion />
 </template>

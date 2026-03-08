@@ -1,15 +1,17 @@
-<!-- DashboardDespuesDeLogin 
+<!-- DashboardDespuesDeLogin
 Este layout se usa para landing y páginas públicas.
 -->
 <template>
-  <div>
+  <div class="flex flex-col min-h-screen">
     <HeaderPublic />
-    <main>
+    <main class="flex-1">
       <slot />
     </main>
+    <FooterPublic />
   </div>
 </template>
 
 <script setup lang="ts">
 import HeaderPublic from '~/components/shared/HeaderPublic.vue'
+import FooterPublic from '~/components/shared/FooterPublic.vue'
 </script>

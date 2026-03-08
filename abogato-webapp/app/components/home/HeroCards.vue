@@ -5,22 +5,22 @@
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
       <!-- HERO lateral -->
       <div class="space-y-4">
-        <p class="text-sm font-semibold text-gray-600">
+        <p class="text-sm font-semibold text-primary-600 dark:text-primary-400 uppercase tracking-wide">
           {{ eyebrow }}
         </p>
 
-        <h2 class="text-3xl md:text-4xl font-bold text-gray-900">
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
           {{ title }}
         </h2>
 
-        <p class="text-gray-600 leading-relaxed">
+        <p class="text-gray-600 dark:text-gray-300 leading-relaxed">
           {{ description }}
         </p>
 
         <div>
           <NuxtLink
             :to="ctaHref"
-            class="inline-flex items-center gap-2 font-semibold text-gray-900 hover:underline"
+            class="inline-flex items-center gap-2 font-semibold text-primary-600 dark:text-primary-400 hover:underline"
           >
             {{ ctaText }} <span aria-hidden="true">→</span>
           </NuxtLink>
@@ -32,18 +32,19 @@
         <article
           v-for="(card, idx) in cards"
           :key="idx"
-          class="rounded-2xl bg-gray-100 p-6"
+          class="rounded-2xl bg-gray-100 dark:bg-gray-800 p-6"
         >
           <div class="flex items-start gap-4">
-            <!-- ícono placeholder -->
-            <div class="h-12 w-12 rounded-xl bg-gray-400/70 shrink-0"></div>
+            <div class="h-12 w-12 rounded-xl bg-primary-100 dark:bg-primary-900 flex items-center justify-center shrink-0">
+              <UIcon name="i-lucide-file-check" class="text-primary-600 dark:text-primary-400 text-xl" />
+            </div>
 
             <div class="space-y-2">
-              <h3 class="font-bold text-gray-900">
+              <h3 class="font-bold text-gray-900 dark:text-white">
                 {{ card.title }}
               </h3>
 
-              <p class="text-gray-700 leading-relaxed">
+              <p class="text-gray-600 dark:text-gray-300 leading-relaxed text-sm">
                 {{ card.description }}
               </p>
             </div>

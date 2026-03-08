@@ -1,8 +1,8 @@
 <template>
   <UPageHero
-    title="Soluciones guiadas para tus tramites legales. Rapido, sencillo y transparente"
-    description="Nuestro sistema de autogestion legal te permitira iniicar tus tramites legales en minutos, con un aistente virtual que te guiara en todo momento a la hota de crear la solucitud"
-    headline="Eficiencia en sus tramites legales"
+    title="Soluciones legales para tus trámites. Rápido, sencillo y transparente."
+    description="Nuestro sistema de autogestión legal te permite iniciar tus trámites en minutos, con el respaldo de abogados profesionales que te guiarán en cada paso."
+    headline="Eficiencia en tus trámites legales"
     :links="links"
   />
 </template>
@@ -12,13 +12,13 @@ import type { ButtonProps } from "@nuxt/ui";
 
 const links = ref<ButtonProps[]>([
   {
-    label: "Servicios",
-    to: "/docs/getting-started",
-    icon: "",
+    label: "Ver servicios",
+    to: "/servicios/servicios",
+    icon: "i-lucide-scale",
   },
   {
-    label: "Conoce mas",
-    to: "/docs/getting-started/theme/design-system",
+    label: "Crear cuenta",
+    to: "/login",
     color: "neutral",
     variant: "subtle",
     trailingIcon: "i-lucide-arrow-right",
