@@ -1,105 +1,70 @@
-<!-- /pages/tickets.vue -->
 <script setup lang="ts">
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
-
-type Profile = {
-  user_id: string
-  role: 'cliente' | 'abogado' | 'admin'
-  display_name?: string | null
-}
+const { profile, cargarPerfil } = useUsuario()
 
 type Ticket = {
   id: string
-  created_by: string
-  assigned_to: string | null
   title: string
   description: string | null
   status: 'open' | 'in_progress' | 'resolved' | 'closed'
   priority: 'low' | 'normal' | 'high'
+  created_by: string
+  assigned_to: string | null
   created_at: string
-  updated_at: string
 }
 
-const profile = ref<Profile | null>(null)
 const tickets = ref<Ticket[]>([])
+const abogados = ref<{ user_id: string; display_name: string | null }[]>([])
+
 const loading = ref(false)
 const errorMsg = ref('')
+const filtroEstado = ref('todos')
+const mostrarFormulario = ref(false)
 
-// Form crear
-const title = ref('')
-const description = ref('')
-const priority = ref<'low' | 'normal' | 'high'>('normal')
+const nuevoTitulo = ref('')
+const nuevaDescripcion = ref('')
+const nuevaPrioridad = ref<'low' | 'normal' | 'high'>('normal')
+const nuevoAbogado = ref('')
 
-//  asignar  abogado
-const lawyers = ref<{ user_id: string; display_name: string | null }[]>([])
-
-const assignedTo = ref<string>('') // '' => null
-
-function uuidOrNull(input: unknown): string | null {
-  if (typeof input !== 'string') return null
-  const v = input.trim()
-  if (!v || v === 'undefined' || v === 'null') return null
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-  return uuidRegex.test(v) ? v : null
+const etiquetaEstado: Record<string, string> = {
+  open: 'Pendiente',
+  in_progress: 'En revisión',
+  resolved: 'Resuelto',
+  closed: 'Cerrado'
 }
 
-function requireAuth(): boolean {
-  if (!user.value) {
-    errorMsg.value = 'Debes iniciar sesión.'
-    return false
-  }
-  return true
+const etiquetaPrioridad: Record<string, string> = {
+  low: 'Baja',
+  normal: 'Normal',
+  high: 'Alta'
 }
 
-async function loadProfile() {
-  if (!user.value) {
-    profile.value = null
-    return
-  }
+const claseEstado: Record<string, string> = {
+  open: 'bg-yellow-100 text-yellow-800',
+  in_progress: 'bg-blue-100 text-blue-800',
+  resolved: 'bg-green-100 text-green-800',
+  closed: 'bg-gray-100 text-gray-600'
+}
 
-  const { data, error } = await supabase
+const ticketsFiltrados = computed(() => {
+  if (filtroEstado.value === 'todos') return tickets.value
+  return tickets.value.filter(t => t.status === filtroEstado.value)
+})
+
+async function cargarAbogados() {
+  const { data } = await supabase
     .from('profiles')
-    .select('user_id, role, display_name')
-    .eq('user_id', user.value.id)
-    .maybeSingle()
-
-  if (error) {
-    errorMsg.value = error.message
-    profile.value = null
-    return
-  }
-
-  profile.value = data ?? null
-}
-
-async function loadLawyers() {
-  if (!requireAuth()) return
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('user_id, display_name, role')
+    .select('user_id, display_name')
     .eq('role', 'abogado')
 
-  if (error) {
-    console.warn('loadLawyers error:', error.message)
-    lawyers.value = []
-    return
-  }
-
-  lawyers.value = (data ?? []).map((x: any) => ({
-    user_id: x.user_id,
-    display_name: x.display_name ?? null
-  }))
+  abogados.value = data ?? []
 }
 
-async function loadTickets() {
-  if (!requireAuth()) {
-    tickets.value = []
-    return
-  }
+async function cargarTickets() {
+  if (!user.value) return
 
   loading.value = true
   errorMsg.value = ''
@@ -107,242 +72,196 @@ async function loadTickets() {
   const { data, error } = await supabase
     .from('tickets')
     .select('*')
+    .eq('created_by', user.value.id)
     .order('created_at', { ascending: false })
 
   loading.value = false
 
-  if (error) {
-    errorMsg.value = error.message
-    tickets.value = []
-    return
-  }
-
+  if (error) { errorMsg.value = error.message; return }
   tickets.value = data ?? []
 }
 
-async function createTicket() {
-  if (!requireAuth()) return
-  if (!profile.value) {
-    errorMsg.value = 'No tienes perfil configurado.'
-    return
-  }
-  if (profile.value.role !== 'cliente' && profile.value.role !== 'admin') {
-    errorMsg.value = 'Solo un cliente puede crear tickets en esta pantalla.'
-    return
-  }
+async function abogadoMenosCargado(): Promise<string | null> {
+  if (!abogados.value.length) return null
 
-  const t = title.value.trim()
-  if (!t) return
-
-  loading.value = true
-  errorMsg.value = ''
-
-  const safeAssignedTo = uuidOrNull(assignedTo.value)
-
-  const payload = {
-    created_by: user.value!.id,         
-    assigned_to: safeAssignedTo,        
-    title: t,
-    description: description.value.trim() || null,
-    priority: priority.value
-  }
-
-  const { error } = await supabase.from('tickets').insert([payload])
-
-  loading.value = false
-
-  if (error) {
-    errorMsg.value = error.message
-    return
-  }
-
-  title.value = ''
-  description.value = ''
-  priority.value = 'normal'
-  assignedTo.value = '' 
-
-  await loadTickets()
-}
-
-async function updateTicket(ticketId: unknown, patch: Partial<Ticket>) {
-  if (!requireAuth()) return
-
-  const safeId = uuidOrNull(ticketId)
-  if (!safeId) {
-    errorMsg.value = 'ID de ticket inválido.'
-    return
-  }
-
-  loading.value = true
-  errorMsg.value = ''
-
-  const { error } = await supabase
+  const { data } = await supabase
     .from('tickets')
-    .update(patch)
-    .eq('id', safeId)
+    .select('assigned_to')
+    .in('status', ['open', 'in_progress'])
+    .not('assigned_to', 'is', null)
 
-  loading.value = false
+  const conteo = new Map(abogados.value.map(a => [a.user_id, 0]))
+  data?.forEach(t => {
+    if (t.assigned_to && conteo.has(t.assigned_to)) {
+      conteo.set(t.assigned_to, (conteo.get(t.assigned_to) ?? 0) + 1)
+    }
+  })
 
-  if (error) {
-    errorMsg.value = error.message
-    return
-  }
-
-  await loadTickets()
+  return [...conteo.entries()].sort((a, b) => a[1] - b[1])[0]?.[0] ?? null
 }
 
-async function deleteTicket(ticketId: unknown) {
-  if (!requireAuth()) return
+async function crearTicket() {
+  if (!user.value) return
 
-  const safeId = uuidOrNull(ticketId)
-  if (!safeId) {
-    errorMsg.value = 'ID de ticket inválido.'
-    return
-  }
+  const titulo = nuevoTitulo.value.trim()
+  if (!titulo) { errorMsg.value = 'El título es obligatorio.'; return }
 
   loading.value = true
   errorMsg.value = ''
 
-  const { error } = await supabase
-    .from('tickets')
-    .delete()
-    .eq('id', safeId)
+  const assignedTo = nuevoAbogado.value || await abogadoMenosCargado()
+
+  const { error } = await supabase.from('tickets').insert([{
+    created_by: user.value.id,
+    assigned_to: assignedTo || null,
+    title: titulo,
+    description: nuevaDescripcion.value.trim() || null,
+    priority: nuevaPrioridad.value
+  }])
 
   loading.value = false
 
-  if (error) {
-    errorMsg.value = error.message
-    return
-  }
+  if (error) { errorMsg.value = error.message; return }
 
-  await loadTickets()
+  nuevoTitulo.value = ''
+  nuevaDescripcion.value = ''
+  nuevaPrioridad.value = 'normal'
+  nuevoAbogado.value = ''
+  mostrarFormulario.value = false
+
+  await cargarTickets()
 }
 
-watch(
-  user,
-  async () => {
-    errorMsg.value = ''
-    tickets.value = []
-    profile.value = null
-    lawyers.value = []
-    assignedTo.value = ''
+async function eliminarTicket(id: string) {
+  if (!confirm('¿Eliminar este ticket?')) return
 
-    if (!user.value) return
+  loading.value = true
+  const { error } = await supabase.from('tickets').delete().eq('id', id)
+  loading.value = false
 
-    await loadProfile()
-    await loadLawyers()
-    await loadTickets()
-  },
-  { immediate: true }
-)
+  if (error) { errorMsg.value = error.message; return }
+  await cargarTickets()
+}
+
+onMounted(async () => {
+  await cargarPerfil()
+  await Promise.all([cargarAbogados(), cargarTickets()])
+})
 </script>
 
 <template>
-  <div style="max-width: 900px; margin: 24px auto; padding: 16px;">
-    <h1>Tickets (Cliente)</h1>
-
-    <div v-if="!user" style="margin-top: 12px;">
-      <p>Debes iniciar sesión para ver tus tickets.</p>
-      <NuxtLink to="/login">Ir a login</NuxtLink>
+  <div class="max-w-3xl mx-auto py-8 px-4">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-semibold">Mis tickets</h1>
+      <button
+        class="bg-green-600 text-white px-4 py-2 rounded text-sm"
+        @click="mostrarFormulario = !mostrarFormulario"
+      >
+        {{ mostrarFormulario ? 'Cancelar' : 'Nuevo ticket' }}
+      </button>
     </div>
 
-    <div v-else>
-      <p v-if="profile">Rol actual: <b>{{ profile.role }}</b></p>
+    <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
+      {{ errorMsg }}
+    </div>
 
-      <div style="margin: 16px 0; padding: 12px; border: 1px solid #ddd;">
-        <h2>Crear ticket</h2>
-
-        <div style="display:grid; gap: 8px;">
-          <input v-model="title" placeholder="Título" />
-          <textarea v-model="description" placeholder="Descripción" rows="3" />
-
-          <div style="display:flex; gap: 12px; flex-wrap: wrap; align-items: center;">
-            <label>
-              Prioridad:
-              <select v-model="priority">
-                <option value="low">low</option>
-                <option value="normal">normal</option>
-                <option value="high">high</option>
-              </select>
-            </label>
-
-            <label>
-              Asignar a abogado (opcional):
-              <select v-model="assignedTo">
-                <option value="">Sin asignar</option>
-                <option v-for="l in lawyers" :key="l.user_id" :value="l.user_id">
-                  {{ l.display_name ?? l.user_id }}
-                </option>
-              </select>
-            </label>
-
-            <button @click="createTicket" :disabled="loading">Crear</button>
-            <button @click="loadTickets" :disabled="loading">Refrescar</button>
-          </div>
+    <div v-if="mostrarFormulario" class="border rounded p-4 mb-6 bg-gray-50">
+      <h2 class="font-medium mb-3">Crear ticket</h2>
+      <div class="grid gap-3">
+        <input
+          v-model="nuevoTitulo"
+          class="border rounded px-3 py-2 w-full"
+          placeholder="Título *"
+        />
+        <textarea
+          v-model="nuevaDescripcion"
+          class="border rounded px-3 py-2 w-full"
+          placeholder="Descripción"
+          rows="3"
+        />
+        <div class="flex gap-4 flex-wrap">
+          <label class="flex items-center gap-2 text-sm">
+            Prioridad:
+            <select v-model="nuevaPrioridad" class="border rounded px-2 py-1">
+              <option value="low">Baja</option>
+              <option value="normal">Normal</option>
+              <option value="high">Alta</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            Abogado:
+            <select v-model="nuevoAbogado" class="border rounded px-2 py-1">
+              <option value="">Asignar automáticamente</option>
+              <option v-for="a in abogados" :key="a.user_id" :value="a.user_id">
+                {{ a.display_name ?? 'Abogado' }}
+              </option>
+            </select>
+          </label>
         </div>
+        <button
+          class="bg-green-600 text-white px-4 py-2 rounded w-fit text-sm"
+          :disabled="loading"
+          @click="crearTicket"
+        >
+          Crear
+        </button>
       </div>
+    </div>
 
-      <p v-if="errorMsg" style="color:#b00020">{{ errorMsg }}</p>
-      <p v-if="loading">Cargando...</p>
+    <div class="flex gap-2 flex-wrap mb-4">
+      <button
+        v-for="f in ['todos', 'open', 'in_progress', 'resolved', 'closed']"
+        :key="f"
+        class="px-3 py-1 rounded border text-sm"
+        :class="filtroEstado === f ? 'bg-green-600 text-white border-green-600' : 'border-gray-300'"
+        @click="filtroEstado = f"
+      >
+        {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
+      </button>
+    </div>
 
-      <h2>Mis tickets</h2>
+    <p v-if="loading" class="text-gray-500 text-sm">Cargando...</p>
 
-      <div v-if="tickets.length === 0">
-        <p>No tienes tickets todavía.</p>
-      </div>
+    <div v-else-if="ticketsFiltrados.length === 0" class="text-center py-10 text-gray-400">
+      <p>No hay tickets{{ filtroEstado !== 'todos' ? ' con ese estado' : '' }}.</p>
+    </div>
 
-      <div v-else style="display:grid; gap: 12px;">
-        <div v-for="t in tickets" :key="t.id" style="border: 1px solid #ddd; padding: 12px;">
-          <div style="display:flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-            <div>
-              <b>{{ t.title }}</b>
-              <div style="font-size: 12px; opacity: 0.8;">
-                Estado: {{ t.status }} | Prioridad: {{ t.priority }}
-              </div>
-              <div style="font-size: 12px; opacity: 0.8;">
-                Creado: {{ new Date(t.created_at).toLocaleString() }}
-              </div>
+    <div v-else class="grid gap-3">
+      <div
+        v-for="t in ticketsFiltrados"
+        :key="t.id"
+        class="border rounded p-4 hover:shadow-sm transition-shadow"
+      >
+        <div class="flex justify-between items-start gap-2 flex-wrap">
+          <div>
+            <NuxtLink :to="`/ticket/${t.id}`" class="font-medium hover:underline">
+              {{ t.title }}
+            </NuxtLink>
+            <div class="flex gap-2 mt-1 flex-wrap items-center">
+              <span class="text-xs px-2 py-0.5 rounded-full" :class="claseEstado[t.status]">
+                {{ etiquetaEstado[t.status] }}
+              </span>
+              <span class="text-xs text-gray-500">
+                Prioridad: {{ etiquetaPrioridad[t.priority] }}
+              </span>
             </div>
-
-            <div style="display:flex; gap: 8px; align-items: center;">
-              <button
-                @click="deleteTicket(t.id)"
-                :disabled="loading"
-                title="Solo permite borrar si status=open (por policy)"
-              >
-                Borrar
-              </button>
-            </div>
+            <p class="text-xs text-gray-400 mt-1">
+              {{ new Date(t.created_at).toLocaleDateString('es-CR') }}
+            </p>
           </div>
 
-          <p v-if="t.description" style="margin-top: 10px;">{{ t.description }}</p>
-
-          <div style="margin-top: 12px; display:flex; gap: 8px; flex-wrap: wrap;">
-            <button
-              @click="updateTicket(t.id, { title: t.title + ' (editado)' })"
-              :disabled="loading"
-              title="Cliente solo puede editar si status=open"
-            >
-              Editar título (demo)
-            </button>
-
-            <button
-              @click="updateTicket(t.id, { description: (t.description ?? '') + ' [nota]' })"
-              :disabled="loading"
-              title="Cliente solo puede editar si status=open"
-            >
-              Editar descripción (demo)
-            </button>
-          </div>
-
-          <div style="margin-top: 8px; font-size: 12px; opacity: 0.75;">
-            assigned_to: {{ t.assigned_to ?? 'null' }}
-          </div>
+          <button
+            v-if="t.status === 'open'"
+            class="text-sm text-red-500 hover:underline"
+            :disabled="loading"
+            @click="eliminarTicket(t.id)"
+          >
+            Eliminar
+          </button>
         </div>
-      </div>
 
-      <hr style="margin: 20px 0;" />
-      <NuxtLink to="/lawyer/tickets">Ir a vista abogado</NuxtLink>
+        <p v-if="t.description" class="text-sm text-gray-600 mt-2">{{ t.description }}</p>
+      </div>
     </div>
   </div>
 </template>
