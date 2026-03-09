@@ -75,7 +75,7 @@ async function cargarTickets() {
     .order('created_at', { ascending: false })
 
   if (profile.value?.role === 'abogado') {
-    query = query.eq('assigned_to', user.value.id)
+    query = query.or(`assigned_to.eq.${user.value.id},and(status.eq.open,assigned_to.is.null)`)
   }
 
   const { data, error } = await query
@@ -92,9 +92,12 @@ async function avanzarEstado(t: Ticket) {
 
   loading.value = true
 
+  const cambios: Record<string, unknown> = { status: siguiente }
+  if (t.status === 'open') cambios.assigned_to = user.value!.id
+
   const { error } = await supabase
     .from('tickets')
-    .update({ status: siguiente })
+    .update(cambios)
     .eq('id', t.id)
 
   if (!error) {
