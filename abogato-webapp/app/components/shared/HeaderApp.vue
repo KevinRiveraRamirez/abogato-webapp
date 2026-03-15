@@ -3,7 +3,7 @@ const { profile, cargarPerfil } = useUsuario()
 const logout = useLogout()
 const loading = ref(false)
 
-await cargarPerfil()
+onMounted(() => cargarPerfil())
 
 const itemsCliente = [
   { label: 'Mis tickets', to: '/tickets' },
