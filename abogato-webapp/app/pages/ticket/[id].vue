@@ -78,7 +78,7 @@ const etiquetaPrioridad: Record<string, string> = {
   high: 'Alta'
 }
 
-const esCliente = computed(() => ticket.value?.created_by === user.value?.id)
+const esCliente = computed(() => !!ticket.value)
 const esAdmin = computed(() => profile.value?.role === 'admin')
 
 const puedeEditar = computed(() =>
@@ -92,10 +92,15 @@ const puedeReabrir = computed(() =>
 )
 
 async function cargarTicket() {
-  if (!user.value?.id) return
-
   loading.value = true
   errorMsg.value = ''
+
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser) {
+    errorMsg.value = 'Sesión no válida.'
+    loading.value = false
+    return
+  }
 
   const { data, error } = await supabase
     .from('tickets')
@@ -110,7 +115,7 @@ async function cargarTicket() {
   }
 
   const t = data as Ticket
-  const tieneAcceso = t.created_by === user.value.id || t.assigned_to === user.value.id || esAdmin.value
+  const tieneAcceso = t.created_by === authUser.id || t.assigned_to === authUser.id
 
   if (!tieneAcceso) {
     errorMsg.value = 'No tenés acceso a este ticket.'
@@ -260,10 +265,107 @@ async function subirArchivo(event: Event) {
   successMsg.value = 'Archivo subido correctamente.'
   await cargarAdjuntos()
 }
+// --- Generación de documentos ---
+type Field = { key: string; label: string; type: 'text' | 'date' | 'number' }
+type Template = { id: string; title: string; content: string; fields: Field[]; servicio_id: number }
+type Documento = { id: string; status: string; field_values: any; template_id: string; created_at: string }
 
+const mostrarGenerador = ref(false)
+const plantillas = ref<Template[]>([])
+const plantillaSeleccionada = ref<Template | null>(null)
+const fieldValues = ref<Record<string, string>>({})
+const pasoDoc = ref<'seleccionar' | 'llenar' | 'previsualizar'>('seleccionar')
+const documentos = ref<Documento[]>([])
+const loadingDoc = ref(false)
+
+const documentoGenerado = computed(() => {
+  if (!plantillaSeleccionada.value) return ''
+  let content = plantillaSeleccionada.value.content
+  for (const [key, value] of Object.entries(fieldValues.value)) {
+    content = content.replaceAll(`{{${key}}}`, value || `[${key}]`)
+  }
+  return content
+})
+
+async function cargarPlantillas() {
+  const { data } = await supabase.from('document_templates').select('*').eq('activo', true)
+  plantillas.value = data ?? []
+}
+
+async function cargarDocumentos() {
+  const { data } = await supabase
+    .from('documents')
+    .select('*, document_templates(title, content)')
+    .eq('ticket_id', route.params.id as string)
+  documentos.value = data ?? []
+}
+
+function descargarDocumento(doc: any) {
+  const template = doc.document_templates
+  if (!template) return
+
+  let contenido = template.content
+  for (const [key, value] of Object.entries(doc.field_values as Record<string, string>)) {
+    contenido = contenido.replaceAll(`{{${key}}}`, value)
+  }
+
+  const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${template.title}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function seleccionarPlantilla(p: Template) {
+  plantillaSeleccionada.value = p
+  fieldValues.value = {}
+  p.fields.forEach(f => { fieldValues.value[f.key] = '' })
+  pasoDoc.value = 'llenar'
+}
+
+function previsualizarDoc() {
+  const vacios = plantillaSeleccionada.value?.fields.filter(f => !fieldValues.value[f.key]?.trim())
+  if (vacios?.length) { errorMsg.value = 'Completá todos los campos.'; return }
+  errorMsg.value = ''
+  pasoDoc.value = 'previsualizar'
+}
+
+async function enviarDocumento() {
+  if (!plantillaSeleccionada.value) return
+  
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser) { errorMsg.value = 'Sesión no válida.'; return }
+  
+  loadingDoc.value = true
+  const { error } = await supabase.from('documents').insert([{
+    ticket_id: route.params.id as string,
+    template_id: plantillaSeleccionada.value.id,
+    field_values: fieldValues.value,
+    status: 'submitted',
+    created_by: authUser.id
+  }])
+  loadingDoc.value = false
+  if (error) { errorMsg.value = error.message; return }
+  mostrarGenerador.value = false
+  pasoDoc.value = 'seleccionar'
+  plantillaSeleccionada.value = null
+  successMsg.value = 'Documento enviado al abogado correctamente.'
+  await cargarDocumentos()
+}
 onMounted(async () => {
   await cargarPerfil()
   await cargarTicket()
+  await Promise.all([cargarPlantillas(), cargarDocumentos()])
+})
+
+watch(user, async (newUser) => {
+  if (newUser) {
+    await cargarPerfil()
+    await cargarTicket()
+    await Promise.all([cargarPlantillas(), cargarDocumentos()])
+  }
 })
 </script>
 
@@ -355,6 +457,93 @@ onMounted(async () => {
         <p v-else class="text-gray-400 italic text-sm">Sin descripción.</p>
       </div>
 
+      <!-- Generación de documentos legales -->
+<div class="mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-medium">Documento legal</h2>
+    <button
+      v-if="esCliente && ticket.status === 'open' && !documentos.length"
+      class="text-sm bg-green-600 text-white px-3 py-1 rounded"
+      @click="mostrarGenerador = !mostrarGenerador"
+    >
+      {{ mostrarGenerador ? 'Cancelar' : 'Generar documento' }}
+    </button>
+  </div>
+
+ <div v-if="documentos.length" class="grid gap-2 mb-3">
+  <div v-for="d in documentos" :key="d.id" class="border rounded px-3 py-2 text-sm">
+    <div class="flex justify-between items-center">
+      <span class="text-gray-700">{{ d.document_templates?.title ?? 'Documento generado' }}</span>
+      <span class="text-xs px-2 py-0.5 rounded-full"
+        :class="{
+          'bg-yellow-100 text-yellow-800': d.status === 'submitted',
+          'bg-green-100 text-green-800': d.status === 'approved',
+          'bg-red-100 text-red-800': d.status === 'rejected',
+          'bg-gray-100 text-gray-600': d.status === 'draft'
+        }">
+        {{ d.status === 'submitted' ? 'En revisión' : d.status === 'approved' ? 'Aprobado' : d.status === 'rejected' ? 'Rechazado' : 'Borrador' }}
+      </span>
+    </div>
+    <button
+      v-if="d.status === 'approved'"
+      class="text-xs text-green-600 hover:underline mt-2"
+      @click="descargarDocumento(d)"
+    >
+      Descargar documento
+    </button>
+  </div>
+</div>
+
+  <div v-if="mostrarGenerador" class="border rounded-xl p-4 mt-3">
+    <div v-if="pasoDoc === 'seleccionar'">
+      <p class="text-sm font-medium mb-3">Seleccioná el tipo de documento</p>
+      <div v-if="!plantillas.length" class="text-sm text-gray-400">No hay plantillas disponibles.</div>
+      <div class="grid gap-2">
+        <div v-for="p in plantillas" :key="p.id"
+          class="border rounded-lg p-3 cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors text-sm"
+          @click="seleccionarPlantilla(p)">
+          <p class="font-medium">{{ p.title }}</p>
+          <p class="text-xs text-gray-500 mt-1">{{ p.fields.length }} campos</p>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="pasoDoc === 'llenar'">
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-sm font-medium">{{ plantillaSeleccionada?.title }}</p>
+        <button class="text-xs text-gray-500 hover:underline" @click="pasoDoc = 'seleccionar'">← Cambiar</button>
+      </div>
+      <div class="grid gap-3">
+        <div v-for="f in plantillaSeleccionada?.fields" :key="f.key" class="grid gap-1">
+          <label class="text-xs font-medium">{{ f.label }} *</label>
+          <input v-model="fieldValues[f.key]"
+            :type="f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'"
+            class="border rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-green-500"
+            :placeholder="f.label" />
+        </div>
+      </div>
+      <button class="mt-4 bg-green-600 text-white px-4 py-2 rounded text-sm" @click="previsualizarDoc">
+        Previsualizar →
+      </button>
+    </div>
+
+    <div v-if="pasoDoc === 'previsualizar'">
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-sm font-medium">Previsualización</p>
+        <button class="text-xs text-gray-500 hover:underline" @click="pasoDoc = 'llenar'">← Editar</button>
+      </div>
+      <div class="border rounded p-4 text-sm font-serif leading-relaxed whitespace-pre-wrap mb-4 bg-gray-50">
+        {{ documentoGenerado }}
+      </div>
+      <div class="flex gap-2">
+        <button class="bg-green-600 text-white px-4 py-2 rounded text-sm" :disabled="loadingDoc" @click="enviarDocumento">
+          {{ loadingDoc ? 'Enviando...' : 'Enviar al abogado' }}
+        </button>
+        <button class="border px-4 py-2 rounded text-sm" @click="pasoDoc = 'llenar'">Corregir</button>
+      </div>
+    </div>
+  </div>
+</div>
       <div class="mb-6">
         <h2 class="font-medium mb-3">Documentos adjuntos</h2>
 

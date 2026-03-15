@@ -1,9 +1,8 @@
-// https://nuxt.com/docs/api/configuration/nuxt-config
-// https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   css: ["~/assets/css/main.css"],
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
+  ssr: false,
 
   modules: [
     "@nuxt/eslint",
@@ -13,7 +12,6 @@ export default defineNuxtConfig({
   ],
 
   supabase: {
-    redirect: false, 
+    redirect: false,
   },
-  
-});
+})
