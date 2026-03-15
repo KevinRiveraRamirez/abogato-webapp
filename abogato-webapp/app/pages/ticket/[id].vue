@@ -293,8 +293,29 @@ async function cargarPlantillas() {
 }
 
 async function cargarDocumentos() {
-  const { data } = await supabase.from('documents').select('*').eq('ticket_id', route.params.id as string)
+  const { data } = await supabase
+    .from('documents')
+    .select('*, document_templates(title, content)')
+    .eq('ticket_id', route.params.id as string)
   documentos.value = data ?? []
+}
+
+function descargarDocumento(doc: any) {
+  const template = doc.document_templates
+  if (!template) return
+
+  let contenido = template.content
+  for (const [key, value] of Object.entries(doc.field_values as Record<string, string>)) {
+    contenido = contenido.replaceAll(`{{${key}}}`, value)
+  }
+
+  const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${template.title}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function seleccionarPlantilla(p: Template) {
@@ -449,9 +470,10 @@ watch(user, async (newUser) => {
     </button>
   </div>
 
-  <div v-if="documentos.length" class="grid gap-2 mb-3">
-    <div v-for="d in documentos" :key="d.id" class="border rounded px-3 py-2 text-sm flex justify-between items-center">
-      <span class="text-gray-700">Documento generado</span>
+ <div v-if="documentos.length" class="grid gap-2 mb-3">
+  <div v-for="d in documentos" :key="d.id" class="border rounded px-3 py-2 text-sm">
+    <div class="flex justify-between items-center">
+      <span class="text-gray-700">{{ d.document_templates?.title ?? 'Documento generado' }}</span>
       <span class="text-xs px-2 py-0.5 rounded-full"
         :class="{
           'bg-yellow-100 text-yellow-800': d.status === 'submitted',
@@ -462,7 +484,15 @@ watch(user, async (newUser) => {
         {{ d.status === 'submitted' ? 'En revisión' : d.status === 'approved' ? 'Aprobado' : d.status === 'rejected' ? 'Rechazado' : 'Borrador' }}
       </span>
     </div>
+    <button
+      v-if="d.status === 'approved'"
+      class="text-xs text-green-600 hover:underline mt-2"
+      @click="descargarDocumento(d)"
+    >
+      Descargar documento
+    </button>
   </div>
+</div>
 
   <div v-if="mostrarGenerador" class="border rounded-xl p-4 mt-3">
     <div v-if="pasoDoc === 'seleccionar'">
