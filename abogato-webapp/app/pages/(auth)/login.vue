@@ -28,7 +28,10 @@ async function signUp() {
       password: password.value,
     });
 
-    if (error) { errorMsg.value = error.message; return; }
+    if (error) {
+      errorMsg.value = error.message;
+      return;
+    }
 
     const identities = data.user?.identities ?? [];
     if (data.user && identities.length === 0) {
@@ -37,10 +40,6 @@ async function signUp() {
     }
 
     if (data.user?.id) {
-      await supabase
-        .from('profiles')
-        .upsert([{ user_id: data.user.id, role: 'cliente' }], { onConflict: 'user_id' })
-
       await navigateTo("/tickets", { replace: true });
       return;
     }
