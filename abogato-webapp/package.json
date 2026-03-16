@@ -6,6 +6,7 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
+    "padron:import": "node scripts/padron-import-cli.mjs",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
   },
@@ -14,6 +15,7 @@
     "@nuxt/image": "2.0.0",
     "@nuxt/ui": "4.5.0",
     "@nuxtjs/supabase": "2.0.4",
+    "fflate": "^0.8.2",
     "nuxt": "^4.3.1",
     "tailwindcss": "^4.2.1",
     "vue": "^3.5.28",
