@@ -29,6 +29,46 @@ const nuevaDescripcion = ref('')
 const nuevaPrioridad = ref<'low' | 'normal' | 'high'>('normal')
 const nuevoAbogado = ref('')
 
+const archivoAdjunto = ref<File | null>(null)
+
+const formatosPermitidos = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+]
+
+const tamañoMaximo = 10 * 1024 * 1024 // 10MB
+
+function seleccionarArchivo(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+
+  errorMsg.value = ''
+
+  if (!file) {
+    archivoAdjunto.value = null
+    return
+  }
+
+  if (!formatosPermitidos.includes(file.type)) {
+    errorMsg.value = 'Formato no permitido. Solo PDF, JPG, PNG, DOC y DOCX.'
+    input.value = ''
+    archivoAdjunto.value = null
+    return
+  }
+
+  if (file.size > tamañoMaximo) {
+    errorMsg.value = 'El archivo supera el tamaño máximo permitido de 10MB.'
+    input.value = ''
+    archivoAdjunto.value = null
+    return
+  }
+
+  archivoAdjunto.value = file
+}
+
 const etiquetaEstado: Record<string, string> = {
   open: 'Pendiente',
   in_progress: 'En revisión',
@@ -113,22 +153,74 @@ async function crearTicket() {
 
   const assignedTo = nuevoAbogado.value || await abogadoMenosCargado()
 
-  const { error } = await supabase.from('tickets').insert([{
-    created_by: authUser.id,
-    assigned_to: assignedTo || null,
-    title: titulo,
-    description: nuevaDescripcion.value.trim() || null,
-    priority: nuevaPrioridad.value
-  }])
+    const { data: ticketCreado, error } = await supabase
+    .from('tickets')
+    .insert([{
+      created_by: authUser.id,
+      assigned_to: assignedTo || null,
+      title: titulo,
+      description: nuevaDescripcion.value.trim() || null,
+      priority: nuevaPrioridad.value
+    }])
+    .select()
+    .single()
+
+if (error) {
+    loading.value = false
+    errorMsg.value = error.message
+    return
+  }
+
+  if (archivoAdjunto.value) {
+    const file = archivoAdjunto.value
+    const nombreSeguro = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const filePath = `${authUser.id}/${ticketCreado.id}/${Date.now()}_${nombreSeguro}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('archivo-ticket')
+      .upload(filePath, file)
+
+    if (uploadError) {
+      loading.value = false
+      errorMsg.value = `Error subiendo archivo: ${uploadError.message}`
+      return
+    }
+
+    const { error: fileError } = await supabase
+      .from('ticket_files')
+      .insert([{
+      ticket_id: ticketCreado.id,
+      file_name: file.name,
+      file_path: filePath,
+      file_type: file.type,
+      file_size: file.size,
+      uploaded_by: authUser.id
+    }])
+
+    if (fileError) {
+      loading.value = false
+      errorMsg.value = `Error guardando adjunto: ${fileError.message}`
+      return
+    }
+
+    /*if (assignedTo) {
+      await supabase
+        .from('notifications')
+        .insert([{
+          user_id: assignedTo,
+          ticket_id: ticketCreado.id,
+          message: `Se adjuntó un documento al ticket "${titulo}".`
+        }])
+    }*/
+  }
 
   loading.value = false
-
-  if (error) { errorMsg.value = error.message; return }
 
   nuevoTitulo.value = ''
   nuevaDescripcion.value = ''
   nuevaPrioridad.value = 'normal'
   nuevoAbogado.value = ''
+  archivoAdjunto.value = null
   mostrarFormulario.value = false
 
   await cargarTickets()
@@ -137,11 +229,29 @@ async function crearTicket() {
 async function eliminarTicket(id: string) {
   if (!confirm('¿Eliminar este ticket?')) return
 
+  const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !authUser?.id) {
+    errorMsg.value = authError?.message || 'Sesión no válida.'
+    return
+  }
+
   loading.value = true
-  const { error } = await supabase.from('tickets').delete().eq('id', id)
+  errorMsg.value = ''
+
+  const { error } = await supabase
+    .from('tickets')
+    .delete()
+    .eq('id', id)
+    .eq('created_by', authUser.id)
+
   loading.value = false
 
-  if (error) { errorMsg.value = error.message; return }
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
   await cargarTickets()
 }
 
@@ -187,6 +297,26 @@ onMounted(async () => {
             rows="4"
           />
         </div>
+        <div class="grid gap-1">
+  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+    Adjuntar documento
+  </label>
+
+  <input
+    type="file"
+    class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 w-full bg-white dark:bg-gray-800 text-sm"
+    @change="seleccionarArchivo"
+  />
+
+  <p class="text-xs text-gray-500 dark:text-gray-400">
+    Formatos permitidos: PDF, JPG, PNG, DOC, DOCX. Máximo 10MB.
+  </p>
+
+  <p v-if="archivoAdjunto" class="text-xs text-green-600">
+    Archivo seleccionado: {{ archivoAdjunto.name }}
+  </p>
+</div>
+        
         <div class="flex gap-4 flex-wrap">
           <div class="grid gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Prioridad</label>
