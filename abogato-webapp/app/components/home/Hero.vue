@@ -8,7 +8,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ButtonProps } from "@nuxt/ui";
+import type { ButtonProps } from "#ui/types";
 
 const links = ref<ButtonProps[]>([
   {
@@ -18,7 +18,7 @@ const links = ref<ButtonProps[]>([
   },
   {
     label: "Crear cuenta",
-    to: "/login",
+    to: "/signup",
     color: "neutral",
     variant: "subtle",
     trailingIcon: "i-lucide-arrow-right",

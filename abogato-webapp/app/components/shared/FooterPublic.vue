@@ -32,7 +32,7 @@
           <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Cuenta</h4>
           <ul class="space-y-2 text-sm text-gray-500 dark:text-gray-400">
             <li><NuxtLink to="/login" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Iniciar sesión</NuxtLink></li>
-            <li><NuxtLink to="/login" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Crear cuenta</NuxtLink></li>
+            <li><NuxtLink to="/signup" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Crear cuenta</NuxtLink></li>
             <li><NuxtLink to="/tickets" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Mis trámites</NuxtLink></li>
           </ul>
         </div>

@@ -2,23 +2,28 @@
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
 const supabase = useSupabaseClient()
+const { profile, cargarPerfil } = useUsuario()
 
 const displayName = ref('')
+const officeAddress = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
 
 onMounted(async () => {
+  await cargarPerfil()
+
   const { data: { user: authUser } } = await supabase.auth.getUser()
   if (!authUser?.id) return
 
   const { data } = await supabase
     .from('profiles')
-    .select('display_name')
+    .select('display_name, office_address')
     .eq('user_id', authUser.id)
     .maybeSingle()
 
   displayName.value = data?.display_name ?? ''
+  officeAddress.value = data?.office_address ?? ''
 })
 
 async function guardarCambios() {
@@ -32,13 +37,17 @@ async function guardarCambios() {
 
   const { error } = await supabase
     .from('profiles')
-    .update({ display_name: displayName.value.trim() || null })
+    .update({
+      display_name: displayName.value.trim() || null,
+      office_address: officeAddress.value.trim() || null
+    })
     .eq('user_id', authUser.id)
 
   loading.value = false
 
   if (error) { errorMsg.value = error.message; return }
-  successMsg.value = 'Nombre actualizado correctamente.'
+  successMsg.value = 'Perfil actualizado correctamente.'
+  await cargarPerfil()
 }
 </script>
 
@@ -56,7 +65,17 @@ async function guardarCambios() {
         />
       </div>
 
-<div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded text-sm">
+      <div v-if="profile?.role === 'abogado' || profile?.role === 'admin'" class="grid gap-1">
+        <label class="text-sm font-medium">Dirección de oficina / notaría</label>
+        <textarea
+          v-model="officeAddress"
+          class="border rounded px-3 py-2 w-full"
+          placeholder="Dirección exacta de la oficina abierta"
+          rows="3"
+        />
+      </div>
+
+      <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded text-sm">
         {{ errorMsg }}
       </div>
       <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded text-sm">

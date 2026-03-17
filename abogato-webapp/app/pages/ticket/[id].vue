@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
+
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
 const supabase = useSupabaseClient()
@@ -43,6 +45,7 @@ type Comentario = {
 }
 
 const ticket = ref<Ticket | null>(null)
+const abogadoAsignado = ref<{ display_name: string | null; office_address: string | null } | null>(null)
 const historial = ref<Historial[]>([])
 const adjuntos = ref<(Adjunto & { url: string })[]>([])
 const comentarios = ref<Comentario[]>([])
@@ -131,9 +134,25 @@ async function cargarTicket() {
   ticket.value = t
   editTitulo.value = t.title
   editDescripcion.value = t.description ?? ''
+  await cargarAbogadoAsignado(t.assigned_to)
 
   await Promise.all([cargarHistorial(), cargarAdjuntos(), cargarComentarios()])
   loading.value = false
+}
+
+async function cargarAbogadoAsignado(userId: string | null) {
+  if (!userId) {
+    abogadoAsignado.value = null
+    return
+  }
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('display_name, office_address')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  abogadoAsignado.value = data ?? null
 }
 
 async function cargarHistorial() {
@@ -310,23 +329,40 @@ async function subirArchivo(event: Event) {
 // --- Generación de documentos ---
 type Field = { key: string; label: string; type: 'text' | 'date' | 'number' }
 type Template = { id: string; title: string; content: string; fields: Field[]; servicio_id: number }
+type FieldValue = string | number | null | undefined
 type Documento = { id: string; status: string; field_values: any; template_id: string; created_at: string }
 
 const mostrarGenerador = ref(false)
 const plantillas = ref<Template[]>([])
 const plantillaSeleccionada = ref<Template | null>(null)
-const fieldValues = ref<Record<string, string>>({})
+const fieldValues = ref<Record<string, FieldValue>>({})
+
+function textoDeCampo(value: FieldValue) {
+  if (value == null) return ''
+  return typeof value === 'string' ? value : String(value)
+}
+
+function campoEstaVacio(value: FieldValue) {
+  return textoDeCampo(value).trim() === ''
+}
 const pasoDoc = ref<'seleccionar' | 'llenar' | 'previsualizar'>('seleccionar')
 const documentos = ref<Documento[]>([])
 const loadingDoc = ref(false)
 
+function obtenerVariablesSistemaDocumento() {
+  return {
+    nombre_notario: abogadoAsignado.value?.display_name ?? null,
+    direccion_notario: abogadoAsignado.value?.office_address ?? null
+  }
+}
+
 const documentoGenerado = computed(() => {
   if (!plantillaSeleccionada.value) return ''
-  let content = plantillaSeleccionada.value.content
-  for (const [key, value] of Object.entries(fieldValues.value)) {
-    content = content.replaceAll(`{{${key}}}`, value || `[${key}]`)
-  }
-  return content
+  return renderDocumentTemplate(
+    plantillaSeleccionada.value.content,
+    fieldValues.value,
+    obtenerVariablesSistemaDocumento()
+  )
 })
 
 async function cargarPlantillas() {
@@ -346,10 +382,11 @@ function descargarDocumento(doc: any) {
   const template = doc.document_templates
   if (!template) return
 
-  let contenido = template.content
-  for (const [key, value] of Object.entries(doc.field_values as Record<string, string>)) {
-    contenido = contenido.replaceAll(`{{${key}}}`, value)
-  }
+  const contenido = renderDocumentTemplate(
+    template.content,
+    (doc.field_values as Record<string, string>) ?? {},
+    obtenerVariablesSistemaDocumento()
+  )
 
   const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -368,7 +405,7 @@ function seleccionarPlantilla(p: Template) {
 }
 
 function previsualizarDoc() {
-  const vacios = plantillaSeleccionada.value?.fields.filter(f => !fieldValues.value[f.key]?.trim())
+  const vacios = plantillaSeleccionada.value?.fields.filter(f => campoEstaVacio(fieldValues.value[f.key]))
   if (vacios?.length) { errorMsg.value = 'Completá todos los campos.'; return }
   errorMsg.value = ''
   pasoDoc.value = 'previsualizar'
@@ -503,13 +540,6 @@ watch(user, async (newUser) => {
 <div class="mb-6">
   <div class="flex items-center justify-between mb-3">
     <h2 class="font-medium">Documento legal</h2>
-    <button
-      v-if="esCliente && ticket.status === 'open' && !documentos.length"
-      class="text-sm bg-green-600 text-white px-3 py-1 rounded"
-      @click="mostrarGenerador = !mostrarGenerador"
-    >
-      {{ mostrarGenerador ? 'Cancelar' : 'Generar documento' }}
-    </button>
   </div>
 
  <div v-if="documentos.length" class="grid gap-2 mb-3">
@@ -536,55 +566,9 @@ watch(user, async (newUser) => {
   </div>
 </div>
 
-  <div v-if="mostrarGenerador" class="border rounded-xl p-4 mt-3">
-    <div v-if="pasoDoc === 'seleccionar'">
-      <p class="text-sm font-medium mb-3">Seleccioná el tipo de documento</p>
-      <div v-if="!plantillas.length" class="text-sm text-gray-400">No hay plantillas disponibles.</div>
-      <div class="grid gap-2">
-        <div v-for="p in plantillas" :key="p.id"
-          class="border rounded-lg p-3 cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors text-sm"
-          @click="seleccionarPlantilla(p)">
-          <p class="font-medium">{{ p.title }}</p>
-          <p class="text-xs text-gray-500 mt-1">{{ p.fields.length }} campos</p>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="pasoDoc === 'llenar'">
-      <div class="flex justify-between items-center mb-3">
-        <p class="text-sm font-medium">{{ plantillaSeleccionada?.title }}</p>
-        <button class="text-xs text-gray-500 hover:underline" @click="pasoDoc = 'seleccionar'">← Cambiar</button>
-      </div>
-      <div class="grid gap-3">
-        <div v-for="f in plantillaSeleccionada?.fields" :key="f.key" class="grid gap-1">
-          <label class="text-xs font-medium">{{ f.label }} *</label>
-          <input v-model="fieldValues[f.key]"
-            :type="f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'"
-            class="border rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-green-500"
-            :placeholder="f.label" />
-        </div>
-      </div>
-      <button class="mt-4 bg-green-600 text-white px-4 py-2 rounded text-sm" @click="previsualizarDoc">
-        Previsualizar →
-      </button>
-    </div>
-
-    <div v-if="pasoDoc === 'previsualizar'">
-      <div class="flex justify-between items-center mb-3">
-        <p class="text-sm font-medium">Previsualización</p>
-        <button class="text-xs text-gray-500 hover:underline" @click="pasoDoc = 'llenar'">← Editar</button>
-      </div>
-      <div class="border rounded p-4 text-sm font-serif leading-relaxed whitespace-pre-wrap mb-4 bg-gray-50">
-        {{ documentoGenerado }}
-      </div>
-      <div class="flex gap-2">
-        <button class="bg-green-600 text-white px-4 py-2 rounded text-sm" :disabled="loadingDoc" @click="enviarDocumento">
-          {{ loadingDoc ? 'Enviando...' : 'Enviar al abogado' }}
-        </button>
-        <button class="border px-4 py-2 rounded text-sm" @click="pasoDoc = 'llenar'">Corregir</button>
-      </div>
-    </div>
-  </div>
+  <p v-else class="text-sm text-gray-400">
+    Los datos del documento ya se completan al crear el ticket. Cuando el abogado lo revise, aparecerá aquí.
+  </p>
 </div>
       <div class="mb-6">
         <h2 class="font-medium mb-3">Documentos adjuntos</h2>

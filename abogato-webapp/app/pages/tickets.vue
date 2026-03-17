@@ -15,6 +15,8 @@ type Field = {
   type: 'text' | 'date' | 'number'
 }
 
+type FieldValue = string | number | null | undefined
+
 type Template = {
   id: string
   title: string
@@ -35,7 +37,6 @@ type Ticket = {
 }
 
 const tickets = ref<Ticket[]>([])
-const abogados = ref<{ user_id: string; display_name: string | null }[]>([])
 const servicios = ref<Servicio[]>([])
 const plantillas = ref<Template[]>([])
 
@@ -52,6 +53,7 @@ const nuevoAbogado = ref('')
 const fieldValues = ref<Record<string, string>>({})
 const ticketRecienCreadoId = ref('')
 
+const fieldValues = ref<Record<string, FieldValue>>({})
 
 const archivosAdjuntos = ref<File[]>([])
 
@@ -66,8 +68,11 @@ const formatosPermitidos = [
 ]
 
 const tamañoMaximo = 10 * 1024 * 1024 // 10MB
-let cedulaLookupTimeout: ReturnType<typeof setTimeout> | null = null
 const padronMensajes = ref<Record<string, string>>({})
+const ultimaCedulaBuscada = ref<Record<string, string>>({})
+const ultimoLookupIdPorCampo = ref<Record<string, number>>({})
+const cedulaLookupTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+let siguienteLookupId = 0
 
 function normalizarTexto(value: string) {
   return value
@@ -75,6 +80,15 @@ function normalizarTexto(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
+}
+
+function textoDeCampo(value: FieldValue) {
+  if (value == null) return ''
+  return typeof value === 'string' ? value : String(value)
+}
+
+function campoEstaVacio(value: FieldValue) {
+  return textoDeCampo(value).trim() === ''
 }
 
 function esCampoCedula(field: Field) {
@@ -93,6 +107,24 @@ function esCampoNombre(field: Field) {
   return ['nombre', 'apellido'].some((candidate) =>
     key.includes(candidate) || label.includes(candidate)
   )
+}
+
+function obtenerTipoPersona(field: Field) {
+  const source = `${normalizarTexto(field.key)}${normalizarTexto(field.label)}`
+
+  if (['apoderado', 'apoderada', 'mandatario', 'representante'].some((candidate) => source.includes(candidate))) {
+    return 'apoderado'
+  }
+
+  if (['cliente', 'otorgante', 'poderdante', 'titular'].some((candidate) => source.includes(candidate))) {
+    return 'cliente'
+  }
+
+  if (['conyuge', 'esposo', 'esposa', 'pareja'].some((candidate) => source.includes(candidate))) {
+    return 'conyuge'
+  }
+
+  return 'titular'
 }
 
 function buscarCampoPorCandidatos(campos: Field[], candidatos: string[], exclusions: string[] = []) {
@@ -115,22 +147,38 @@ const indicesCedula = computed(() =>
 
 function obtenerTokenPersona(field: Field) {
   const source = `${normalizarTexto(field.key)}${normalizarTexto(field.label)}`
-  const esConyuge = ['conyuge', 'esposo', 'esposa', 'pareja'].some((candidate) => source.includes(candidate))
+  const tipoPersona = obtenerTipoPersona(field)
   const digitos = source.match(/\d+/)?.[0] ?? ''
 
-  if (esConyuge && digitos) return `conyuge-${digitos}`
-  if (esConyuge) return 'conyuge'
-  if (digitos) return `persona-${digitos}`
+  if (digitos) return `${tipoPersona}-${digitos}`
+  return tipoPersona
+}
 
-  return 'titular'
+function prioridadTokenPersona(token: string) {
+  if (token.startsWith('cliente') || token.startsWith('titular')) return 0
+  if (token.startsWith('apoderado')) return 1
+  if (token.startsWith('conyuge')) return 2
+  return 3
 }
 
 const camposOrdenados = computed(() => {
   const ordenados: Field[] = []
   const usados = new Set<string>()
 
-  indicesCedula.value.forEach((cedulaIndex) => {
+  const indicesCedulaOrdenados = [...indicesCedula.value].sort((a, b) => {
+    const campoA = camposFormulario.value[a]
+    const campoB = camposFormulario.value[b]
+    const prioridadA = campoA ? prioridadTokenPersona(obtenerTokenPersona(campoA)) : 99
+    const prioridadB = campoB ? prioridadTokenPersona(obtenerTokenPersona(campoB)) : 99
+
+    if (prioridadA !== prioridadB) return prioridadA - prioridadB
+    return a - b
+  })
+
+  indicesCedulaOrdenados.forEach((cedulaIndex) => {
     const cedula = camposFormulario.value[cedulaIndex]
+    if (!cedula) return
+
     const token = obtenerTokenPersona(cedula)
     const relacionados = camposFormulario.value.filter((field) =>
       field.key !== cedula.key &&
@@ -140,10 +188,8 @@ const camposOrdenados = computed(() => {
     const nombres = relacionados.filter(esCampoNombre)
     const otros = relacionados.filter((field) => !esCampoNombre(field))
 
-    if (cedula) {
-      ordenados.push(cedula)
-      usados.add(cedula.key)
-    }
+    ordenados.push(cedula)
+    usados.add(cedula.key)
 
     nombres.forEach((field) => {
       ordenados.push(field)
@@ -195,7 +241,7 @@ function obtenerCamposRelacionadosConCedula(cedulaKey: string) {
   return obtenerGrupoPosicionalDeCedula(cedulaKey).filter((field) => !esCampoCedula(field))
 }
 
-async function autocompletarDesdePadron(cedulaKey: string, cedula: string) {
+async function autocompletarDesdePadron(cedulaKey: string, cedula: string, lookupId: number) {
   if (!cedula || cedula.length < 9) {
     padronMensajes.value = { ...padronMensajes.value, [cedulaKey]: '' }
     return
@@ -207,6 +253,10 @@ async function autocompletarDesdePadron(cedulaKey: string, cedula: string) {
     .eq('cedula', cedula)
     .maybeSingle()
 
+  if (ultimoLookupIdPorCampo.value[cedulaKey] !== lookupId) return
+
+  ultimaCedulaBuscada.value = { ...ultimaCedulaBuscada.value, [cedulaKey]: cedula }
+
   if (error) {
     padronMensajes.value = { ...padronMensajes.value, [cedulaKey]: 'No se pudo consultar el padrón en este momento.' }
     return
@@ -217,7 +267,7 @@ async function autocompletarDesdePadron(cedulaKey: string, cedula: string) {
     return
   }
 
-  const actualizaciones: Record<string, string> = { ...fieldValues.value }
+  const actualizaciones: Record<string, FieldValue> = { ...fieldValues.value }
   const grupo = obtenerCamposRelacionadosConCedula(cedulaKey)
 
   const campoNombreCompleto = buscarCampoPorCandidatos(grupo, ['nombrecompleto'])
@@ -260,7 +310,7 @@ const resumenTramiteSeleccionado = computed(() => {
 
 watch(tramiteSeleccionadoId, (templateId) => {
   const template = plantillas.value.find(p => p.id === templateId)
-  const nextValues: Record<string, string> = {}
+  const nextValues: Record<string, FieldValue> = {}
 
   template?.fields.forEach((field) => {
     nextValues[field.key] = fieldValues.value[field.key] ?? ''
@@ -268,24 +318,28 @@ watch(tramiteSeleccionadoId, (templateId) => {
 
   fieldValues.value = nextValues
   padronMensajes.value = {}
+  ultimaCedulaBuscada.value = {}
 })
 
 watch(fieldValues, (values) => {
-  if (cedulaLookupTimeout) {
-    clearTimeout(cedulaLookupTimeout)
-  }
-
   const cedulas = indicesCedula.value.map((index) => {
     const field = camposFormulario.value[index]
     return {
       key: field.key,
-      value: (values[field.key] ?? '').replace(/\D/g, ''),
+      value: textoDeCampo(values[field.key]).replace(/\D/g, ''),
     }
   })
 
   cedulas.forEach(({ key, value }) => {
+    const timeout = cedulaLookupTimeouts.get(key)
+    if (timeout) {
+      clearTimeout(timeout)
+      cedulaLookupTimeouts.delete(key)
+    }
+
     if (!value) {
       padronMensajes.value = { ...padronMensajes.value, [key]: '' }
+      ultimaCedulaBuscada.value = { ...ultimaCedulaBuscada.value, [key]: '' }
       return
     }
 
@@ -294,17 +348,21 @@ watch(fieldValues, (values) => {
         ...padronMensajes.value,
         [key]: 'Ingresá una cédula completa para autocompletar los datos.',
       }
+      ultimaCedulaBuscada.value = { ...ultimaCedulaBuscada.value, [key]: '' }
+      return
     }
+
+    if (ultimaCedulaBuscada.value[key] === value) return
+
+    const lookupId = ++siguienteLookupId
+    ultimoLookupIdPorCampo.value = { ...ultimoLookupIdPorCampo.value, [key]: lookupId }
+
+    const nuevoTimeout = setTimeout(() => {
+      autocompletarDesdePadron(key, value, lookupId)
+    }, 450)
+
+    cedulaLookupTimeouts.set(key, nuevoTimeout)
   })
-
-  const completas = cedulas.filter(({ value }) => value.length >= 9)
-  if (!completas.length) return
-
-  cedulaLookupTimeout = setTimeout(() => {
-    completas.forEach(({ key, value }) => {
-      autocompletarDesdePadron(key, value)
-    })
-  }, 450)
 }, { deep: true })
 
 function abrirFormularioNuevoTicket() {
@@ -378,15 +436,6 @@ const ticketsFiltrados = computed(() => {
   return tickets.value.filter(t => t.status === filtroEstado.value)
 })
 
-async function cargarAbogados() {
-  const { data } = await supabase
-    .from('profiles')
-    .select('user_id, display_name')
-    .eq('role', 'abogado')
-
-  abogados.value = data ?? []
-}
-
 async function cargarServicios() {
   const { data } = await supabase
     .from('servicios')
@@ -426,32 +475,13 @@ async function cargarTickets() {
   tickets.value = data ?? []
 }
 
-async function abogadoMenosCargado(): Promise<string | null> {
-  if (!abogados.value.length) return null
-
-  const { data } = await supabase
-    .from('tickets')
-    .select('assigned_to')
-    .in('status', ['open', 'in_progress'])
-    .not('assigned_to', 'is', null)
-
-  const conteo = new Map(abogados.value.map(a => [a.user_id, 0]))
-  data?.forEach(t => {
-    if (t.assigned_to && conteo.has(t.assigned_to)) {
-      conteo.set(t.assigned_to, (conteo.get(t.assigned_to) ?? 0) + 1)
-    }
-  })
-
-  return [...conteo.entries()].sort((a, b) => a[1] - b[1])[0]?.[0] ?? null
-}
-
 async function crearTicket() {
   if (!plantillaSeleccionada.value) {
     errorMsg.value = 'Seleccioná el tipo de trámite para continuar.'
     return
   }
 
-  const camposVacios = camposFormulario.value.filter(field => !fieldValues.value[field.key]?.trim())
+  const camposVacios = camposFormulario.value.filter(field => campoEstaVacio(fieldValues.value[field.key]))
   if (camposVacios.length) {
     errorMsg.value = 'Completá todos los campos obligatorios del trámite.'
     return
@@ -464,14 +494,11 @@ async function crearTicket() {
   errorMsg.value = ''
   successMsg.value = ''
 
-  // const assignedTo = nuevoAbogado.value || await abogadoMenosCargado()
-  const assignedTo = await abogadoMenosCargado()
-
   const { data: ticketCreado, error } = await supabase
     .from('tickets')
     .insert([{
       created_by: authUser.id,
-      assigned_to: assignedTo || null,
+      assigned_to: null,
       title: plantillaSeleccionada.value.title,
       description: nuevaDescripcion.value.trim() || null,
       priority: nuevaPrioridad.value
@@ -525,7 +552,6 @@ async function crearTicket() {
   fieldValues.value = {}
   nuevaDescripcion.value = ''
   nuevaPrioridad.value = 'normal'
-  nuevoAbogado.value = ''
   archivosAdjuntos.value = []
   mostrarFormulario.value = false
   successMsg.value = 'Tu ticket fue creado correctamente.'
@@ -575,7 +601,7 @@ async function cancelarTicket(id: string) {
 
 onMounted(async () => {
   await cargarPerfil()
-  await Promise.all([cargarAbogados(), cargarServicios(), cargarPlantillas(), cargarTickets()])
+  await Promise.all([cargarServicios(), cargarPlantillas(), cargarTickets()])
 })
 </script>
 

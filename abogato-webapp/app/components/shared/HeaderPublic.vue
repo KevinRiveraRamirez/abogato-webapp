@@ -15,7 +15,7 @@
       </template>
 
       <template v-else>
-        <UButton color="primary" variant="ghost" to="/login" label="Registrarte" />
+        <UButton color="primary" variant="ghost" to="/signup" label="Registrarte" />
         <UButton color="primary" variant="solid" to="/login" label="Iniciar sesión" />
       </template>
     </template>
@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import type { NavigationMenuItem } from "@nuxt/ui";
+import type { NavigationMenuItem } from "#ui/types";
 
 const supabase = useSupabaseClient();
 const user = useSupabaseUser();
