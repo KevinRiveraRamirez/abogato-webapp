@@ -200,10 +200,11 @@ async function enviarRecuperacion() {
 .auth-shell {
   display: grid;
   gap: 1rem;
+  justify-items: center;
 }
 
 .auth-card {
-  width: 100%;
+  width: min(100%, 44rem);
   backdrop-filter: blur(10px);
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(0, 0, 0, 0.06);
@@ -233,11 +234,14 @@ async function enviarRecuperacion() {
 .auth-body {
   display: grid;
   gap: 1.25rem;
+  width: min(100%, 30rem);
+  margin: 0 auto;
 }
 
 .auth-actions {
   display: grid;
   gap: 0.75rem;
+  justify-items: center;
 }
 
 .auth-recovery {
@@ -314,12 +318,6 @@ async function enviarRecuperacion() {
 
 .dark .password-toggle:hover {
   color: rgb(229 231 235);
-}
-
-@media (min-width: 640px) {
-  .auth-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 639px) {

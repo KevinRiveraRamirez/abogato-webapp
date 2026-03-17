@@ -104,7 +104,7 @@ const etiquetaEstadoDocumento: Record<string, string> = {
   draft: 'Borrador'
 }
 
-const esCliente = computed(() => !!ticket.value)
+const esCliente = computed(() => profile.value?.role === 'cliente')
 const esAdmin = computed(() => profile.value?.role === 'admin')
 
 const puedeEditar = computed(() =>
@@ -346,28 +346,16 @@ async function subirArchivo(event: Event) {
   successMsg.value = 'Archivo subido correctamente.'
   await cargarAdjuntos()
 }
-// --- Generación de documentos ---
-type Field = { key: string; label: string; type: 'text' | 'date' | 'number' }
-type Template = { id: string; title: string; content: string; fields: Field[]; servicio_id: number }
-type FieldValue = string | number | null | undefined
-type Documento = { id: string; status: string; field_values: any; template_id: string; created_at: string }
-
-const mostrarGenerador = ref(false)
-const plantillas = ref<Template[]>([])
-const plantillaSeleccionada = ref<Template | null>(null)
-const fieldValues = ref<Record<string, FieldValue>>({})
-
-function textoDeCampo(value: FieldValue) {
-  if (value == null) return ''
-  return typeof value === 'string' ? value : String(value)
+type Documento = {
+  id: string
+  status: string
+  field_values: Record<string, string> | null
+  template_id: string
+  created_at: string
+  rejection_reason?: string | null
+  document_templates?: { title: string | null; content: string | null } | null
 }
-
-function campoEstaVacio(value: FieldValue) {
-  return textoDeCampo(value).trim() === ''
-}
-const pasoDoc = ref<'seleccionar' | 'llenar' | 'previsualizar'>('seleccionar')
 const documentos = ref<Documento[]>([])
-const loadingDoc = ref(false)
 
 function obtenerVariablesSistemaDocumento() {
   return {
@@ -376,35 +364,22 @@ function obtenerVariablesSistemaDocumento() {
   }
 }
 
-const documentoGenerado = computed(() => {
-  if (!plantillaSeleccionada.value) return ''
-  return renderDocumentTemplate(
-    plantillaSeleccionada.value.content,
-    fieldValues.value,
-    obtenerVariablesSistemaDocumento()
-  )
-})
-
-async function cargarPlantillas() {
-  const { data } = await supabase.from('document_templates').select('*').eq('activo', true)
-  plantillas.value = data ?? []
-}
-
 async function cargarDocumentos() {
   const { data } = await supabase
     .from('documents')
     .select('*, document_templates(title, content)')
+    .order('created_at', { ascending: false })
     .eq('ticket_id', route.params.id as string)
   documentos.value = data ?? []
 }
 
-function descargarDocumento(doc: any) {
+function descargarDocumento(doc: Documento) {
   const template = doc.document_templates
-  if (!template) return
+  if (!template?.content) return
 
   const contenido = renderDocumentTemplate(
     template.content,
-    (doc.field_values as Record<string, string>) ?? {},
+    doc.field_values ?? {},
     obtenerVariablesSistemaDocumento()
   )
 
@@ -412,58 +387,19 @@ function descargarDocumento(doc: any) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `${template.title}.txt`
+  a.download = `${template.title ?? 'documento'}.txt`
   a.click()
   URL.revokeObjectURL(url)
 }
-
-function seleccionarPlantilla(p: Template) {
-  plantillaSeleccionada.value = p
-  fieldValues.value = {}
-  p.fields.forEach(f => { fieldValues.value[f.key] = '' })
-  pasoDoc.value = 'llenar'
-}
-
-function previsualizarDoc() {
-  const vacios = plantillaSeleccionada.value?.fields.filter(f => campoEstaVacio(fieldValues.value[f.key]))
-  if (vacios?.length) { errorMsg.value = 'Completá todos los campos.'; return }
-  errorMsg.value = ''
-  pasoDoc.value = 'previsualizar'
-}
-
-async function enviarDocumento() {
-  if (!plantillaSeleccionada.value) return
-  
-  const { data: { user: authUser } } = await supabase.auth.getUser()
-  if (!authUser) { errorMsg.value = 'Sesión no válida.'; return }
-  
-  loadingDoc.value = true
-  const { error } = await supabase.from('documents').insert([{
-    ticket_id: route.params.id as string,
-    template_id: plantillaSeleccionada.value.id,
-    field_values: fieldValues.value,
-    status: 'submitted',
-    created_by: authUser.id
-  }])
-  loadingDoc.value = false
-  if (error) { errorMsg.value = error.message; return }
-  mostrarGenerador.value = false
-  pasoDoc.value = 'seleccionar'
-  plantillaSeleccionada.value = null
-  successMsg.value = 'Documento enviado al abogado correctamente.'
-  await cargarDocumentos()
-}
 onMounted(async () => {
   await cargarPerfil()
-  await cargarTicket()
-  await Promise.all([cargarPlantillas(), cargarDocumentos()])
+  await Promise.all([cargarTicket(), cargarDocumentos()])
 })
 
 watch(user, async (newUser) => {
   if (newUser) {
     await cargarPerfil()
-    await cargarTicket()
-    await Promise.all([cargarPlantillas(), cargarDocumentos()])
+    await Promise.all([cargarTicket(), cargarDocumentos()])
   }
 })
 </script>
@@ -591,7 +527,7 @@ watch(user, async (newUser) => {
         <template #header>
           <div>
             <h2 class="font-semibold text-highlighted">Documento legal</h2>
-            <p class="mt-1 text-sm text-muted">Estado de los documentos generados para este caso.</p>
+            <p class="mt-1 text-sm text-muted">Estado del documento legal asociado a este ticket.</p>
           </div>
         </template>
 
@@ -603,6 +539,17 @@ watch(user, async (newUser) => {
                 {{ etiquetaEstadoDocumento[d.status] ?? 'Borrador' }}
               </UBadge>
             </div>
+            <p class="mt-2 text-xs text-muted">
+              {{ new Date(d.created_at).toLocaleString('es-CR') }}
+            </p>
+            <UAlert
+              v-if="d.status === 'rejected' && d.rejection_reason"
+              color="error"
+              variant="soft"
+              title="Motivo del rechazo"
+              :description="d.rejection_reason"
+              class="mt-3"
+            />
             <UButton
               v-if="d.status === 'approved'"
               size="sm"
@@ -613,9 +560,11 @@ watch(user, async (newUser) => {
             </UButton>
           </UCard>
         </div>
-        <p v-else class="text-sm text-muted">
-          Los datos del documento ya se completan al crear el ticket. Cuando el abogado lo revise, aparecerá aquí.
-        </p>
+        <div v-else>
+          <p class="text-sm text-muted">
+            Los datos del documento ya se completan al crear el ticket. Cuando el abogado lo revise, aparecerá aquí.
+          </p>
+        </div>
       </UCard>
 
       <UCard>

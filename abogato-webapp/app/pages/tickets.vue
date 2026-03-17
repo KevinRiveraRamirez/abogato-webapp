@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { h, resolveComponent } from 'vue'
+import type { DropdownMenuItem, TableColumn } from '#ui/types'
+
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
 const supabase = useSupabaseClient()
@@ -36,14 +39,22 @@ type Ticket = {
   created_at: string
 }
 
+type DocumentoResumen = {
+  ticket_id: string | null
+  status: string
+  created_at: string
+}
+
 const tickets = ref<Ticket[]>([])
 const servicios = ref<Servicio[]>([])
 const plantillas = ref<Template[]>([])
+const estadoDocumentoPorTicket = ref<Record<string, string>>({})
 
 const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
 const filtroEstado = ref('todos')
+const busqueda = ref('')
 const mostrarFormulario = ref(false)
 
 const tramiteSeleccionadoId = ref('')
@@ -54,6 +65,10 @@ const ticketRecienCreadoId = ref('')
 const fieldValues = ref<Record<string, FieldValue>>({})
 
 const archivosAdjuntos = ref<File[]>([])
+
+const UBadge = resolveComponent('UBadge')
+const UButton = resolveComponent('UButton')
+const UDropdownMenu = resolveComponent('UDropdownMenu')
 
 const formatosPermitidos = [
   'application/pdf',
@@ -451,9 +466,147 @@ const colorPrioridad: Record<Ticket['priority'], 'neutral' | 'warning' | 'error'
 const filtrosEstado = ['todos', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
 
 const ticketsFiltrados = computed(() => {
-  if (filtroEstado.value === 'todos') return tickets.value
-  return tickets.value.filter(t => t.status === filtroEstado.value)
+  const termino = busqueda.value.trim().toLowerCase()
+
+  return tickets.value.filter((ticket) => {
+    const coincideEstado = filtroEstado.value === 'todos' || ticket.status === filtroEstado.value
+
+    if (!coincideEstado) return false
+    if (!termino) return true
+
+    return [
+      ticket.id,
+      ticket.title,
+      ticket.description ?? '',
+      etiquetaEstado[ticket.status],
+      etiquetaPrioridad[ticket.priority],
+      estadoDocumentoPorTicket.value[ticket.id] === 'rejected' ? 'documento rechazado' : '',
+    ].some((value) => value.toLowerCase().includes(termino))
+  })
 })
+
+function formatearFecha(fecha: string) {
+  return new Date(fecha).toLocaleDateString('es-CR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function obtenerMenuAcciones(ticket: Ticket): DropdownMenuItem[][] {
+  const items: DropdownMenuItem[][] = [[
+    {
+      label: 'Ver ticket',
+      icon: 'i-lucide-external-link',
+      to: `/ticket/${ticket.id}`,
+    },
+  ]]
+
+  if (ticket.status === 'open') {
+    items.push([
+      {
+        label: 'Cancelar ticket',
+        icon: 'i-lucide-ban',
+        color: 'error',
+        onSelect: () => cancelarTicket(ticket.id),
+      },
+    ])
+  }
+
+  return items
+}
+
+const columns = computed<TableColumn<Ticket>[]>(() => [
+  {
+    accessorKey: 'id',
+    header: 'Ticket',
+    cell: ({ row }) => h('span', { class: 'font-medium text-highlighted' }, `#${String(row.original.id).slice(0, 8)}`),
+    meta: {
+      class: {
+        th: 'w-32',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    accessorKey: 'title',
+    header: 'Asunto',
+    cell: ({ row }) => h('div', { class: 'min-w-0' }, [
+      h('p', { class: 'font-medium text-highlighted' }, row.original.title),
+      row.original.description
+        ? h('p', { class: 'mt-1 line-clamp-2 text-xs text-muted' }, row.original.description)
+        : null,
+    ]),
+  },
+  {
+    accessorKey: 'priority',
+    header: 'Prioridad',
+    cell: ({ row }) => h(UBadge, {
+      color: colorPrioridad[row.original.priority],
+      variant: 'subtle',
+    }, () => etiquetaPrioridad[row.original.priority]),
+    meta: {
+      class: {
+        th: 'w-36',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    accessorKey: 'created_at',
+    header: 'Fecha',
+    cell: ({ row }) => h('span', { class: 'text-sm text-muted' }, formatearFecha(row.original.created_at)),
+    meta: {
+      class: {
+        th: 'w-36',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    id: 'status',
+    header: 'Estado',
+    cell: ({ row }) => h('div', { class: 'flex flex-wrap items-center gap-2' }, [
+      h(UBadge, {
+        color: colorEstado[row.original.status],
+        variant: 'subtle',
+      }, () => etiquetaEstado[row.original.status]),
+      estadoDocumentoPorTicket.value[row.original.id] === 'rejected'
+        ? h(UBadge, {
+            color: 'error',
+            variant: 'soft',
+          }, () => 'Documento rechazado')
+        : null,
+    ]),
+    meta: {
+      class: {
+        th: 'w-56',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    id: 'actions',
+    header: '',
+    cell: ({ row }) => h(UDropdownMenu, {
+      items: obtenerMenuAcciones(row.original),
+    }, {
+      default: () => h(UButton, {
+        size: 'sm',
+        color: 'neutral',
+        variant: 'ghost',
+        icon: 'i-lucide-ellipsis',
+        square: true,
+      }),
+    }),
+    meta: {
+      class: {
+        th: 'w-16',
+        td: 'align-top text-right',
+      },
+    },
+  },
+])
 
 async function cargarServicios() {
   const { data } = await supabase
@@ -475,6 +628,33 @@ async function cargarPlantillas() {
   plantillas.value = (data ?? []) as Template[]
 }
 
+async function cargarEstadosDocumento(ticketIds: string[]) {
+  if (!ticketIds.length) {
+    estadoDocumentoPorTicket.value = {}
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('documents')
+    .select('ticket_id, status, created_at')
+    .in('ticket_id', ticketIds)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  const siguienteEstado: Record<string, string> = {}
+
+  for (const documento of (data ?? []) as DocumentoResumen[]) {
+    if (!documento.ticket_id || siguienteEstado[documento.ticket_id]) continue
+    siguienteEstado[documento.ticket_id] = documento.status
+  }
+
+  estadoDocumentoPorTicket.value = siguienteEstado
+}
+
 async function cargarTickets() {
   const { data: { user: authUser } } = await supabase.auth.getUser()
   if (!authUser?.id) return
@@ -492,6 +672,7 @@ async function cargarTickets() {
 
   if (error) { errorMsg.value = error.message; return }
   tickets.value = data ?? []
+  await cargarEstadosDocumento(tickets.value.map(ticket => ticket.id))
 }
 
 async function crearTicket() {
@@ -625,7 +806,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
+  <div class="mx-auto w-full max-w-7xl">
     <div class="mb-6 flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold text-highlighted">Mis tickets</h1>
@@ -773,73 +954,40 @@ onMounted(async () => {
       </div>
     </UCard>
 
-    <div class="mb-4 flex flex-wrap gap-2">
-      <UButton
-        v-for="f in filtrosEstado"
-        :key="f"
-        size="sm"
-        :color="filtroEstado === f ? 'primary' : 'neutral'"
-        :variant="filtroEstado === f ? 'solid' : 'outline'"
-        @click="filtroEstado = f"
-      >
-        {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
-      </UButton>
-    </div>
-
-    <UCard v-if="loading">
-      <p class="text-sm text-muted">Cargando...</p>
-    </UCard>
-
-    <UCard v-else-if="ticketsFiltrados.length === 0">
-      <p class="text-sm text-muted">No hay tickets{{ filtroEstado !== 'todos' ? ' con ese estado' : '' }}.</p>
-    </UCard>
-
-    <div v-else class="grid gap-3">
-      <UCard
-        v-for="t in ticketsFiltrados"
-        :key="t.id"
-      >
-        <div class="flex justify-between items-start gap-2 flex-wrap">
-          <div>
-            <NuxtLink :to="`/ticket/${t.id}`" class="font-medium text-highlighted hover:text-primary">
-              {{ t.title }}
-            </NuxtLink>
-            <div class="mt-2 flex flex-wrap items-center gap-2">
-              <UBadge :color="colorEstado[t.status]" variant="subtle">
-                {{ etiquetaEstado[t.status] }}
-              </UBadge>
-              <UBadge :color="colorPrioridad[t.priority]" variant="outline">
-                Prioridad: {{ etiquetaPrioridad[t.priority] }}
-              </UBadge>
-            </div>
-            <p class="mt-1 text-xs text-toned">
-              {{ new Date(t.created_at).toLocaleDateString('es-CR') }}
-            </p>
+    <UCard>
+      <template #header>
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div class="grid gap-3 sm:max-w-md">
+            <h2 class="font-semibold text-highlighted">Bandeja de tickets</h2>
+            <UInput
+              v-model="busqueda"
+              icon="i-lucide-search"
+              placeholder="Buscar por ticket, asunto, estado o prioridad"
+            />
           </div>
 
-          <UButton
-            v-if="t.status === 'open'"
-            color="error"
-            variant="ghost"
-            :disabled="loading"
-            @click="cancelarTicket(t.id)"
-          >
-            Cancelar ticket
-          </UButton>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-for="f in filtrosEstado"
+              :key="f"
+              size="sm"
+              :color="filtroEstado === f ? 'primary' : 'neutral'"
+              :variant="filtroEstado === f ? 'solid' : 'outline'"
+              @click="filtroEstado = f"
+            >
+              {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
+            </UButton>
+          </div>
         </div>
+      </template>
 
-        <p v-if="t.description" class="mt-3 text-sm text-muted">{{ t.description }}</p>
-        <div class="mt-4 flex flex-wrap gap-2">
-          <UButton
-            :to="`/ticket/${t.id}`"
-            color="neutral"
-            variant="outline"
-          >
-            Ver ticket
-          </UButton>
-
-        </div>
-      </UCard>
-    </div>
+      <UTable
+        :data="ticketsFiltrados"
+        :columns="columns"
+        :loading="loading"
+        sticky="header"
+        empty="No hay tickets para este filtro."
+      />
+    </UCard>
   </div>
 </template>

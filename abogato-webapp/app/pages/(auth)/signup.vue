@@ -148,10 +148,11 @@ async function signUp() {
 .auth-shell {
   display: grid;
   gap: 1rem;
+  justify-items: center;
 }
 
 .auth-card {
-  width: 100%;
+  width: min(100%, 44rem);
   backdrop-filter: blur(10px);
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(0, 0, 0, 0.06);
@@ -181,11 +182,14 @@ async function signUp() {
 .auth-body {
   display: grid;
   gap: 1.25rem;
+  width: min(100%, 30rem);
+  margin: 0 auto;
 }
 
 .auth-actions {
   display: grid;
   gap: 0.75rem;
+  justify-items: center;
 }
 
 .auth-footer {

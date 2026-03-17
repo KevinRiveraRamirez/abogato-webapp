@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { h, resolveComponent } from 'vue'
+import type { DropdownMenuItem, TableColumn } from '#ui/types'
 import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
 
 definePageMeta({ layout: 'app', middleware: ['auth', 'lawyer'] })
@@ -26,6 +28,7 @@ type Documento = {
   template_id: string
   created_at: string
   ticket_id: string
+  rejection_reason?: string | null
   document_templates?: {
     title: string | null
     content: string | null
@@ -52,10 +55,17 @@ const tickets = ref<Ticket[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
 const filtroEstado = ref('todos')
+const busqueda = ref('')
 const documentosPorTicket = ref<Record<string, Documento[]>>({})
 const perfilesAbogados = ref<Record<string, PerfilAbogado>>({})
 const ticketExpandido = ref<string | null>(null)
 const documentoActivo = ref<DocumentoModal | null>(null)
+const rechazoDocumento = ref<{ docId: string, ticketId: string } | null>(null)
+const motivoRechazo = ref('')
+
+const UBadge = resolveComponent('UBadge')
+const UButton = resolveComponent('UButton')
+const UDropdownMenu = resolveComponent('UDropdownMenu')
 
 const etiquetaEstado: Record<string, string> = {
   open: 'Pendiente',
@@ -114,12 +124,31 @@ const etiquetaAccion: Partial<Record<Ticket['status'], string>> = {
 }
 
 const ticketsFiltrados = computed(() => {
-  if (filtroEstado.value === 'todos') return tickets.value
-  return tickets.value.filter(t => t.status === filtroEstado.value)
+  const termino = busqueda.value.trim().toLowerCase()
+
+  return tickets.value.filter((ticket) => {
+    const coincideEstado = filtroEstado.value === 'todos' || ticket.status === filtroEstado.value
+
+    if (!coincideEstado) return false
+    if (!termino) return true
+
+    return [
+      ticket.id,
+      ticket.title,
+      ticket.description ?? '',
+      obtenerNombreResponsable(ticket),
+      etiquetaEstado[ticket.status],
+      etiquetaPrioridad[ticket.priority],
+    ].some(value => value.toLowerCase().includes(termino))
+  })
 })
 
 const ticketsConReapertura = computed(() =>
   tickets.value.filter(t => t.reopen_requested)
+)
+
+const expandedRows = computed(() =>
+  ticketExpandido.value ? { [ticketExpandido.value]: true } : {}
 )
 
 async function cargarTickets() {
@@ -143,13 +172,42 @@ async function cargarTickets() {
   loading.value = false
   if (error) { errorMsg.value = error.message; return }
   tickets.value = data ?? []
+
+  if (ticketExpandido.value && !tickets.value.some(ticket => ticket.id === ticketExpandido.value)) {
+    ticketExpandido.value = null
+  }
+
+  const abogadosIds = [...new Set((tickets.value ?? []).map(ticket => ticket.assigned_to).filter(Boolean))] as string[]
+
+  if (abogadosIds.length) {
+    const { data: perfiles } = await supabase
+      .from('profiles')
+      .select('user_id, display_name, office_address')
+      .in('user_id', abogadosIds)
+
+    if (perfiles?.length) {
+      perfilesAbogados.value = {
+        ...perfilesAbogados.value,
+        ...Object.fromEntries(
+          perfiles.map((perfil) => [
+            perfil.user_id,
+            {
+              display_name: perfil.display_name,
+              office_address: perfil.office_address,
+            } satisfies PerfilAbogado,
+          ])
+        ),
+      }
+    }
+  }
 }
 
 async function cargarDocumentosTicket(ticketId: string) {
   const { data } = await supabase
     .from('documents')
-    .select('id, status, field_values, template_id, created_at, ticket_id, document_templates(title, content)')
+    .select('id, status, field_values, template_id, created_at, ticket_id, rejection_reason, document_templates(title, content)')
     .eq('ticket_id', ticketId)
+    .order('created_at', { ascending: false })
   documentosPorTicket.value[ticketId] = (data ?? []) as Documento[]
 }
 
@@ -231,9 +289,247 @@ function abrirDocumento(documento: Documento, ticket: Ticket) {
   }
 }
 
+async function abrirDocumentoDesdeTicket(ticket: Ticket) {
+  await Promise.all([
+    cargarPerfilAbogado(ticket.assigned_to),
+    cargarDocumentosTicket(ticket.id),
+  ])
+
+  const documento = documentosPorTicket.value[ticket.id]?.[0]
+
+  if (!documento) {
+    errorMsg.value = 'Este ticket todavia no tiene documentos para previsualizar.'
+    return
+  }
+
+  abrirDocumento(documento, ticket)
+}
+
 function cerrarDocumento() {
   documentoActivo.value = null
 }
+
+function formatearFecha(fecha: string) {
+  return new Date(fecha).toLocaleDateString('es-CR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function obtenerNombreResponsable(ticket: Ticket) {
+  if (!ticket.assigned_to) {
+    return ticket.status === 'open' ? 'Disponible' : 'Sin asignar'
+  }
+
+  return perfilesAbogados.value[ticket.assigned_to]?.display_name ?? 'Asignado'
+}
+
+function obtenerMenuEstado(ticket: Ticket): DropdownMenuItem[][] {
+  const items: DropdownMenuItem[][] = []
+
+  if (ticket.reopen_requested) {
+    items.push([
+      {
+        label: 'Aprobar reapertura',
+        icon: 'i-lucide-rotate-ccw',
+        onSelect: () => aprobarReapertura(ticket),
+      },
+      {
+        label: 'Rechazar reapertura',
+        icon: 'i-lucide-ban',
+        color: 'error',
+        onSelect: () => rechazarReapertura(ticket),
+      },
+    ])
+  }
+
+  if (siguienteEstado[ticket.status]) {
+    items.push([
+      {
+        label: etiquetaAccion[ticket.status] ?? 'Cambiar estado',
+        icon: 'i-lucide-arrow-right-circle',
+        onSelect: () => avanzarEstado(ticket),
+      },
+    ])
+  }
+
+  if (!items.length) {
+    items.push([
+      {
+        label: etiquetaEstado[ticket.status] ?? ticket.status,
+        icon: 'i-lucide-check',
+        disabled: true,
+      },
+    ])
+  }
+
+  return items
+}
+
+function obtenerMenuAcciones(ticket: Ticket): DropdownMenuItem[][] {
+  const items: DropdownMenuItem[][] = [[
+    {
+      label: 'Ver detalle',
+      icon: 'i-lucide-external-link',
+      to: `/ticket/${ticket.id}`,
+    },
+    {
+      label: 'Ver documento',
+      icon: 'i-lucide-file-text',
+      onSelect: () => abrirDocumentoDesdeTicket(ticket),
+    },
+  ]]
+
+  if (ticket.reopen_requested) {
+    items.push([
+      {
+        label: 'Aprobar reapertura',
+        icon: 'i-lucide-rotate-ccw',
+        onSelect: () => aprobarReapertura(ticket),
+      },
+      {
+        label: 'Rechazar reapertura',
+        icon: 'i-lucide-ban',
+        color: 'error',
+        onSelect: () => rechazarReapertura(ticket),
+      },
+    ])
+  }
+
+  if (siguienteEstado[ticket.status]) {
+    items.push([
+      {
+        label: etiquetaAccion[ticket.status] ?? 'Cambiar estado',
+        icon: 'i-lucide-arrow-right-circle',
+        onSelect: () => avanzarEstado(ticket),
+      },
+    ])
+  }
+
+  return items
+}
+
+const columns = computed<TableColumn<Ticket>[]>(() => [
+  {
+    accessorKey: 'id',
+    header: 'Ticket',
+    cell: ({ row }) => h('span', { class: 'font-medium text-highlighted' }, `#${String(row.original.id).slice(0, 8)}`),
+    meta: {
+      class: {
+        th: 'w-32',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    accessorKey: 'title',
+    header: 'Asunto',
+    cell: ({ row }) => h('div', { class: 'min-w-0' }, [
+      h('p', { class: 'font-medium text-highlighted' }, row.original.title),
+      row.original.description
+        ? h('p', { class: 'mt-1 line-clamp-2 text-xs text-muted' }, row.original.description)
+        : null,
+      row.original.reopen_requested
+        ? h(UBadge, { color: 'warning', variant: 'subtle', class: 'mt-2' }, () => 'Reapertura solicitada')
+        : null,
+    ]),
+  },
+  {
+    accessorKey: 'priority',
+    header: 'Prioridad',
+    cell: ({ row }) => h(UBadge, {
+      color: colorPrioridad[row.original.priority],
+      variant: 'subtle',
+    }, () => etiquetaPrioridad[row.original.priority]),
+    meta: {
+      class: {
+        th: 'w-36',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    accessorKey: 'created_at',
+    header: 'Fecha',
+    cell: ({ row }) => h('span', { class: 'text-sm text-muted' }, formatearFecha(row.original.created_at)),
+    meta: {
+      class: {
+        th: 'w-36',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    id: 'responsable',
+    header: 'Responsable',
+    cell: ({ row }) => h('span', { class: 'text-sm text-muted' }, obtenerNombreResponsable(row.original)),
+    meta: {
+      class: {
+        th: 'w-40',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    id: 'status',
+    header: 'Estado',
+    cell: ({ row }) => h(UDropdownMenu, {
+      items: obtenerMenuEstado(row.original),
+    }, {
+      default: () => h(UButton, {
+        size: 'sm',
+        color: colorEstado[row.original.status],
+        variant: 'soft',
+        trailingIcon: 'i-lucide-chevron-down',
+      }, () => etiquetaEstado[row.original.status]),
+    }),
+    meta: {
+      class: {
+        th: 'w-40',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    id: 'documents',
+    header: 'Documentos',
+    cell: ({ row }) => h(UButton, {
+      size: 'sm',
+      color: 'neutral',
+      variant: row.original.id === ticketExpandido.value ? 'soft' : 'outline',
+      trailingIcon: row.original.id === ticketExpandido.value ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down',
+      onClick: () => toggleDocumentos(row.original),
+    }, () => row.original.id === ticketExpandido.value ? 'Ocultar' : 'Abrir'),
+    meta: {
+      class: {
+        th: 'w-36',
+        td: 'align-top',
+      },
+    },
+  },
+  {
+    id: 'actions',
+    header: '',
+    cell: ({ row }) => h(UDropdownMenu, {
+      items: obtenerMenuAcciones(row.original),
+    }, {
+      default: () => h(UButton, {
+        size: 'sm',
+        color: 'neutral',
+        variant: 'ghost',
+        icon: 'i-lucide-ellipsis',
+        square: true,
+      }),
+    }),
+    meta: {
+      class: {
+        th: 'w-16',
+        td: 'align-top text-right',
+      },
+    },
+  },
+])
 
 async function aprobarDocumento(docId: string, ticketId: string) {
   const { data: { user: authUser } } = await supabase.auth.getUser()
@@ -248,17 +544,36 @@ async function aprobarDocumento(docId: string, ticketId: string) {
   await cargarDocumentosTicket(ticketId)
 }
 
-async function rechazarDocumento(docId: string, ticketId: string) {
+function abrirModalRechazo(docId: string, ticketId: string) {
+  motivoRechazo.value = ''
+  rechazoDocumento.value = { docId, ticketId }
+}
+
+function cerrarModalRechazo() {
+  rechazoDocumento.value = null
+  motivoRechazo.value = ''
+}
+
+async function rechazarDocumento() {
+  if (!rechazoDocumento.value) return
+
+  const razon = motivoRechazo.value.trim()
+  if (!razon) {
+    errorMsg.value = 'Ingresá un motivo de rechazo para continuar.'
+    return
+  }
+
   const { data: { user: authUser } } = await supabase.auth.getUser()
   if (!authUser) return
 
   const { error } = await supabase
     .from('documents')
-    .update({ status: 'rejected', reviewed_by: authUser.id })
-    .eq('id', docId)
+    .update({ status: 'rejected', reviewed_by: authUser.id, rejection_reason: razon })
+    .eq('id', rechazoDocumento.value.docId)
 
   if (error) { errorMsg.value = error.message; return }
-  await cargarDocumentosTicket(ticketId)
+  await cargarDocumentosTicket(rechazoDocumento.value.ticketId)
+  cerrarModalRechazo()
 }
 
 async function avanzarEstado(t: Ticket) {
@@ -351,7 +666,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
+  <div class="mx-auto w-full max-w-7xl">
     <div class="mb-6 flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold text-highlighted">
@@ -403,94 +718,150 @@ onMounted(async () => {
       </div>
     </UCard>
 
-    <div class="mb-4 flex flex-wrap gap-2">
-      <UButton
-        v-for="f in filtrosEstado"
-        :key="f"
-        size="sm"
-        :color="filtroEstado === f ? 'primary' : 'neutral'"
-        :variant="filtroEstado === f ? 'solid' : 'outline'"
-        @click="filtroEstado = f"
-      >
-        {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
-      </UButton>
-    </div>
-
-    <UCard v-if="loading">
-      <p class="text-sm text-muted">Cargando...</p>
-    </UCard>
-
-    <UCard v-else-if="ticketsFiltrados.length === 0">
-      <p class="text-sm text-muted">No hay tickets{{ filtroEstado !== 'todos' ? ' con ese estado' : '' }}.</p>
-    </UCard>
-
-    <div v-else class="grid gap-3">
-      <UCard v-for="t in ticketsFiltrados" :key="t.id">
-        <div class="flex justify-between items-start gap-2 flex-wrap">
-          <div>
-            <NuxtLink :to="`/ticket/${t.id}`" class="font-medium text-highlighted hover:text-primary">
-              {{ t.title }}
-            </NuxtLink>
-            <div class="mt-2 flex flex-wrap items-center gap-2">
-              <UBadge :color="colorEstado[t.status]" variant="subtle">
-                {{ etiquetaEstado[t.status] }}
-              </UBadge>
-              <UBadge :color="colorPrioridad[t.priority]" variant="outline">Prioridad: {{ etiquetaPrioridad[t.priority] }}</UBadge>
-            </div>
-            <p class="mt-1 text-xs text-toned">{{ new Date(t.created_at).toLocaleDateString('es-CR') }}</p>
+    <UCard>
+      <template #header>
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div class="grid gap-3 sm:max-w-md">
+            <h2 class="font-semibold text-highlighted">Bandeja de tickets</h2>
+            <UInput
+              v-model="busqueda"
+              icon="i-lucide-search"
+              placeholder="Buscar por ticket, asunto, responsable o estado"
+            />
           </div>
+
           <div class="flex flex-wrap gap-2">
-            <UButton :to="`/ticket/${t.id}`" size="sm" color="neutral" variant="outline">
-              Ver detalle
+            <UButton
+              v-for="f in filtrosEstado"
+              :key="f"
+              size="sm"
+              :color="filtroEstado === f ? 'primary' : 'neutral'"
+              :variant="filtroEstado === f ? 'solid' : 'outline'"
+              @click="filtroEstado = f"
+            >
+              {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
             </UButton>
-            <UButton size="sm" color="neutral" variant="outline" @click="toggleDocumentos(t)">
-              {{ ticketExpandido === t.id ? 'Ocultar docs' : 'Ver documentos' }}
-            </UButton>
-            <UButton v-if="siguienteEstado[t.status]" size="sm" :disabled="loading" @click="avanzarEstado(t)">
-              {{ etiquetaAccion[t.status] }}
-            </UButton>
-            <span v-else class="self-center text-xs text-toned">
-              {{ t.status === 'cancelled' ? 'Cancelado por cliente' : 'Cerrado' }}
-            </span>
           </div>
         </div>
+      </template>
 
-        <p v-if="t.description" class="mt-3 text-sm text-muted">{{ t.description }}</p>
+      <UTable
+        :data="ticketsFiltrados"
+        :columns="columns"
+        :loading="loading"
+        :expanded="expandedRows"
+        :get-row-id="(ticket) => ticket.id"
+        :expanded-options="{ getRowCanExpand: () => true }"
+        sticky="header"
+        empty="No hay tickets para este filtro."
+        :meta="{
+          class: {
+            tr: (row) => row.original.id === ticketExpandido ? 'bg-elevated/60' : ''
+          }
+        }"
+      >
+        <template #expanded="{ row }">
+          <div class="min-w-0 max-w-full whitespace-normal px-1 py-2">
+            <div class="min-w-0 overflow-hidden rounded-3xl border border-default bg-gradient-to-br from-elevated/70 via-default to-elevated/30">
+              <div class="border-b border-default/70 px-4 py-4 sm:px-5">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <UBadge color="neutral" variant="soft">Documentos</UBadge>
+                      <UBadge color="primary" variant="subtle">
+                        {{ documentosPorTicket[row.original.id]?.length ?? 0 }}
+                      </UBadge>
+                      <span class="text-xs text-muted">Ticket #{{ String(row.original.id).slice(0, 8) }}</span>
+                    </div>
+                    <h3 class="mt-3 text-base font-semibold text-highlighted">{{ row.original.title }}</h3>
+                    <p v-if="row.original.description" class="mt-1 max-w-3xl text-sm leading-6 text-muted">
+                      {{ row.original.description }}
+                    </p>
+                  </div>
 
-        <div v-if="ticketExpandido === t.id" class="mt-4 border-t border-default pt-4">
-          <p class="mb-3 text-sm font-medium text-highlighted">Documentos generados</p>
-          <div v-if="!documentosPorTicket[t.id]?.length" class="text-sm text-muted">
-            No hay documentos para este ticket.
+                  <div class="min-w-0">
+                    <UButton
+                      size="sm"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-file-text"
+                      @click="abrirDocumentoDesdeTicket(row.original)"
+                    >
+                      Abrir mas reciente
+                    </UButton>
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-4 sm:p-5">
+                <div
+                  v-if="!documentosPorTicket[row.original.id]?.length"
+                  class="rounded-2xl border border-dashed border-default bg-default/80 px-4 py-8 text-center"
+                >
+                  <p class="font-medium text-highlighted">Todavia no hay documentos en este ticket.</p>
+                  <p class="mt-2 text-sm text-muted">
+                    Cuando el cliente genere un documento, lo vas a poder revisar y aprobar desde aqui.
+                  </p>
+                </div>
+
+                <div v-else class="grid gap-3 xl:grid-cols-2">
+                  <UCard
+                    v-for="d in documentosPorTicket[row.original.id]"
+                    :key="d.id"
+                    class="min-w-0 border border-default/80 bg-default/90 shadow-sm"
+                  >
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="truncate font-medium text-highlighted">
+                          {{ obtenerPlantillaDocumento(d)?.title ?? 'Documento legal' }}
+                        </p>
+                        <p class="mt-1 text-xs text-muted">
+                          Generado {{ formatearFecha(d.created_at) }}
+                        </p>
+                      </div>
+
+                      <UBadge :color="colorEstadoDocumento[d.status] ?? 'neutral'" variant="subtle">
+                        {{ etiquetaEstadoDocumento[d.status] ?? 'Borrador' }}
+                      </UBadge>
+                    </div>
+
+                    <div class="mt-4 min-w-0 rounded-2xl border border-default/70 bg-elevated/50 p-3">
+                      <p class="break-words text-sm leading-6 text-muted">
+                        Revisá el contenido legal completo con los datos ya integrados antes de aprobarlo o rechazarlo.
+                      </p>
+                    </div>
+
+                    <UAlert
+                      v-if="d.status === 'rejected' && d.rejection_reason"
+                      color="error"
+                      variant="soft"
+                      title="Motivo del rechazo"
+                      :description="d.rejection_reason"
+                      class="mt-4"
+                    />
+
+                    <div class="mt-4 flex flex-wrap items-center gap-2">
+                      <UButton size="sm" color="neutral" variant="outline" @click="abrirDocumento(d, row.original)">
+                        Ver documento
+                      </UButton>
+
+                      <template v-if="d.status === 'submitted'">
+                        <UButton size="sm" @click="aprobarDocumento(d.id, row.original.id)">
+                          Aprobar
+                        </UButton>
+                        <UButton size="sm" color="error" variant="outline" @click="abrirModalRechazo(d.id, row.original.id)">
+                          Rechazar
+                        </UButton>
+                      </template>
+                    </div>
+                  </UCard>
+                </div>
+              </div>
+            </div>
           </div>
-          <div v-else class="grid gap-3">
-            <UCard v-for="d in documentosPorTicket[t.id]" :key="d.id">
-              <div class="flex justify-between items-center mb-2">
-                <span class="font-medium text-highlighted">{{ obtenerPlantillaDocumento(d)?.title ?? 'Documento legal' }}</span>
-                <UBadge :color="colorEstadoDocumento[d.status] ?? 'neutral'" variant="subtle">
-                  {{ etiquetaEstadoDocumento[d.status] ?? 'Borrador' }}
-                </UBadge>
-              </div>
-              <div class="mb-3 rounded-2xl bg-elevated/60 p-3">
-                <p class="text-xs text-muted">
-                  Abrí el documento para revisar el texto legal completo con los datos ya integrados.
-                </p>
-                <UButton size="xs" color="neutral" variant="outline" class="mt-3" @click="abrirDocumento(d, t)">
-                  Ver documento
-                </UButton>
-              </div>
-              <div v-if="d.status === 'submitted'" class="flex flex-wrap gap-2">
-                <UButton size="xs" @click="aprobarDocumento(d.id, t.id)">
-                  Aprobar
-                </UButton>
-                <UButton size="xs" color="error" variant="outline" @click="rechazarDocumento(d.id, t.id)">
-                  Rechazar
-                </UButton>
-              </div>
-            </UCard>
-          </div>
-        </div>
-      </UCard>
-    </div>
+        </template>
+      </UTable>
+    </UCard>
 
     <UModal
       :open="!!documentoActivo"
@@ -509,6 +880,36 @@ onMounted(async () => {
           <article class="mx-auto w-full max-w-3xl rounded-2xl border border-default bg-default px-6 py-8 shadow-sm">
             <pre class="whitespace-pre-wrap font-serif text-sm leading-7 text-highlighted">{{ documentoActivo?.contenido }}</pre>
           </article>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal
+      :open="!!rechazoDocumento"
+      title="Rechazar documento"
+      description="Explicá claramente qué debe corregir el cliente antes de reenviar el documento."
+      @close="cerrarModalRechazo"
+    >
+      <template #body>
+        <div class="grid gap-4">
+          <UFormField label="Motivo del rechazo" required>
+            <UTextarea
+              v-model="motivoRechazo"
+              :rows="5"
+              placeholder="Ejemplo: faltan datos obligatorios, hay un nombre incorrecto o la información no coincide con la cédula."
+            />
+          </UFormField>
+        </div>
+      </template>
+
+      <template #footer>
+        <div class="flex flex-wrap justify-end gap-3">
+          <UButton color="neutral" variant="ghost" @click="cerrarModalRechazo">
+            Cancelar
+          </UButton>
+          <UButton color="error" :disabled="!motivoRechazo.trim()" @click="rechazarDocumento">
+            Rechazar documento
+          </UButton>
         </div>
       </template>
     </UModal>

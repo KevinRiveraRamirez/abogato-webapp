@@ -189,3 +189,29 @@ order by started_at desc;
 - La fase de merge ahora se ejecuta por lotes, no en una sola consulta gigante.
 - Los lotes actuales de merge y desactivacion son conservadores para reducir timeouts.
 - Si actualizaste desde una version anterior del importador, debes volver a ejecutar [`padron-import.sql`](/home/gabriel/abogato-server/abogato-webapp/docs/padron-import.sql).
+
+
+
+update public.padron_import_runs
+set
+  status = 'cancelled',
+  phase = 'cancelled',
+  phase_progress = 100,
+  cancel_requested = true,
+  finished_at = now(),
+  error_message = 'Cancelada manualmente antes de reiniciar con merge batch'
+where id = 'fac433d1-cfa0-4f03-88ba-edd5785ab5a8'
+  and status in ('preparing', 'running', 'merging');
+
+
+delete from public.padron_electores_staging
+where import_id = 'fac433d1-cfa0-4f03-88ba-edd5785ab5a8';
+
+delete from public.padron_distritos_staging
+where import_id = 'fac433d1-cfa0-4f03-88ba-edd5785ab5a8';
+
+
+select id, status, phase, cancel_requested, started_at
+from public.padron_import_runs
+where status in ('preparing', 'running', 'merging')
+order by started_at desc;
