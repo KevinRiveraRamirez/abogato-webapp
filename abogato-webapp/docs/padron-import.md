@@ -102,6 +102,8 @@ Cuando termina staging, la corrida pasa a `status = merging`. En ese punto el CL
 - `cleaning_staging`
 - `finalizing`
 
+Las fases pesadas de electores y desactivacion corren por lotes conservadores para reducir riesgo de timeout.
+
 ## Automatizacion
 
 La forma mas simple es usar un cron externo que llame ese endpoint una vez al mes:

@@ -187,4 +187,5 @@ order by started_at desc;
 - La tabla final `padron_electores` no deberia quedar parcialmente actualizada si cancelas antes del merge final, porque el proceso usa staging.
 - Si cambiaste el SQL o el parser, normalmente conviene correr una importacion con `--force`.
 - La fase de merge ahora se ejecuta por lotes, no en una sola consulta gigante.
+- Los lotes actuales de merge y desactivacion son conservadores para reducir timeouts.
 - Si actualizaste desde una version anterior del importador, debes volver a ejecutar [`padron-import.sql`](/home/gabriel/abogato-server/abogato-webapp/docs/padron-import.sql).

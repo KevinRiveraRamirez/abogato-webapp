@@ -89,8 +89,8 @@ const COUNT_DEACTIVATE_RPC = "padron_count_missing_electores";
 const CLEAR_STAGING_RPC = "padron_clear_staging";
 const COMPLETE_IMPORT_RPC = "padron_complete_import";
 const UPSERT_CHUNK_SIZE = 500;
-const MERGE_ELECTORES_BATCH_SIZE = 25000;
-const DEACTIVATE_BATCH_SIZE = 25000;
+const MERGE_ELECTORES_BATCH_SIZE = 5000;
+const DEACTIVATE_BATCH_SIZE = 5000;
 
 const SPANISH_MONTHS: Record<string, string> = {
   enero: "01",
