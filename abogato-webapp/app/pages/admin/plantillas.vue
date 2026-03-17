@@ -132,7 +132,11 @@ onMounted(async () => {
 
         <div class="grid gap-1">
           <label class="text-sm font-medium">Contenido del documento *</label>
-          <p class="text-xs text-gray-500">Usá <code v-pre>{{nombre_campo}}</code> para los campos variables</p>
+          <p class="text-xs text-gray-500">
+            Usá <code v-pre>{{nombre_campo}}</code> para los campos variables. También podés usar
+            <code v-pre>{{nombre_notario}}</code> y <code v-pre>{{direccion_notario}}</code>
+            para completar datos del abogado asignado.
+          </p>
           <textarea
             v-model="form.content"
             class="border rounded-lg px-3 py-2 text-sm w-full font-mono"

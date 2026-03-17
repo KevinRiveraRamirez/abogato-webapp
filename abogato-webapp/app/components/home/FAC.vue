@@ -9,7 +9,7 @@
 
 
 <script setup lang="ts">
-import type { AccordionItem } from '@nuxt/ui'
+import type { AccordionItem } from '#ui/types'
 
 const items = ref<AccordionItem[]>([
   {

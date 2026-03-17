@@ -8,6 +8,7 @@ type Usuario = {
   user_id: string
   display_name: string | null
   role: 'cliente' | 'abogado' | 'admin'
+  office_address: string | null
 }
 
 const usuarios = ref<Usuario[]>([])
@@ -20,6 +21,7 @@ const nuevoEmail = ref('')
 const nuevoNombre = ref('')
 const nuevoRol = ref<'abogado' | 'admin'>('abogado')
 const nuevaPassword = ref('')
+const nuevaDireccionOficina = ref('')
 
 async function cargarUsuarios() {
   loading.value = true
@@ -27,7 +29,7 @@ async function cargarUsuarios() {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('user_id, display_name, role')
+    .select('user_id, display_name, role, office_address')
     .order('role')
 
   loading.value = false
@@ -57,6 +59,7 @@ async function crearAbogado() {
 
   const email = nuevoEmail.value.trim()
   const nombre = nuevoNombre.value.trim()
+  const officeAddress = nuevaDireccionOficina.value.trim()
 
   if (!email) { errorMsg.value = 'El correo es obligatorio.'; return }
   if (!nuevaPassword.value) { errorMsg.value = 'La contraseña es obligatoria.'; return }
@@ -80,7 +83,12 @@ async function crearAbogado() {
 
   const { error: profileError } = await supabase
     .from('profiles')
-    .upsert({ user_id: data.user.id, role: nuevoRol.value, display_name: nombre || null })
+    .upsert({
+      user_id: data.user.id,
+      role: nuevoRol.value,
+      display_name: nombre || null,
+      office_address: officeAddress || null
+    })
 
   loading.value = false
 
@@ -91,6 +99,7 @@ async function crearAbogado() {
   nuevoNombre.value = ''
   nuevaPassword.value = ''
   nuevoRol.value = 'abogado'
+  nuevaDireccionOficina.value = ''
   mostrarFormulario.value = false
 
   await cargarUsuarios()
@@ -153,6 +162,12 @@ onMounted(async () => {
           class="border rounded px-3 py-2 w-full"
           placeholder="Contraseña *"
         />
+        <textarea
+          v-model="nuevaDireccionOficina"
+          class="border rounded px-3 py-2 w-full"
+          rows="3"
+          placeholder="Dirección de oficina / notaría"
+        />
         <p class="text-xs text-gray-400">Mínimo 8 caracteres, una mayúscula y un número.</p>
         <label class="flex items-center gap-2 text-sm">
           Rol:
@@ -185,6 +200,7 @@ onMounted(async () => {
       >
         <div>
           <p class="font-medium">{{ u.display_name ?? 'Sin nombre' }}</p>
+          <p v-if="u.office_address" class="text-xs text-gray-500 mt-1">{{ u.office_address }}</p>
           <span class="text-xs px-2 py-0.5 rounded-full" :class="claseRol[u.role]">
             {{ etiquetaRol[u.role] }}
           </span>

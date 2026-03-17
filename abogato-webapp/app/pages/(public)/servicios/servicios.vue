@@ -23,6 +23,11 @@ const servicios = [
     description: 'Autenticación de documentos, poderes notariales, protestos y todo tipo de actos ante notario público.'
   },
   {
+    icon: 'i-lucide-scroll-text',
+    title: 'Poderes Notariales',
+    description: 'Redacción y formalización de poderes generalísimos y otros mandatos notariales con seguimiento digital del trámite.'
+  },
+  {
     icon: 'i-lucide-receipt',
     title: 'Asesoría Tributaria',
     description: 'Cumplimiento de obligaciones fiscales, declaración de impuestos y asesoría para personas físicas y jurídicas.'

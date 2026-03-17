@@ -8,76 +8,45 @@ const password = ref("");
 const mostrarPassword = ref(false);
 const loading = ref(false);
 const errorMsg = ref("");
+const successMsg = ref("");
 
-const mostrarRecuperacion = ref(false);
-const emailRecuperacion = ref("");
-const mensajeRecuperacion = ref("");
-
-async function signIn() {
+async function signUp() {
   errorMsg.value = "";
+  successMsg.value = "";
 
   if (!email.value.trim()) { errorMsg.value = "El correo es obligatorio."; return; }
   if (!password.value) { errorMsg.value = "La contraseña es obligatoria."; return; }
+  if (password.value.length < 8) { errorMsg.value = "La contraseña debe tener al menos 8 caracteres."; return; }
+  if (!/[A-Z]/.test(password.value)) { errorMsg.value = "La contraseña debe incluir al menos una mayúscula."; return; }
+  if (!/[0-9]/.test(password.value)) { errorMsg.value = "La contraseña debe incluir al menos un número."; return; }
 
   loading.value = true;
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signUp({
       email: email.value.trim(),
       password: password.value,
     });
 
     if (error) {
-      errorMsg.value = "Credenciales incorrectas. Verificá tu correo y contraseña.";
+      errorMsg.value = error.message;
       return;
     }
 
-    const userId = data.user?.id;
-    if (!userId) { errorMsg.value = "No se pudo obtener el usuario."; return; }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (!profile) {
-      await supabase.from('profiles').insert([{ user_id: userId, role: 'cliente' }]);
-    }
-
-    const role = profile?.role ?? 'cliente';
-
-    if (role === 'abogado') {
-      await navigateTo("/lawyer/tickets", { replace: true });
+    const identities = data.user?.identities ?? [];
+    if (data.user && identities.length === 0) {
+      errorMsg.value = "Este correo ya está registrado. Iniciá sesión.";
       return;
     }
 
-    if (role === 'admin') {
-      await navigateTo("/lawyer/tickets", { replace: true });
+    if (data.user?.id) {
+      await navigateTo("/tickets", { replace: true });
       return;
     }
 
-    await navigateTo("/tickets", { replace: true });
+    successMsg.value = "Cuenta creada. Revisá tu correo para confirmar el registro.";
   } finally {
     loading.value = false;
   }
-}
-
-async function enviarRecuperacion() {
-  mensajeRecuperacion.value = "";
-  errorMsg.value = "";
-
-  const correo = emailRecuperacion.value.trim();
-  if (!correo) { errorMsg.value = "Ingresá tu correo."; return; }
-
-  loading.value = true;
-  const { error } = await supabase.auth.resetPasswordForEmail(correo, {
-    redirectTo: `${window.location.origin}/reset-password`,
-  });
-  loading.value = false;
-
-  if (error) { errorMsg.value = error.message; return; }
-
-  mensajeRecuperacion.value = "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.";
 }
 </script>
 
@@ -87,12 +56,12 @@ async function enviarRecuperacion() {
       <template #header>
         <div class="auth-header">
           <div class="space-y-2 text-center sm:text-left">
-            <p class="auth-eyebrow">Acceso a tu cuenta</p>
+            <p class="auth-eyebrow">Crear cuenta</p>
             <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
-              Bienvenido
+              Registrate
             </h1>
             <p class="text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Iniciá sesión para continuar con tu seguimiento legal.
+              Creá tu acceso para iniciar y dar seguimiento a tus trámites legales.
             </p>
           </div>
           <div class="auth-mode">
@@ -117,7 +86,7 @@ async function enviarRecuperacion() {
             v-model="password"
             :type="mostrarPassword ? 'text' : 'password'"
             placeholder="••••••••"
-            autocomplete="current-password"
+            autocomplete="new-password"
             size="lg"
           >
             <template #trailing>
@@ -142,43 +111,28 @@ async function enviarRecuperacion() {
           :description="errorMsg"
         />
 
+        <UAlert
+          v-if="successMsg"
+          color="success"
+          variant="soft"
+          title="Registro creado"
+          :description="successMsg"
+        />
+
         <div class="auth-actions">
-          <UButton block size="lg" :loading="loading" @click="signIn">
-            Iniciar sesión
+          <UButton block size="lg" :loading="loading" @click="signUp">
+            Crear cuenta
           </UButton>
         </div>
 
         <UDivider label="o" />
 
         <p class="text-sm text-center text-gray-500 dark:text-gray-400">
-          ¿Todavía no tenés cuenta?
-          <NuxtLink to="/signup" class="font-medium text-primary-600 hover:underline dark:text-primary-400">
-            Registrate acá
+          ¿Ya tenés una cuenta?
+          <NuxtLink to="/login" class="font-medium text-primary-600 hover:underline dark:text-primary-400">
+            Iniciá sesión
           </NuxtLink>
         </p>
-
-        <div class="auth-recovery">
-          <button
-            class="auth-recovery-toggle"
-            @click="mostrarRecuperacion = !mostrarRecuperacion"
-          >
-            ¿Olvidaste tu contraseña?
-          </button>
-
-          <div v-if="mostrarRecuperacion" class="auth-recovery-panel">
-            <UInput
-              v-model="emailRecuperacion"
-              type="email"
-              placeholder="Tu correo registrado"
-            />
-            <UButton variant="soft" :loading="loading" @click="enviarRecuperacion">
-              Enviar enlace de recuperación
-            </UButton>
-            <p v-if="mensajeRecuperacion" class="text-xs text-green-600 dark:text-green-400">
-              {{ mensajeRecuperacion }}
-            </p>
-          </div>
-        </div>
       </div>
     </UCard>
 
@@ -234,35 +188,6 @@ async function enviarRecuperacion() {
   gap: 0.75rem;
 }
 
-.auth-recovery {
-  display: grid;
-  justify-items: center;
-  gap: 0.75rem;
-  text-align: center;
-}
-
-.auth-recovery-toggle {
-  font-size: 0.875rem;
-  color: rgb(107 114 128);
-  transition: color 0.2s ease, text-decoration-color 0.2s ease;
-}
-
-.auth-recovery-toggle:hover {
-  color: rgb(31 41 55);
-  text-decoration: underline;
-}
-
-.auth-recovery-panel {
-  display: grid;
-  width: 100%;
-  gap: 0.75rem;
-  border-radius: 1rem;
-  padding: 1rem;
-  text-align: left;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-}
-
 .auth-footer {
   text-align: center;
 }
@@ -289,31 +214,12 @@ async function enviarRecuperacion() {
   color: rgb(74 222 128);
 }
 
-.dark .auth-recovery-toggle {
-  color: rgb(156 163 175);
-}
-
-.dark .auth-recovery-toggle:hover {
-  color: rgb(229 231 235);
-}
-
-.dark .auth-recovery-panel {
-  background: rgba(17, 24, 39, 0.5);
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
 .dark .password-toggle {
   color: rgb(156 163 175);
 }
 
 .dark .password-toggle:hover {
   color: rgb(229 231 235);
-}
-
-@media (min-width: 640px) {
-  .auth-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 639px) {

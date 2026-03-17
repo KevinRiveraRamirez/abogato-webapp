@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
+
 definePageMeta({ layout: 'app', middleware: ['auth', 'lawyer'] })
 
 const supabase = useSupabaseClient()
 const { profile, cargarPerfil } = useUsuario()
+type FieldValue = string | number | null | undefined
 
 type Ticket = {
   id: string
@@ -23,6 +26,26 @@ type Documento = {
   template_id: string
   created_at: string
   ticket_id: string
+  document_templates?: {
+    title: string | null
+    content: string | null
+  } | {
+    title: string | null
+    content: string | null
+  }[] | null
+}
+
+type PerfilAbogado = {
+  display_name: string | null
+  office_address: string | null
+}
+
+type DocumentoModal = {
+  id: string
+  titulo: string
+  contenido: string
+  status: string
+  created_at: string
 }
 
 const tickets = ref<Ticket[]>([])
@@ -30,7 +53,9 @@ const loading = ref(false)
 const errorMsg = ref('')
 const filtroEstado = ref('todos')
 const documentosPorTicket = ref<Record<string, Documento[]>>({})
+const perfilesAbogados = ref<Record<string, PerfilAbogado>>({})
 const ticketExpandido = ref<string | null>(null)
+const documentoActivo = ref<DocumentoModal | null>(null)
 
 const etiquetaEstado: Record<string, string> = {
   open: 'Pendiente',
@@ -101,18 +126,91 @@ async function cargarTickets() {
 async function cargarDocumentosTicket(ticketId: string) {
   const { data } = await supabase
     .from('documents')
-    .select('*')
+    .select('id, status, field_values, template_id, created_at, ticket_id, document_templates(title, content)')
     .eq('ticket_id', ticketId)
-  documentosPorTicket.value[ticketId] = data ?? []
+  documentosPorTicket.value[ticketId] = (data ?? []) as Documento[]
 }
 
-async function toggleDocumentos(ticketId: string) {
-  if (ticketExpandido.value === ticketId) {
+async function cargarPerfilAbogado(userId: string | null) {
+  if (!userId || perfilesAbogados.value[userId]) return
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('display_name, office_address')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (!data) return
+
+  perfilesAbogados.value = {
+    ...perfilesAbogados.value,
+    [userId]: data as PerfilAbogado
+  }
+}
+
+async function toggleDocumentos(ticket: Ticket) {
+  if (ticketExpandido.value === ticket.id) {
     ticketExpandido.value = null
   } else {
-    ticketExpandido.value = ticketId
-    await cargarDocumentosTicket(ticketId)
+    ticketExpandido.value = ticket.id
+    await Promise.all([
+      cargarPerfilAbogado(ticket.assigned_to),
+      cargarDocumentosTicket(ticket.id)
+    ])
   }
+}
+
+function obtenerPlantillaDocumento(documento: Documento) {
+  const template = documento.document_templates
+  if (Array.isArray(template)) return template[0] ?? null
+  return template ?? null
+}
+
+function obtenerValoresSistema(ticket: Ticket) {
+  const abogadoAsignado = ticket.assigned_to
+    ? perfilesAbogados.value[ticket.assigned_to]
+    : null
+
+  const datosActuales = profile.value?.role === 'abogado'
+    ? {
+        display_name: profile.value.display_name,
+        office_address: profile.value.office_address,
+      }
+    : null
+
+  const datos = abogadoAsignado ?? datosActuales
+
+  return {
+    nombre_notario: datos?.display_name ?? '',
+    direccion_notario: datos?.office_address ?? '',
+  }
+}
+
+function abrirDocumento(documento: Documento, ticket: Ticket) {
+  const plantilla = obtenerPlantillaDocumento(documento)
+
+  if (!plantilla?.content) {
+    errorMsg.value = 'No se encontró la plantilla para previsualizar este documento.'
+    return
+  }
+
+  const contenido = renderDocumentTemplate(
+    plantilla.content,
+    (documento.field_values as Record<string, FieldValue>) ?? {},
+    obtenerValoresSistema(ticket)
+  )
+
+  documentoActivo.value = {
+    id: documento.id,
+    titulo: plantilla.title ?? 'Documento legal',
+    contenido,
+    status: documento.status,
+    created_at: documento.created_at,
+  }
+}
+
+function cerrarDocumento() {
+  documentoActivo.value = null
 }
 
 async function aprobarDocumento(docId: string, ticketId: string) {
@@ -301,7 +399,7 @@ onMounted(async () => {
             </NuxtLink>
             <button
               class="text-sm border px-3 py-1 rounded"
-              @click="toggleDocumentos(t.id)">
+              @click="toggleDocumentos(t)">
               {{ ticketExpandido === t.id ? 'Ocultar docs' : 'Ver documentos' }}
             </button>
             <button v-if="siguienteEstado[t.status]"
@@ -327,7 +425,7 @@ onMounted(async () => {
             <div v-for="d in documentosPorTicket[t.id]" :key="d.id"
               class="border rounded p-3 text-sm">
               <div class="flex justify-between items-center mb-2">
-                <span class="font-medium">Documento legal</span>
+                <span class="font-medium">{{ obtenerPlantillaDocumento(d)?.title ?? 'Documento legal' }}</span>
                 <span class="text-xs px-2 py-0.5 rounded-full"
                   :class="{
                     'bg-yellow-100 text-yellow-800': d.status === 'submitted',
@@ -338,8 +436,16 @@ onMounted(async () => {
                   {{ d.status === 'submitted' ? 'En revisión' : d.status === 'approved' ? 'Aprobado' : d.status === 'rejected' ? 'Rechazado' : 'Borrador' }}
                 </span>
               </div>
-              <div class="bg-gray-50 rounded p-3 text-xs font-mono mb-3 max-h-40 overflow-y-auto">
-                <pre>{{ JSON.stringify(d.field_values, null, 2) }}</pre>
+              <div class="bg-gray-50 rounded p-3 mb-3">
+                <p class="text-xs text-gray-600">
+                  Abrí el documento para revisar el texto legal completo con los datos ya integrados.
+                </p>
+                <button
+                  class="mt-3 inline-flex items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                  @click="abrirDocumento(d, t)"
+                >
+                  Ver documento
+                </button>
               </div>
               <div v-if="d.status === 'submitted'" class="flex gap-2">
                 <button class="bg-green-600 text-white px-3 py-1 rounded text-xs" @click="aprobarDocumento(d.id, t.id)">
@@ -351,6 +457,35 @@ onMounted(async () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="documentoActivo"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-sm"
+      @click.self="cerrarDocumento"
+    >
+      <div class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div class="flex items-start justify-between gap-4 border-b px-5 py-4">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900">{{ documentoActivo.titulo }}</h2>
+            <p class="mt-1 text-xs text-gray-500">
+              {{ new Date(documentoActivo.created_at).toLocaleString('es-CR') }}
+            </p>
+          </div>
+          <button
+            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
+            @click="cerrarDocumento"
+          >
+            Cerrar
+          </button>
+        </div>
+
+        <div class="overflow-y-auto bg-gray-50 px-5 py-5">
+          <article class="mx-auto w-full max-w-3xl rounded-xl border bg-white px-6 py-8 shadow-sm">
+            <pre class="whitespace-pre-wrap font-serif text-sm leading-7 text-gray-800">{{ documentoActivo.contenido }}</pre>
+          </article>
         </div>
       </div>
     </div>

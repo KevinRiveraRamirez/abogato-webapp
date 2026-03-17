@@ -7,7 +7,7 @@ export function useEnsureProfile() {
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('user_id, role, display_name')
+      .select('user_id, role, display_name, office_address')
       .eq('user_id', user.value.id)
       .maybeSingle()
 

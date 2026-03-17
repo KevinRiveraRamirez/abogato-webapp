@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
+
 definePageMeta({ layout: 'app', middleware: 'auth' })
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
@@ -7,22 +9,36 @@ const router = useRouter()
 
 type Field = { key: string; label: string; type: 'text' | 'date' | 'number' }
 type Template = { id: string; title: string; content: string; fields: Field[]; servicio_id: number }
+type FieldValue = string | number | null | undefined
 
 const ticket = ref<any>(null)
+const abogadoAsignado = ref<{ display_name: string | null; office_address: string | null } | null>(null)
 const plantillas = ref<Template[]>([])
 const plantillaSeleccionada = ref<Template | null>(null)
-const fieldValues = ref<Record<string, string>>({})
+const fieldValues = ref<Record<string, FieldValue>>({})
+
+function textoDeCampo(value: FieldValue) {
+  if (value == null) return ''
+  return typeof value === 'string' ? value : String(value)
+}
+
+function campoEstaVacio(value: FieldValue) {
+  return textoDeCampo(value).trim() === ''
+}
 const loading = ref(false)
 const errorMsg = ref('')
 const paso = ref<'seleccionar' | 'llenar' | 'previsualizar'>('seleccionar')
 
 const documentoGenerado = computed(() => {
   if (!plantillaSeleccionada.value) return ''
-  let content = plantillaSeleccionada.value.content
-  for (const [key, value] of Object.entries(fieldValues.value)) {
-    content = content.replaceAll(`{{${key}}}`, value || `[${key}]`)
-  }
-  return content
+  return renderDocumentTemplate(
+    plantillaSeleccionada.value.content,
+    fieldValues.value,
+    {
+      nombre_notario: abogadoAsignado.value?.display_name ?? null,
+      direccion_notario: abogadoAsignado.value?.office_address ?? null
+    }
+  )
 })
 
 function seleccionarPlantilla(p: Template) {
@@ -33,7 +49,7 @@ function seleccionarPlantilla(p: Template) {
 }
 
 function previsualizarDocumento() {
-  const camposVacios = plantillaSeleccionada.value?.fields.filter(f => !fieldValues.value[f.key]?.trim())
+  const camposVacios = plantillaSeleccionada.value?.fields.filter(f => campoEstaVacio(fieldValues.value[f.key]))
   if (camposVacios?.length) { errorMsg.value = 'Completá todos los campos antes de continuar.'; return }
   errorMsg.value = ''
   paso.value = 'previsualizar'
@@ -62,6 +78,16 @@ onMounted(async () => {
   ])
   ticket.value = t
   plantillas.value = p ?? []
+
+  if (t?.assigned_to) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('display_name, office_address')
+      .eq('user_id', t.assigned_to)
+      .maybeSingle()
+
+    abogadoAsignado.value = data ?? null
+  }
 })
 </script>
 
