@@ -8,7 +8,7 @@ type Ticket = {
   id: string
   title: string
   description: string | null
-  status: 'open' | 'in_progress' | 'resolved' | 'closed'
+  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled'
   priority: 'low' | 'normal' | 'high'
   created_by: string
   assigned_to: string | null
@@ -36,14 +36,16 @@ const etiquetaEstado: Record<string, string> = {
   open: 'Pendiente',
   in_progress: 'En revisión',
   resolved: 'Resuelto',
-  closed: 'Cerrado'
+  closed: 'Cerrado',
+  cancelled: 'Cancelado'
 }
 
 const claseEstado: Record<string, string> = {
   open: 'bg-yellow-100 text-yellow-800',
   in_progress: 'bg-blue-100 text-blue-800',
   resolved: 'bg-green-100 text-green-800',
-  closed: 'bg-gray-100 text-gray-600'
+  closed: 'bg-gray-100 text-gray-600',
+  cancelled: 'bg-red-100 text-red-700'
 }
 
 const etiquetaPrioridad: Record<string, string> = {
@@ -261,7 +263,7 @@ onMounted(async () => {
     </div>
 
     <div class="flex gap-2 flex-wrap mb-4">
-      <button v-for="f in ['todos', 'open', 'in_progress', 'resolved', 'closed']" :key="f"
+      <button v-for="f in ['todos', 'open', 'in_progress', 'resolved', 'closed', 'cancelled']" :key="f"
         class="px-3 py-1 rounded border text-sm"
         :class="filtroEstado === f ? 'bg-green-600 text-white border-green-600' : 'border-gray-300'"
         @click="filtroEstado = f">
@@ -276,10 +278,12 @@ onMounted(async () => {
     </div>
 
     <div v-else class="grid gap-3">
-      <div v-for="t in ticketsFiltrados" :key="t.id" class="border rounded p-4">
+        <div v-for="t in ticketsFiltrados" :key="t.id" class="border rounded p-4">
         <div class="flex justify-between items-start gap-2 flex-wrap">
           <div>
-            <p class="font-medium">{{ t.title }}</p>
+            <NuxtLink :to="`/ticket/${t.id}`" class="font-medium hover:underline">
+              {{ t.title }}
+            </NuxtLink>
             <div class="flex gap-2 mt-1 flex-wrap items-center">
               <span class="text-xs px-2 py-0.5 rounded-full" :class="claseEstado[t.status]">
                 {{ etiquetaEstado[t.status] }}
@@ -289,6 +293,12 @@ onMounted(async () => {
             <p class="text-xs text-gray-400 mt-1">{{ new Date(t.created_at).toLocaleDateString('es-CR') }}</p>
           </div>
           <div class="flex gap-2 flex-wrap">
+            <NuxtLink
+              :to="`/ticket/${t.id}`"
+              class="text-sm border px-3 py-1 rounded"
+            >
+              Ver detalle
+            </NuxtLink>
             <button
               class="text-sm border px-3 py-1 rounded"
               @click="toggleDocumentos(t.id)">
@@ -299,7 +309,9 @@ onMounted(async () => {
               :disabled="loading" @click="avanzarEstado(t)">
               {{ etiquetaAccion[t.status] }}
             </button>
-            <span v-else class="text-xs text-gray-400 self-center">Cerrado</span>
+            <span v-else class="text-xs text-gray-400 self-center">
+              {{ t.status === 'cancelled' ? 'Cancelado por cliente' : 'Cerrado' }}
+            </span>
           </div>
         </div>
 

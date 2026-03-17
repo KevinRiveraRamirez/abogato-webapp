@@ -10,7 +10,7 @@ type Ticket = {
   id: string
   title: string
   description: string | null
-  status: 'open' | 'in_progress' | 'resolved' | 'closed'
+  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled'
   priority: 'low' | 'normal' | 'high'
   created_by: string
   assigned_to: string | null
@@ -38,6 +38,7 @@ type Comentario = {
   content: string
   is_internal: boolean
   author_id: string
+  author_name: string | null
   created_at: string
 }
 
@@ -62,14 +63,16 @@ const etiquetaEstado: Record<string, string> = {
   open: 'Pendiente',
   in_progress: 'En revisión',
   resolved: 'Resuelto',
-  closed: 'Cerrado'
+  closed: 'Cerrado',
+  cancelled: 'Cancelado'
 }
 
 const claseEstado: Record<string, string> = {
   open: 'bg-yellow-100 text-yellow-800',
   in_progress: 'bg-blue-100 text-blue-800',
   resolved: 'bg-green-100 text-green-800',
-  closed: 'bg-gray-100 text-gray-600'
+  closed: 'bg-gray-100 text-gray-600',
+  cancelled: 'bg-red-100 text-red-700'
 }
 
 const etiquetaPrioridad: Record<string, string> = {
@@ -115,7 +118,9 @@ async function cargarTicket() {
   }
 
   const t = data as Ticket
-  const tieneAcceso = t.created_by === authUser.id || t.assigned_to === authUser.id
+  const esAbogado = profile.value?.role === 'abogado'
+  const puedeVerComoAbogado = esAbogado && (t.assigned_to === authUser.id || (t.status === 'open' && !t.assigned_to))
+  const tieneAcceso = profile.value?.role === 'admin' || t.created_by === authUser.id || puedeVerComoAbogado
 
   if (!tieneAcceso) {
     errorMsg.value = 'No tenés acceso a este ticket.'
@@ -171,21 +176,58 @@ async function cargarComentarios() {
     query = query.eq('is_internal', false)
   }
 
-  const { data } = await query
-  comentarios.value = (data ?? []) as Comentario[]
+  const { data, error } = await query
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  const comentariosBase = (data ?? []) as Omit<Comentario, 'author_name'>[]
+  const authorIds = [...new Set(comentariosBase.map(c => c.author_id).filter(Boolean))]
+
+  if (!authorIds.length) {
+    comentarios.value = comentariosBase.map(c => ({ ...c, author_name: null }))
+    return
+  }
+
+  const { data: perfiles, error: perfilesError } = await supabase
+    .from('profiles')
+    .select('user_id, display_name')
+    .in('user_id', authorIds)
+
+  if (perfilesError) {
+    errorMsg.value = perfilesError.message
+    comentarios.value = comentariosBase.map(c => ({ ...c, author_name: null }))
+    return
+  }
+
+  const nombresPorUsuario = new Map(
+    (perfiles ?? []).map(profile => [profile.user_id, profile.display_name])
+  )
+
+  comentarios.value = comentariosBase.map(c => ({
+    ...c,
+    author_name: nombresPorUsuario.get(c.author_id) ?? null,
+  }))
 }
 
 async function agregarComentario() {
-  if (!ticket.value || !user.value) return
+  if (!ticket.value) return
 
   const texto = nuevoComentario.value.trim()
   if (!texto) return
+
+  const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+  if (authError || !authUser?.id) {
+    errorMsg.value = authError?.message || 'Sesión no válida.'
+    return
+  }
 
   loadingComentario.value = true
 
   const { error } = await supabase.from('ticket_comments').insert([{
     ticket_id: ticket.value.id,
-    author_id: user.value.id,
+    author_id: authUser.id,
     content: texto,
     is_internal: esAdmin.value || profile.value?.role === 'abogado' ? comentarioInterno.value : false
   }])
@@ -371,8 +413,8 @@ watch(user, async (newUser) => {
 
 <template>
   <div class="max-w-2xl mx-auto py-8 px-4">
-    <NuxtLink to="/tickets" class="text-sm text-gray-500 hover:underline mb-6 inline-block">
-      ← Volver a mis tickets
+    <NuxtLink :to="profile?.role === 'abogado' || profile?.role === 'admin' ? '/lawyer/tickets' : '/tickets'" class="text-sm text-gray-500 hover:underline mb-6 inline-block">
+      ← Volver
     </NuxtLink>
 
     <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
@@ -591,6 +633,9 @@ watch(user, async (newUser) => {
             <p class="text-gray-700">{{ c.content }}</p>
             <div class="flex gap-2 mt-1 items-center">
               <span v-if="c.is_internal" class="text-xs text-amber-600">Interno</span>
+              <span class="text-xs text-gray-500">
+                {{ c.author_name || 'Usuario' }}
+              </span>
               <span class="text-xs text-gray-400">
                 {{ new Date(c.created_at).toLocaleString('es-CR') }}
               </span>

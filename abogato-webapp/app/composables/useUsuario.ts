@@ -6,11 +6,12 @@ type Profile = {
 
 export function useUsuario() {
   const supabase = useSupabaseClient()
-  const authUser = useSupabaseUser()
   const profile = ref<Profile | null>(null)
 
   async function cargarPerfil() {
-    if (!authUser.value?.id) {
+    const { data: { user }, error } = await supabase.auth.getUser()
+
+    if (error || !user?.id) {
       profile.value = null
       return
     }
@@ -18,7 +19,7 @@ export function useUsuario() {
     const { data } = await supabase
       .from('profiles')
       .select('user_id, role, display_name')
-      .eq('user_id', authUser.value.id)
+      .eq('user_id', user.id)
       .maybeSingle()
 
     profile.value = (data as Profile) ?? null
