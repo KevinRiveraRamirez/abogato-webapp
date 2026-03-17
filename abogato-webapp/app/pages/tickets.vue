@@ -50,6 +50,8 @@ const nuevaDescripcion = ref('')
 const nuevaPrioridad = ref<'low' | 'normal' | 'high'>('normal')
 const nuevoAbogado = ref('')
 const fieldValues = ref<Record<string, string>>({})
+const ticketRecienCreadoId = ref('')
+
 
 const archivosAdjuntos = ref<File[]>([])
 
@@ -476,12 +478,13 @@ async function crearTicket() {
     }])
     .select()
     .single()
-
+    
   if (error) {
     loading.value = false
     errorMsg.value = error.message
     return
   }
+  ticketRecienCreadoId.value = ticketCreado.id
 
   const { error: documentoError } = await supabase
     .from('documents')
@@ -529,6 +532,7 @@ async function crearTicket() {
   padronMensajes.value = {}
 
   await cargarTickets()
+  
 }
 
 async function cancelarTicket(id: string) {
@@ -593,7 +597,18 @@ onMounted(async () => {
     <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm">
       {{ successMsg }}
     </div>
-
+    <div
+      v-if="successMsg && ticketRecienCreadoId"
+      class="bg-blue-50 text-blue-700 p-3 rounded mb-4 text-sm flex items-center justify-between gap-3 flex-wrap"
+      >
+      <span>Ya podés completar el traspaso de propiedad para este ticket.</span>
+      <NuxtLink
+        :to="`/traspaso-carro/${ticketRecienCreadoId}`"
+        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm"
+      >
+        Ir a traspaso de carro
+       </NuxtLink>
+    </div>
     <div v-if="mostrarFormulario" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-6 mb-6">
       <h2 class="text-lg font-semibold mb-1">Nuevo ticket</h2>
       <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
@@ -773,6 +788,21 @@ onMounted(async () => {
         </div>
 
         <p v-if="t.description" class="text-sm text-gray-600 mt-2">{{ t.description }}</p>
+        <div class="mt-3 flex gap-2 flex-wrap">
+        <NuxtLink
+          :to="`/ticket/${t.id}`"
+          class="border border-gray-300 dark:border-gray-600 px-3 py-1.5 rounded text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+        >
+          Ver ticket
+        </NuxtLink>
+
+        <NuxtLink
+          :to="`/traspaso-carro/${t.id}`"
+          class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm transition-colors"
+        >
+          Traspaso de carro
+        </NuxtLink>
+      </div>
       </div>
     </div>
   </div>
