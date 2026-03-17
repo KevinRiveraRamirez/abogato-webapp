@@ -2,10 +2,12 @@
 Este layout se usa para landing y páginas públicas.
 -->
 <template>
-  <div class="flex flex-col min-h-screen">
+  <div class="flex min-h-screen flex-col">
     <HeaderPublic />
     <main class="flex-1">
-      <slot />
+      <UContainer class="py-6 sm:py-8">
+        <slot />
+      </UContainer>
     </main>
     <FooterPublic />
   </div>

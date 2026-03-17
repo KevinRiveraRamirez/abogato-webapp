@@ -65,18 +65,40 @@ const etiquetaEstado: Record<string, string> = {
   cancelled: 'Cancelado'
 }
 
-const claseEstado: Record<string, string> = {
-  open: 'bg-yellow-100 text-yellow-800',
-  in_progress: 'bg-blue-100 text-blue-800',
-  resolved: 'bg-green-100 text-green-800',
-  closed: 'bg-gray-100 text-gray-600',
-  cancelled: 'bg-red-100 text-red-700'
+const colorEstado: Record<string, 'warning' | 'info' | 'success' | 'neutral' | 'error'> = {
+  open: 'warning',
+  in_progress: 'info',
+  resolved: 'success',
+  closed: 'neutral',
+  cancelled: 'error'
 }
 
 const etiquetaPrioridad: Record<string, string> = {
   low: 'Baja',
   normal: 'Normal',
   high: 'Alta'
+}
+
+const colorPrioridad: Record<Ticket['priority'], 'neutral' | 'warning' | 'error'> = {
+  low: 'neutral',
+  normal: 'warning',
+  high: 'error'
+}
+
+const filtrosEstado = ['todos', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
+
+const colorEstadoDocumento: Record<string, 'warning' | 'success' | 'error' | 'neutral'> = {
+  submitted: 'warning',
+  approved: 'success',
+  rejected: 'error',
+  draft: 'neutral'
+}
+
+const etiquetaEstadoDocumento: Record<string, string> = {
+  submitted: 'En revisión',
+  approved: 'Aprobado',
+  rejected: 'Rechazado',
+  draft: 'Borrador'
 }
 
 const siguienteEstado: Partial<Record<Ticket['status'], Ticket['status']>> = {
@@ -329,165 +351,166 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto py-8 px-4">
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-semibold">
+  <div class="mx-auto max-w-5xl">
+    <div class="mb-6 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-semibold text-highlighted">
         {{ profile?.role === 'admin' ? 'Todos los tickets' : 'Mis casos' }}
-      </h1>
-      <button class="text-sm border px-3 py-1 rounded" :disabled="loading" @click="cargarTickets">
-        Actualizar
-      </button>
-    </div>
-
-    <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">{{ errorMsg }}</div>
-
-    <div v-if="ticketsConReapertura.length" class="border border-amber-300 rounded p-4 mb-6 bg-amber-50">
-      <h2 class="font-medium text-amber-800 mb-3">Solicitudes de reapertura</h2>
-      <div class="grid gap-3">
-        <div v-for="t in ticketsConReapertura" :key="t.id"
-          class="flex justify-between items-center gap-2 flex-wrap bg-white rounded p-3 border border-amber-200">
-          <div>
-            <p class="font-medium text-sm">{{ t.title }}</p>
-            <span class="text-xs px-2 py-0.5 rounded-full" :class="claseEstado[t.status]">
-              {{ etiquetaEstado[t.status] }}
-            </span>
-          </div>
-          <div class="flex gap-2">
-            <button class="text-sm bg-green-600 text-white px-3 py-1 rounded" :disabled="loading" @click="aprobarReapertura(t)">Aprobar</button>
-            <button class="text-sm border border-red-300 text-red-600 px-3 py-1 rounded" :disabled="loading" @click="rechazarReapertura(t)">Rechazar</button>
-          </div>
-        </div>
+        </h1>
+        <p class="mt-1 text-sm text-muted">
+          Revisá solicitudes activas, documentos y reaperturas desde una sola vista.
+        </p>
       </div>
+      <UButton color="neutral" variant="outline" :loading="loading" @click="cargarTickets">
+        Actualizar
+      </UButton>
     </div>
 
-    <div class="flex gap-2 flex-wrap mb-4">
-      <button v-for="f in ['todos', 'open', 'in_progress', 'resolved', 'closed', 'cancelled']" :key="f"
-        class="px-3 py-1 rounded border text-sm"
-        :class="filtroEstado === f ? 'bg-green-600 text-white border-green-600' : 'border-gray-300'"
-        @click="filtroEstado = f">
+    <UAlert
+      v-if="errorMsg"
+      color="error"
+      variant="soft"
+      title="No se pudo cargar la información"
+      :description="errorMsg"
+      class="mb-4"
+    />
+
+    <UCard v-if="ticketsConReapertura.length" class="mb-6">
+      <template #header>
+        <div>
+          <h2 class="font-semibold text-highlighted">Solicitudes de reapertura</h2>
+          <p class="mt-1 text-sm text-muted">Casos que requieren una decisión del abogado.</p>
+        </div>
+      </template>
+
+      <div class="grid gap-3">
+        <UCard
+          v-for="t in ticketsConReapertura"
+          :key="t.id"
+          :ui="{ body: 'flex flex-wrap items-center justify-between gap-4 px-4 py-4' }"
+        >
+          <div>
+            <p class="font-medium text-highlighted">{{ t.title }}</p>
+            <UBadge :color="colorEstado[t.status]" variant="subtle" class="mt-2">
+              {{ etiquetaEstado[t.status] }}
+            </UBadge>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <UButton size="sm" :disabled="loading" @click="aprobarReapertura(t)">Aprobar</UButton>
+            <UButton size="sm" color="error" variant="outline" :disabled="loading" @click="rechazarReapertura(t)">Rechazar</UButton>
+          </div>
+        </UCard>
+      </div>
+    </UCard>
+
+    <div class="mb-4 flex flex-wrap gap-2">
+      <UButton
+        v-for="f in filtrosEstado"
+        :key="f"
+        size="sm"
+        :color="filtroEstado === f ? 'primary' : 'neutral'"
+        :variant="filtroEstado === f ? 'solid' : 'outline'"
+        @click="filtroEstado = f"
+      >
         {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
-      </button>
+      </UButton>
     </div>
 
-    <p v-if="loading" class="text-gray-500 text-sm">Cargando...</p>
+    <UCard v-if="loading">
+      <p class="text-sm text-muted">Cargando...</p>
+    </UCard>
 
-    <div v-else-if="ticketsFiltrados.length === 0" class="text-center py-10 text-gray-400">
-      <p>No hay tickets{{ filtroEstado !== 'todos' ? ' con ese estado' : '' }}.</p>
-    </div>
+    <UCard v-else-if="ticketsFiltrados.length === 0">
+      <p class="text-sm text-muted">No hay tickets{{ filtroEstado !== 'todos' ? ' con ese estado' : '' }}.</p>
+    </UCard>
 
     <div v-else class="grid gap-3">
-        <div v-for="t in ticketsFiltrados" :key="t.id" class="border rounded p-4">
+      <UCard v-for="t in ticketsFiltrados" :key="t.id">
         <div class="flex justify-between items-start gap-2 flex-wrap">
           <div>
-            <NuxtLink :to="`/ticket/${t.id}`" class="font-medium hover:underline">
+            <NuxtLink :to="`/ticket/${t.id}`" class="font-medium text-highlighted hover:text-primary">
               {{ t.title }}
             </NuxtLink>
-            <div class="flex gap-2 mt-1 flex-wrap items-center">
-              <span class="text-xs px-2 py-0.5 rounded-full" :class="claseEstado[t.status]">
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <UBadge :color="colorEstado[t.status]" variant="subtle">
                 {{ etiquetaEstado[t.status] }}
-              </span>
-              <span class="text-xs text-gray-500">Prioridad: {{ etiquetaPrioridad[t.priority] }}</span>
+              </UBadge>
+              <UBadge :color="colorPrioridad[t.priority]" variant="outline">Prioridad: {{ etiquetaPrioridad[t.priority] }}</UBadge>
             </div>
-            <p class="text-xs text-gray-400 mt-1">{{ new Date(t.created_at).toLocaleDateString('es-CR') }}</p>
+            <p class="mt-1 text-xs text-toned">{{ new Date(t.created_at).toLocaleDateString('es-CR') }}</p>
           </div>
-          <div class="flex gap-2 flex-wrap">
-            <NuxtLink
-              :to="`/ticket/${t.id}`"
-              class="text-sm border px-3 py-1 rounded"
-            >
+          <div class="flex flex-wrap gap-2">
+            <UButton :to="`/ticket/${t.id}`" size="sm" color="neutral" variant="outline">
               Ver detalle
-            </NuxtLink>
-            <button
-              class="text-sm border px-3 py-1 rounded"
-              @click="toggleDocumentos(t)">
+            </UButton>
+            <UButton size="sm" color="neutral" variant="outline" @click="toggleDocumentos(t)">
               {{ ticketExpandido === t.id ? 'Ocultar docs' : 'Ver documentos' }}
-            </button>
-            <button v-if="siguienteEstado[t.status]"
-              class="bg-green-600 text-white text-sm px-3 py-1 rounded"
-              :disabled="loading" @click="avanzarEstado(t)">
+            </UButton>
+            <UButton v-if="siguienteEstado[t.status]" size="sm" :disabled="loading" @click="avanzarEstado(t)">
               {{ etiquetaAccion[t.status] }}
-            </button>
-            <span v-else class="text-xs text-gray-400 self-center">
+            </UButton>
+            <span v-else class="self-center text-xs text-toned">
               {{ t.status === 'cancelled' ? 'Cancelado por cliente' : 'Cerrado' }}
             </span>
           </div>
         </div>
 
-        <p v-if="t.description" class="text-sm text-gray-600 mt-2">{{ t.description }}</p>
+        <p v-if="t.description" class="mt-3 text-sm text-muted">{{ t.description }}</p>
 
-        <!-- Documentos del ticket -->
-        <div v-if="ticketExpandido === t.id" class="mt-4 border-t pt-4">
-          <p class="text-sm font-medium mb-3">Documentos generados</p>
-          <div v-if="!documentosPorTicket[t.id]?.length" class="text-sm text-gray-400">
+        <div v-if="ticketExpandido === t.id" class="mt-4 border-t border-default pt-4">
+          <p class="mb-3 text-sm font-medium text-highlighted">Documentos generados</p>
+          <div v-if="!documentosPorTicket[t.id]?.length" class="text-sm text-muted">
             No hay documentos para este ticket.
           </div>
           <div v-else class="grid gap-3">
-            <div v-for="d in documentosPorTicket[t.id]" :key="d.id"
-              class="border rounded p-3 text-sm">
+            <UCard v-for="d in documentosPorTicket[t.id]" :key="d.id">
               <div class="flex justify-between items-center mb-2">
-                <span class="font-medium">{{ obtenerPlantillaDocumento(d)?.title ?? 'Documento legal' }}</span>
-                <span class="text-xs px-2 py-0.5 rounded-full"
-                  :class="{
-                    'bg-yellow-100 text-yellow-800': d.status === 'submitted',
-                    'bg-green-100 text-green-800': d.status === 'approved',
-                    'bg-red-100 text-red-800': d.status === 'rejected',
-                    'bg-gray-100 text-gray-600': d.status === 'draft'
-                  }">
-                  {{ d.status === 'submitted' ? 'En revisión' : d.status === 'approved' ? 'Aprobado' : d.status === 'rejected' ? 'Rechazado' : 'Borrador' }}
-                </span>
+                <span class="font-medium text-highlighted">{{ obtenerPlantillaDocumento(d)?.title ?? 'Documento legal' }}</span>
+                <UBadge :color="colorEstadoDocumento[d.status] ?? 'neutral'" variant="subtle">
+                  {{ etiquetaEstadoDocumento[d.status] ?? 'Borrador' }}
+                </UBadge>
               </div>
-              <div class="bg-gray-50 rounded p-3 mb-3">
-                <p class="text-xs text-gray-600">
+              <div class="mb-3 rounded-2xl bg-elevated/60 p-3">
+                <p class="text-xs text-muted">
                   Abrí el documento para revisar el texto legal completo con los datos ya integrados.
                 </p>
-                <button
-                  class="mt-3 inline-flex items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                  @click="abrirDocumento(d, t)"
-                >
+                <UButton size="xs" color="neutral" variant="outline" class="mt-3" @click="abrirDocumento(d, t)">
                   Ver documento
-                </button>
+                </UButton>
               </div>
-              <div v-if="d.status === 'submitted'" class="flex gap-2">
-                <button class="bg-green-600 text-white px-3 py-1 rounded text-xs" @click="aprobarDocumento(d.id, t.id)">
+              <div v-if="d.status === 'submitted'" class="flex flex-wrap gap-2">
+                <UButton size="xs" @click="aprobarDocumento(d.id, t.id)">
                   Aprobar
-                </button>
-                <button class="border border-red-300 text-red-600 px-3 py-1 rounded text-xs" @click="rechazarDocumento(d.id, t.id)">
+                </UButton>
+                <UButton size="xs" color="error" variant="outline" @click="rechazarDocumento(d.id, t.id)">
                   Rechazar
-                </button>
+                </UButton>
               </div>
-            </div>
+            </UCard>
           </div>
         </div>
-      </div>
+      </UCard>
     </div>
 
-    <div
-      v-if="documentoActivo"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-sm"
-      @click.self="cerrarDocumento"
+    <UModal
+      :open="!!documentoActivo"
+      fullscreen
+      :title="documentoActivo?.titulo"
+      :description="documentoActivo ? new Date(documentoActivo.created_at).toLocaleString('es-CR') : ''"
+      @close="cerrarDocumento"
     >
-      <div class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div class="flex items-start justify-between gap-4 border-b px-5 py-4">
-          <div>
-            <h2 class="text-lg font-semibold text-gray-900">{{ documentoActivo.titulo }}</h2>
-            <p class="mt-1 text-xs text-gray-500">
-              {{ new Date(documentoActivo.created_at).toLocaleString('es-CR') }}
-            </p>
+      <template #content>
+        <div class="bg-elevated/50 p-4 sm:p-6">
+          <div class="mx-auto mb-4 flex w-full max-w-3xl justify-end">
+            <UButton color="neutral" variant="outline" leading-icon="i-lucide-x" @click="cerrarDocumento">
+              Cerrar
+            </UButton>
           </div>
-          <button
-            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
-            @click="cerrarDocumento"
-          >
-            Cerrar
-          </button>
-        </div>
-
-        <div class="overflow-y-auto bg-gray-50 px-5 py-5">
-          <article class="mx-auto w-full max-w-3xl rounded-xl border bg-white px-6 py-8 shadow-sm">
-            <pre class="whitespace-pre-wrap font-serif text-sm leading-7 text-gray-800">{{ documentoActivo.contenido }}</pre>
+          <article class="mx-auto w-full max-w-3xl rounded-2xl border border-default bg-default px-6 py-8 shadow-sm">
+            <pre class="whitespace-pre-wrap font-serif text-sm leading-7 text-highlighted">{{ documentoActivo?.contenido }}</pre>
           </article>
         </div>
-      </div>
-    </div>
+      </template>
+    </UModal>
   </div>
 </template>

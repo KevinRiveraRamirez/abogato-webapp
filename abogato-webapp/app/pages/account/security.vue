@@ -64,62 +64,72 @@ async function cambiarPassword() {
 </script>
 
 <template>
-  <div class="max-w-lg mx-auto py-8 px-4">
-    <h1 class="text-2xl font-semibold mb-6">Cambiar contraseña</h1>
-
-    <div class="border rounded p-6 grid gap-4">
-      <div class="grid gap-1">
-        <label class="text-sm font-medium">Contraseña actual</label>
-        <input
-          v-model="currentPassword"
-          type="password"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Tu contraseña actual"
-        />
-      </div>
-
-      <div class="grid gap-1">
-        <label class="text-sm font-medium">Nueva contraseña</label>
-        <input
-          v-model="newPassword"
-          type="password"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Mínimo 8 caracteres"
-        />
-      </div>
-
-      <div class="grid gap-1">
-        <label class="text-sm font-medium">Confirmar nueva contraseña</label>
-        <input
-          v-model="confirmPassword"
-          type="password"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Repetí la contraseña"
-        />
-      </div>
-
-      <p class="text-xs text-gray-400">
-        La contraseña debe tener al menos 8 caracteres, una mayúscula y un número.
+  <div class="mx-auto max-w-2xl">
+    <div class="mb-6">
+      <h1 class="text-2xl font-semibold text-highlighted">Cambiar contraseña</h1>
+      <p class="mt-1 text-sm text-muted">
+        Mantené tu cuenta protegida con una contraseña segura y actualizada.
       </p>
-
-      <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded text-sm">
-        {{ errorMsg }}
-      </div>
-      <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded text-sm">
-        {{ successMsg }}
-      </div>
-
-      <button
-        class="bg-green-600 text-white px-4 py-2 rounded text-sm w-fit"
-        :disabled="loading"
-        @click="cambiarPassword"
-      >
-        {{ loading ? 'Actualizando...' : 'Cambiar contraseña' }}
-      </button>
-
-      <NuxtLink to="/account/profile" class="text-sm text-gray-500 hover:underline">
-        ← Volver al perfil
-      </NuxtLink>
     </div>
+
+    <UCard>
+      <div class="grid gap-4">
+        <UFormField label="Contraseña actual">
+          <UInput
+            v-model="currentPassword"
+            type="password"
+            placeholder="Tu contraseña actual"
+          />
+        </UFormField>
+
+        <UFormField label="Nueva contraseña">
+          <UInput
+            v-model="newPassword"
+            type="password"
+            placeholder="Mínimo 8 caracteres"
+          />
+        </UFormField>
+
+        <UFormField label="Confirmar nueva contraseña">
+          <UInput
+            v-model="confirmPassword"
+            type="password"
+            placeholder="Repetí la contraseña"
+          />
+        </UFormField>
+
+        <UAlert
+          color="neutral"
+          variant="soft"
+          title="Requisitos"
+          description="La contraseña debe tener al menos 8 caracteres, una mayúscula y un número."
+        />
+
+        <UAlert
+          v-if="errorMsg"
+          color="error"
+          variant="soft"
+          title="No se pudo actualizar"
+          :description="errorMsg"
+        />
+
+        <UAlert
+          v-if="successMsg"
+          color="success"
+          variant="soft"
+          title="Contraseña actualizada"
+          :description="successMsg"
+        />
+
+        <div class="flex flex-wrap items-center gap-3">
+          <UButton :loading="loading" @click="cambiarPassword">
+            Cambiar contraseña
+          </UButton>
+          <UButton to="/account/profile" color="neutral" variant="ghost" leading-icon="i-lucide-arrow-left">
+            Volver al perfil
+          </UButton>
+        </div>
+      </div>
+    </UCard>
   </div>
 </template>

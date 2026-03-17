@@ -55,13 +55,13 @@ async function cambiarPassword() {
       </div>
 
       <template v-else>
-        <UFormGroup label="Nueva contraseña">
+        <UFormField label="Nueva contraseña">
           <UInput v-model="newPassword" type="password" placeholder="Mínimo 8 caracteres" size="lg" />
-        </UFormGroup>
+        </UFormField>
 
-        <UFormGroup label="Confirmar contraseña">
+        <UFormField label="Confirmar contraseña">
           <UInput v-model="confirmPassword" type="password" placeholder="Repetí la contraseña" size="lg" />
-        </UFormGroup>
+        </UFormField>
 
         <p class="text-xs text-gray-400">
           Debe tener al menos 8 caracteres, una mayúscula y un número.

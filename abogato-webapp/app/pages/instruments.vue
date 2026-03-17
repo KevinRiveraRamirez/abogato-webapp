@@ -127,34 +127,76 @@ watch(user, () => {
 </script>
 
 <template>
-  <div style="max-width: 720px; margin: 24px auto; padding: 16px;">
-    <h1>Mis Instruments</h1>
-
-    <div v-if="!user" style="margin-top: 12px;">
-      <p>Necesitas iniciar sesión para ver y administrar tus datos.</p>
-      <NuxtLink to="/login">Ir a login</NuxtLink>
+  <div class="mx-auto max-w-3xl py-8">
+    <div class="mb-6 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-semibold text-highlighted">Mis instruments</h1>
+        <p class="mt-1 text-sm text-muted">
+          Demo simple conectada a Supabase con la misma base visual del resto de la app.
+        </p>
+      </div>
+      <UButton color="neutral" variant="outline" :loading="loading" @click="refresh">
+        Actualizar
+      </UButton>
     </div>
 
-    <div v-else>
-      <form @submit.prevent="add" style="display:flex; gap: 8px; margin: 16px 0;">
-        <input v-model="name" placeholder="New instrument name" style="flex:1; padding: 8px;" />
-        <button type="submit" :disabled="loading">Add</button>
-        <button type="button" @click="refresh" :disabled="loading">Refresh</button>
-      </form>
+    <UAlert
+      v-if="errorMsg"
+      color="error"
+      variant="soft"
+      title="No se pudo completar la acción"
+      :description="errorMsg"
+      class="mb-4"
+    />
 
-      <p v-if="errorMsg" style="color: #b00020;">{{ errorMsg }}</p>
-      <p v-if="loading">Loading...</p>
+    <UCard v-if="!user">
+      <div class="grid gap-4">
+        <p class="text-sm text-muted">Necesitás iniciar sesión para ver y administrar tus datos.</p>
+        <div>
+          <UButton to="/login">Ir a login</UButton>
+        </div>
+      </div>
+    </UCard>
 
-      <ul style="padding-left: 18px;">
-        <li v-for="inst in instruments" :key="inst.id" style="margin: 10px 0;">
-          <input
-            :value="inst.name"
-            @change="(e:any) => updateName(inst.id, e.target.value)"
-            style="padding: 6px; margin-right: 8px;"
-          />
-          <button type="button" @click="remove(inst.id)" :disabled="loading">Delete</button>
-        </li>
-      </ul>
+    <div v-else class="grid gap-6">
+      <UCard>
+        <form class="grid gap-4 sm:grid-cols-[1fr_auto]" @submit.prevent="add">
+          <UFormField label="Nuevo instrument">
+            <UInput v-model="name" placeholder="New instrument name" />
+          </UFormField>
+          <div class="flex items-end">
+            <UButton type="submit" :loading="loading">
+              Agregar
+            </UButton>
+          </div>
+        </form>
+      </UCard>
+
+      <UCard v-if="loading && !instruments.length">
+        <p class="text-sm text-muted">Cargando...</p>
+      </UCard>
+
+      <div v-if="instruments.length" class="grid gap-3">
+        <UCard v-for="inst in instruments" :key="inst.id">
+          <div class="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+            <UFormField label="Nombre">
+              <UInput
+                :model-value="inst.name"
+                @change="(e:any) => updateName(inst.id, e.target.value)"
+              />
+            </UFormField>
+            <div class="flex items-end justify-end">
+              <UButton type="button" color="error" variant="soft" :disabled="loading" @click="remove(inst.id)">
+                Eliminar
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </div>
+
+      <UCard v-else-if="!loading">
+        <p class="text-sm text-muted">No hay instruments registrados.</p>
+      </UCard>
     </div>
   </div>
 </template>

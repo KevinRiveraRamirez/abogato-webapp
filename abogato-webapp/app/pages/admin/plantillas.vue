@@ -100,112 +100,169 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto py-8 px-4">
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-semibold">Plantillas de documentos</h1>
-      <button
-        class="bg-green-600 text-white px-4 py-2 rounded text-sm"
-        @click="mostrarFormulario = !mostrarFormulario"
-      >
+  <div class="mx-auto max-w-5xl">
+    <div class="mb-6 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-semibold text-highlighted">Plantillas de documentos</h1>
+        <p class="mt-1 text-sm text-muted">
+          Centralizá las plantillas legales y los campos dinámicos de cada trámite.
+        </p>
+      </div>
+      <UButton @click="mostrarFormulario = !mostrarFormulario">
         {{ mostrarFormulario ? 'Cancelar' : 'Nueva plantilla' }}
-      </button>
+      </UButton>
     </div>
 
-    <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">{{ errorMsg }}</div>
-    <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm">{{ successMsg }}</div>
+    <UAlert
+      v-if="errorMsg"
+      color="error"
+      variant="soft"
+      title="No se pudo guardar"
+      :description="errorMsg"
+      class="mb-4"
+    />
+    <UAlert
+      v-if="successMsg"
+      color="success"
+      variant="soft"
+      title="Plantilla creada"
+      :description="successMsg"
+      class="mb-4"
+    />
 
-    <div v-if="mostrarFormulario" class="border rounded-xl p-6 mb-6 bg-white dark:bg-gray-900">
-      <h2 class="text-lg font-semibold mb-4">Nueva plantilla</h2>
-      <div class="grid gap-4">
-        <div class="grid gap-1">
-          <label class="text-sm font-medium">Título *</label>
-          <input v-model="form.title" class="border rounded-lg px-3 py-2 text-sm w-full" placeholder="Ej: Contrato de divorcio por mutuo acuerdo" />
-        </div>
-
-        <div class="grid gap-1">
-          <label class="text-sm font-medium">Servicio *</label>
-          <select v-model="form.servicio_id" class="border rounded-lg px-3 py-2 text-sm w-full">
-            <option value="">Seleccionar servicio</option>
-            <option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option>
-          </select>
-        </div>
-
-        <div class="grid gap-1">
-          <label class="text-sm font-medium">Contenido del documento *</label>
-          <p class="text-xs text-gray-500">
-            Usá <code v-pre>{{nombre_campo}}</code> para los campos variables. También podés usar
-            <code v-pre>{{nombre_notario}}</code> y <code v-pre>{{direccion_notario}}</code>
-            para completar datos del abogado asignado.
+    <UCard v-if="mostrarFormulario" class="mb-6">
+      <template #header>
+        <div>
+          <h2 class="text-lg font-semibold text-highlighted">Nueva plantilla</h2>
+          <p class="mt-1 text-sm text-muted">
+            Definí el documento base y los campos que la app le pedirá al cliente.
           </p>
-          <textarea
+        </div>
+      </template>
+
+      <div class="grid gap-4">
+        <UFormField label="Título" required>
+          <UInput
+            v-model="form.title"
+            placeholder="Ej: Contrato de divorcio por mutuo acuerdo"
+          />
+        </UFormField>
+
+        <UFormField label="Servicio" required>
+          <USelect
+            v-model="form.servicio_id"
+            value-key="value"
+            :items="[
+              { label: 'Seleccionar servicio', value: '' },
+              ...servicios.map((s) => ({ label: s.nombre, value: String(s.id) }))
+            ]"
+          />
+        </UFormField>
+
+        <UFormField
+          label="Contenido del documento"
+          required
+          help="Usá {{nombre_campo}} para variables del formulario y {{nombre_notario}} / {{direccion_notario}} para datos del abogado asignado."
+        >
+          <UTextarea
             v-model="form.content"
-            class="border rounded-lg px-3 py-2 text-sm w-full font-mono"
-            rows="10"
+            class="font-mono"
+            :rows="10"
             placeholder="Yo {{nombre_cliente}}, con cédula {{cedula}}, declaro..."
           />
-        </div>
+        </UFormField>
 
-        <div class="grid gap-2">
-          <label class="text-sm font-medium">Campos del formulario</label>
-          <div v-if="form.fields.length" class="grid gap-2 mb-2">
-            <div
+        <div class="grid gap-3">
+          <div class="flex items-center justify-between">
+            <h3 class="font-medium text-highlighted">Campos del formulario</h3>
+            <UBadge color="neutral" variant="subtle">
+              {{ form.fields.length }} configurados
+            </UBadge>
+          </div>
+
+          <div v-if="form.fields.length" class="grid gap-2">
+            <UCard
               v-for="(f, i) in form.fields"
               :key="i"
-              class="flex items-center justify-between border rounded px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800"
+              :ui="{ body: 'flex flex-wrap items-center justify-between gap-3 px-4 py-3' }"
             >
-              <span><strong>{{ f.label }}</strong> — <code v-pre>{{clave}}</code> ({{ f.type }})</span>
-              <button class="text-red-500 text-xs hover:underline" @click="eliminarField(i)">Eliminar</button>
+              <div class="text-sm">
+                <strong>{{ f.label }}</strong>
+                <span class="text-muted"> · {{ f.key }} · {{ f.type }}</span>
+              </div>
+              <UButton size="sm" color="error" variant="ghost" @click="eliminarField(i)">
+                Eliminar
+              </UButton>
+            </UCard>
+          </div>
+
+          <div class="grid gap-3 rounded-2xl border border-dashed border-default p-4">
+            <div class="grid gap-3 md:grid-cols-3">
+              <UFormField label="Clave">
+                <UInput v-model="nuevoField.key" placeholder="nombre_cliente" />
+              </UFormField>
+              <UFormField label="Etiqueta">
+                <UInput v-model="nuevoField.label" placeholder="Nombre completo" />
+              </UFormField>
+              <UFormField label="Tipo">
+                <USelect
+                  v-model="nuevoField.type"
+                  value-key="value"
+                  :items="[
+                    { label: 'Texto', value: 'text' },
+                    { label: 'Fecha', value: 'date' },
+                    { label: 'Número', value: 'number' }
+                  ]"
+                />
+              </UFormField>
+            </div>
+            <div>
+              <UButton color="neutral" variant="outline" @click="agregarField">
+                Agregar campo
+              </UButton>
             </div>
           </div>
-
-          <div class="flex gap-2 flex-wrap">
-            <input v-model="nuevoField.key" class="border rounded px-3 py-2 text-sm" placeholder="clave (ej: nombre_cliente)" />
-            <input v-model="nuevoField.label" class="border rounded px-3 py-2 text-sm" placeholder="etiqueta (ej: Nombre completo)" />
-            <select v-model="nuevoField.type" class="border rounded px-3 py-2 text-sm">
-              <option value="text">Texto</option>
-              <option value="date">Fecha</option>
-              <option value="number">Número</option>
-            </select>
-            <button class="border px-3 py-2 rounded text-sm" @click="agregarField">+ Agregar campo</button>
-          </div>
         </div>
 
-        <button
-          class="bg-green-600 text-white px-5 py-2 rounded-lg text-sm w-fit"
-          :disabled="loading"
-          @click="guardarPlantilla"
-        >
-          {{ loading ? 'Guardando...' : 'Guardar plantilla' }}
-        </button>
+        <div class="flex gap-3">
+          <UButton :loading="loading" @click="guardarPlantilla">
+            Guardar plantilla
+          </UButton>
+          <UButton color="neutral" variant="ghost" @click="mostrarFormulario = false">
+            Cancelar
+          </UButton>
+        </div>
       </div>
-    </div>
+    </UCard>
 
-    <div v-if="plantillas.length === 0" class="text-center py-10 text-gray-400">
-      No hay plantillas creadas aún.
-    </div>
+    <UCard v-if="plantillas.length === 0">
+      <p class="text-sm text-muted">No hay plantillas creadas aún.</p>
+    </UCard>
 
     <div v-else class="grid gap-3">
-      <div
+      <UCard
         v-for="p in plantillas"
         :key="p.id"
-        class="border rounded-xl p-4 flex justify-between items-start gap-3"
       >
-        <div>
-          <p class="font-medium">{{ p.title }}</p>
-          <p class="text-xs text-gray-500 mt-1">
-            {{ servicios.find(s => s.id === p.servicio_id)?.nombre ?? 'Servicio desconocido' }}
-            · {{ p.fields.length }} campos
-          </p>
-          <p class="text-xs text-gray-400 mt-1">{{ new Date(p.created_at).toLocaleDateString('es-CR') }}</p>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p class="font-medium text-highlighted">{{ p.title }}</p>
+            <p class="mt-1 text-sm text-muted">
+              {{ servicios.find(s => s.id === p.servicio_id)?.nombre ?? 'Servicio desconocido' }}
+              · {{ p.fields.length }} campos
+            </p>
+            <p class="mt-1 text-xs text-toned">{{ new Date(p.created_at).toLocaleDateString('es-CR') }}</p>
+          </div>
+          <UButton
+            size="sm"
+            :color="p.activo ? 'success' : 'neutral'"
+            :variant="p.activo ? 'soft' : 'outline'"
+            @click="toggleActivo(p)"
+          >
+            {{ p.activo ? 'Activa' : 'Inactiva' }}
+          </UButton>
         </div>
-        <button
-          class="text-xs px-3 py-1 rounded border"
-          :class="p.activo ? 'text-green-600 border-green-300' : 'text-gray-400 border-gray-300'"
-          @click="toggleActivo(p)"
-        >
-          {{ p.activo ? 'Activa' : 'Inactiva' }}
-        </button>
-      </div>
+      </UCard>
     </div>
   </div>
 </template>

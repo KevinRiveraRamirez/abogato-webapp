@@ -2,9 +2,10 @@
 @import "@nuxt/ui";
 
 @theme {
- --color-primary: green;
-  --ui-primary: green;
-  --ui-secondary: blue; 
+  --font-sans: "Switzer", ui-sans-serif, system-ui, sans-serif;
+  --color-primary: oklch(0.7 0.17 157);
+  --ui-primary: oklch(0.7 0.17 157);
+  --ui-secondary: oklch(0.62 0.14 243);
   --ui-radius: 0.5rem;
 }
 
@@ -13,4 +14,34 @@
   src: url("/fonts/Switzer-Variable.woff2") format("woff2");
   font-weight: 100 900;
   font-display: swap;
+}
+
+:root {
+  --app-background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--ui-primary) 14%, transparent), transparent 28%),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--ui-secondary) 12%, transparent), transparent 24%),
+    linear-gradient(180deg, rgb(248 250 252 / 0.98), rgb(241 245 249 / 0.96));
+}
+
+.dark {
+  --app-background:
+    radial-gradient(circle at top left, rgb(16 185 129 / 0.16), transparent 24%),
+    radial-gradient(circle at top right, rgb(59 130 246 / 0.14), transparent 22%),
+    linear-gradient(180deg, rgb(2 6 23), rgb(15 23 42));
+}
+
+html,
+body,
+#__nuxt {
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--app-background);
+  color: var(--ui-text);
+}
+
+a {
+  transition: color 0.2s ease, opacity 0.2s ease;
 }

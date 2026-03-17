@@ -112,10 +112,10 @@ const etiquetaRol: Record<string, string> = {
   admin: 'Admin'
 }
 
-const claseRol: Record<string, string> = {
-  cliente: 'bg-gray-100 text-gray-700',
-  abogado: 'bg-blue-100 text-blue-800',
-  admin: 'bg-green-100 text-green-800'
+const colorRol: Record<string, 'neutral' | 'info' | 'success'> = {
+  cliente: 'neutral',
+  abogado: 'info',
+  admin: 'success'
 }
 
 onMounted(async () => {
@@ -125,101 +125,137 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto py-8 px-4">
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-semibold">Gestión de usuarios</h1>
-      <button
-        class="bg-green-600 text-white px-4 py-2 rounded text-sm"
-        @click="mostrarFormulario = !mostrarFormulario"
-      >
-        {{ mostrarFormulario ? 'Cancelar' : 'Nuevo usuario' }}
-      </button>
-    </div>
-
-    <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
-      {{ errorMsg }}
-    </div>
-    <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm">
-      {{ successMsg }}
-    </div>
-
-    <div v-if="mostrarFormulario" class="border rounded p-4 mb-6 bg-gray-50">
-      <h2 class="font-medium mb-3">Crear usuario</h2>
-      <div class="grid gap-3">
-        <input
-          v-model="nuevoEmail"
-          type="email"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Correo electrónico *"
-        />
-        <input
-          v-model="nuevoNombre"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Nombre completo"
-        />
-        <input
-          v-model="nuevaPassword"
-          type="password"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Contraseña *"
-        />
-        <textarea
-          v-model="nuevaDireccionOficina"
-          class="border rounded px-3 py-2 w-full"
-          rows="3"
-          placeholder="Dirección de oficina / notaría"
-        />
-        <p class="text-xs text-gray-400">Mínimo 8 caracteres, una mayúscula y un número.</p>
-        <label class="flex items-center gap-2 text-sm">
-          Rol:
-          <select v-model="nuevoRol" class="border rounded px-2 py-1">
-            <option value="abogado">Abogado</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
-        <button
-          class="bg-green-600 text-white px-4 py-2 rounded w-fit text-sm"
-          :disabled="loading"
-          @click="crearAbogado"
-        >
-          Crear
-        </button>
+  <div class="mx-auto max-w-4xl">
+    <div class="mb-6 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-semibold text-highlighted">Gestión de usuarios</h1>
+        <p class="mt-1 text-sm text-muted">
+          Administrá cuentas internas y actualizá roles desde una sola vista.
+        </p>
       </div>
+      <UButton @click="mostrarFormulario = !mostrarFormulario">
+        {{ mostrarFormulario ? 'Cancelar' : 'Nuevo usuario' }}
+      </UButton>
     </div>
+
+    <UAlert
+      v-if="errorMsg"
+      color="error"
+      variant="soft"
+      title="No se pudo completar la acción"
+      :description="errorMsg"
+      class="mb-4"
+    />
+    <UAlert
+      v-if="successMsg"
+      color="success"
+      variant="soft"
+      title="Operación exitosa"
+      :description="successMsg"
+      class="mb-4"
+    />
+
+    <UCard v-if="mostrarFormulario" class="mb-6">
+      <template #header>
+        <div>
+          <h2 class="font-semibold text-highlighted">Crear usuario</h2>
+          <p class="mt-1 text-sm text-muted">Configurá acceso y rol para un abogado o administrador.</p>
+        </div>
+      </template>
+
+      <div class="grid gap-4">
+        <UFormField label="Correo electrónico" required>
+          <UInput
+            v-model="nuevoEmail"
+            type="email"
+            placeholder="correo@ejemplo.com"
+          />
+        </UFormField>
+
+        <UFormField label="Nombre completo">
+          <UInput
+            v-model="nuevoNombre"
+            placeholder="Nombre completo"
+          />
+        </UFormField>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <UFormField label="Contraseña" required help="Mínimo 8 caracteres, una mayúscula y un número.">
+            <UInput
+              v-model="nuevaPassword"
+              type="password"
+              placeholder="Contraseña segura"
+            />
+          </UFormField>
+
+          <UFormField label="Rol">
+            <USelect
+              v-model="nuevoRol"
+              value-key="value"
+              :items="[
+                { label: 'Abogado', value: 'abogado' },
+                { label: 'Admin', value: 'admin' }
+              ]"
+            />
+          </UFormField>
+        </div>
+
+        <UFormField label="Dirección de oficina / notaría">
+          <UTextarea
+            v-model="nuevaDireccionOficina"
+            :rows="3"
+            placeholder="Dirección de oficina / notaría"
+          />
+        </UFormField>
+
+        <div class="flex gap-3">
+          <UButton :loading="loading" @click="crearAbogado">
+            Crear usuario
+          </UButton>
+          <UButton color="neutral" variant="ghost" @click="mostrarFormulario = false">
+            Cancelar
+          </UButton>
+        </div>
+      </div>
+    </UCard>
 
     <p v-if="loading" class="text-gray-500 text-sm">Cargando...</p>
 
-    <div v-else-if="usuarios.length === 0" class="text-center py-10 text-gray-400">
-      <p>No hay usuarios registrados.</p>
-    </div>
+    <UCard v-else-if="usuarios.length === 0">
+      <p class="text-sm text-muted">No hay usuarios registrados.</p>
+    </UCard>
 
     <div v-else class="grid gap-3">
-      <div
+      <UCard
         v-for="u in usuarios"
         :key="u.user_id"
-        class="border rounded p-4 flex justify-between items-center gap-3 flex-wrap"
       >
-        <div>
-          <p class="font-medium">{{ u.display_name ?? 'Sin nombre' }}</p>
-          <p v-if="u.office_address" class="text-xs text-gray-500 mt-1">{{ u.office_address }}</p>
-          <span class="text-xs px-2 py-0.5 rounded-full" :class="claseRol[u.role]">
-            {{ etiquetaRol[u.role] }}
-          </span>
-        </div>
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="font-medium text-highlighted">{{ u.display_name ?? 'Sin nombre' }}</p>
+              <UBadge :color="colorRol[u.role]" variant="subtle">
+                {{ etiquetaRol[u.role] }}
+              </UBadge>
+            </div>
+            <p v-if="u.office_address" class="text-sm text-muted">{{ u.office_address }}</p>
+          </div>
 
-        <div v-if="profile?.role === 'admin'" class="flex gap-2 flex-wrap">
-          <button
-            v-for="r in (['cliente', 'abogado', 'admin'] as const)"
-            :key="r"
-            class="text-xs border px-2 py-1 rounded"
-            :class="u.role === r ? 'bg-green-600 text-white border-green-600' : 'border-gray-300'"
-            :disabled="loading || u.role === r"
-            @click="cambiarRol(u, r)"
-          >
-            {{ etiquetaRol[r] }}
-          </button>
+          <div v-if="profile?.role === 'admin'" class="flex flex-wrap gap-2">
+            <UButton
+              v-for="r in (['cliente', 'abogado', 'admin'] as const)"
+              :key="r"
+              size="sm"
+              :color="u.role === r ? colorRol[r] : 'neutral'"
+              :variant="u.role === r ? 'solid' : 'outline'"
+              :disabled="loading || u.role === r"
+              @click="cambiarRol(u, r)"
+            >
+              {{ etiquetaRol[r] }}
+            </UButton>
+          </div>
         </div>
-      </div>
+      </UCard>
     </div>
   </div>
 </template>

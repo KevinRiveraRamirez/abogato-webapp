@@ -70,18 +70,38 @@ const etiquetaEstado: Record<string, string> = {
   cancelled: 'Cancelado'
 }
 
-const claseEstado: Record<string, string> = {
-  open: 'bg-yellow-100 text-yellow-800',
-  in_progress: 'bg-blue-100 text-blue-800',
-  resolved: 'bg-green-100 text-green-800',
-  closed: 'bg-gray-100 text-gray-600',
-  cancelled: 'bg-red-100 text-red-700'
+const colorEstado: Record<string, 'warning' | 'info' | 'success' | 'neutral' | 'error'> = {
+  open: 'warning',
+  in_progress: 'info',
+  resolved: 'success',
+  closed: 'neutral',
+  cancelled: 'error'
 }
 
 const etiquetaPrioridad: Record<string, string> = {
   low: 'Baja',
   normal: 'Normal',
   high: 'Alta'
+}
+
+const colorPrioridad: Record<Ticket['priority'], 'neutral' | 'warning' | 'error'> = {
+  low: 'neutral',
+  normal: 'warning',
+  high: 'error'
+}
+
+const colorEstadoDocumento: Record<string, 'warning' | 'success' | 'error' | 'neutral'> = {
+  submitted: 'warning',
+  approved: 'success',
+  rejected: 'error',
+  draft: 'neutral'
+}
+
+const etiquetaEstadoDocumento: Record<string, string> = {
+  submitted: 'En revisión',
+  approved: 'Aprobado',
+  rejected: 'Rechazado',
+  draft: 'Borrador'
 }
 
 const esCliente = computed(() => !!ticket.value)
@@ -449,225 +469,271 @@ watch(user, async (newUser) => {
 </script>
 
 <template>
-  <div class="max-w-2xl mx-auto py-8 px-4">
-    <NuxtLink :to="profile?.role === 'abogado' || profile?.role === 'admin' ? '/lawyer/tickets' : '/tickets'" class="text-sm text-gray-500 hover:underline mb-6 inline-block">
-      ← Volver
-    </NuxtLink>
-
-    <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
-      {{ errorMsg }}
+  <div class="mx-auto max-w-5xl">
+    <div class="mb-6">
+      <UButton
+        :to="profile?.role === 'abogado' || profile?.role === 'admin' ? '/lawyer/tickets' : '/tickets'"
+        color="neutral"
+        variant="ghost"
+        leading-icon="i-lucide-arrow-left"
+      >
+        Volver
+      </UButton>
     </div>
-    <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm">
-      {{ successMsg }}
-    </div>
 
-    <p v-if="loading" class="text-gray-500 text-sm">Cargando...</p>
+    <UAlert
+      v-if="errorMsg"
+      color="error"
+      variant="soft"
+      title="No se pudo completar la acción"
+      :description="errorMsg"
+      class="mb-4"
+    />
+    <UAlert
+      v-if="successMsg"
+      color="success"
+      variant="soft"
+      title="Operación exitosa"
+      :description="successMsg"
+      class="mb-4"
+    />
 
-    <div v-else-if="ticket">
-      <div class="flex justify-between items-start gap-3 flex-wrap mb-4">
-        <div>
-          <h1 class="text-2xl font-semibold">{{ ticket.title }}</h1>
-          <div class="flex gap-2 mt-2 items-center flex-wrap">
-            <span class="text-xs px-2 py-0.5 rounded-full" :class="claseEstado[ticket.status]">
-              {{ etiquetaEstado[ticket.status] }}
-            </span>
-            <span class="text-xs text-gray-500">
-              Prioridad: {{ etiquetaPrioridad[ticket.priority] }}
-            </span>
+    <UCard v-if="loading">
+      <p class="text-sm text-muted">Cargando...</p>
+    </UCard>
+
+    <div v-else-if="ticket" class="grid gap-6">
+      <UCard>
+        <div class="flex justify-between items-start gap-3 flex-wrap">
+          <div>
+            <h1 class="text-2xl font-semibold text-highlighted">{{ ticket.title }}</h1>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <UBadge :color="colorEstado[ticket.status]" variant="subtle">
+                {{ etiquetaEstado[ticket.status] }}
+              </UBadge>
+              <UBadge :color="colorPrioridad[ticket.priority]" variant="outline">
+                Prioridad: {{ etiquetaPrioridad[ticket.priority] }}
+              </UBadge>
+            </div>
+            <p class="mt-1 text-xs text-toned">
+              Creado: {{ new Date(ticket.created_at).toLocaleString('es-CR') }}
+            </p>
           </div>
-          <p class="text-xs text-gray-400 mt-1">
-            Creado: {{ new Date(ticket.created_at).toLocaleString('es-CR') }}
-          </p>
-          <p v-if="ticket.reopen_requested" class="text-xs text-amber-600 mt-1">
-            Solicitud de reapertura enviada — esperando respuesta del abogado.
-          </p>
-        </div>
 
-        <div class="flex gap-2 flex-wrap">
-          <button
-            v-if="puedeEditar && !editando"
-            class="text-sm border px-3 py-1 rounded"
-            @click="editando = true"
-          >
-            Editar
-          </button>
-          <button
-            v-if="puedeReabrir"
-            class="text-sm border px-3 py-1 rounded"
-            :disabled="loading"
-            @click="solicitarReapertura"
-          >
-            Solicitar reapertura
-          </button>
-        </div>
-      </div>
-
-      <div v-if="editando" class="border rounded p-4 mb-6 bg-gray-50">
-        <h2 class="font-medium mb-3">Editar ticket</h2>
-        <div class="grid gap-3">
-          <input
-            v-model="editTitulo"
-            class="border rounded px-3 py-2 w-full"
-            placeholder="Título *"
-          />
-          <textarea
-            v-model="editDescripcion"
-            class="border rounded px-3 py-2 w-full"
-            placeholder="Descripción"
-            rows="4"
-          />
-          <div class="flex gap-2">
-            <button
-              class="bg-green-600 text-white px-4 py-2 rounded text-sm"
-              :disabled="loading"
-              @click="guardarEdicion"
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-if="puedeEditar && !editando"
+              color="neutral"
+              variant="outline"
+              @click="editando = true"
             >
-              Guardar
-            </button>
-            <button class="border px-4 py-2 rounded text-sm" @click="editando = false">
-              Cancelar
-            </button>
+              Editar
+            </UButton>
+            <UButton
+              v-if="puedeReabrir"
+              color="warning"
+              variant="outline"
+              :disabled="loading"
+              @click="solicitarReapertura"
+            >
+              Solicitar reapertura
+            </UButton>
           </div>
         </div>
-      </div>
+        <UAlert
+          v-if="ticket.reopen_requested"
+          color="warning"
+          variant="soft"
+          title="Solicitud de reapertura enviada"
+          description="Estamos esperando la respuesta del abogado asignado."
+          class="mt-4"
+        />
+      </UCard>
 
-      <div v-else class="mb-6">
-        <p v-if="ticket.description" class="text-gray-700">{{ ticket.description }}</p>
-        <p v-else class="text-gray-400 italic text-sm">Sin descripción.</p>
-      </div>
+      <UCard v-if="editando">
+        <template #header>
+          <div>
+            <h2 class="font-semibold text-highlighted">Editar ticket</h2>
+            <p class="mt-1 text-sm text-muted">Podés ajustar el título y la descripción mientras el ticket esté abierto.</p>
+          </div>
+        </template>
+        <div class="grid gap-4">
+          <UFormField label="Título" required>
+            <UInput
+              v-model="editTitulo"
+              placeholder="Título *"
+            />
+          </UFormField>
+          <UFormField label="Descripción">
+            <UTextarea
+              v-model="editDescripcion"
+              placeholder="Descripción"
+              :rows="4"
+            />
+          </UFormField>
+          <div class="flex flex-wrap gap-2">
+            <UButton :loading="loading" @click="guardarEdicion">
+              Guardar
+            </UButton>
+            <UButton color="neutral" variant="ghost" @click="editando = false">
+              Cancelar
+            </UButton>
+          </div>
+        </div>
+      </UCard>
 
-      <!-- Generación de documentos legales -->
-<div class="mb-6">
-  <div class="flex items-center justify-between mb-3">
-    <h2 class="font-medium">Documento legal</h2>
-  </div>
+      <UCard v-else>
+        <p v-if="ticket.description" class="text-sm text-muted">{{ ticket.description }}</p>
+        <p v-else class="text-sm italic text-toned">Sin descripción.</p>
+      </UCard>
 
- <div v-if="documentos.length" class="grid gap-2 mb-3">
-  <div v-for="d in documentos" :key="d.id" class="border rounded px-3 py-2 text-sm">
-    <div class="flex justify-between items-center">
-      <span class="text-gray-700">{{ d.document_templates?.title ?? 'Documento generado' }}</span>
-      <span class="text-xs px-2 py-0.5 rounded-full"
-        :class="{
-          'bg-yellow-100 text-yellow-800': d.status === 'submitted',
-          'bg-green-100 text-green-800': d.status === 'approved',
-          'bg-red-100 text-red-800': d.status === 'rejected',
-          'bg-gray-100 text-gray-600': d.status === 'draft'
-        }">
-        {{ d.status === 'submitted' ? 'En revisión' : d.status === 'approved' ? 'Aprobado' : d.status === 'rejected' ? 'Rechazado' : 'Borrador' }}
-      </span>
-    </div>
-    <button
-      v-if="d.status === 'approved'"
-      class="text-xs text-green-600 hover:underline mt-2"
-      @click="descargarDocumento(d)"
-    >
-      Descargar documento
-    </button>
-  </div>
-</div>
+      <UCard>
+        <template #header>
+          <div>
+            <h2 class="font-semibold text-highlighted">Documento legal</h2>
+            <p class="mt-1 text-sm text-muted">Estado de los documentos generados para este caso.</p>
+          </div>
+        </template>
 
-  <p v-else class="text-sm text-gray-400">
-    Los datos del documento ya se completan al crear el ticket. Cuando el abogado lo revise, aparecerá aquí.
-  </p>
-</div>
-      <div class="mb-6">
-        <h2 class="font-medium mb-3">Documentos adjuntos</h2>
+        <div v-if="documentos.length" class="grid gap-3">
+          <UCard v-for="d in documentos" :key="d.id">
+            <div class="flex justify-between items-center gap-3">
+              <span class="text-sm text-highlighted">{{ d.document_templates?.title ?? 'Documento generado' }}</span>
+              <UBadge :color="colorEstadoDocumento[d.status] ?? 'neutral'" variant="subtle">
+                {{ etiquetaEstadoDocumento[d.status] ?? 'Borrador' }}
+              </UBadge>
+            </div>
+            <UButton
+              v-if="d.status === 'approved'"
+              size="sm"
+              class="mt-3"
+              @click="descargarDocumento(d)"
+            >
+              Descargar documento
+            </UButton>
+          </UCard>
+        </div>
+        <p v-else class="text-sm text-muted">
+          Los datos del documento ya se completan al crear el ticket. Cuando el abogado lo revise, aparecerá aquí.
+        </p>
+      </UCard>
 
-        <div v-if="adjuntos.length" class="grid gap-2 mb-3">
-          <div
+      <UCard>
+        <template #header>
+          <div>
+            <h2 class="font-semibold text-highlighted">Documentos adjuntos</h2>
+            <p class="mt-1 text-sm text-muted">Archivos de soporte del trámite.</p>
+          </div>
+        </template>
+
+        <div v-if="adjuntos.length" class="grid gap-2">
+          <UCard
             v-for="a in adjuntos"
             :key="a.id"
-            class="flex items-center justify-between border rounded px-3 py-2 text-sm"
+            :ui="{ body: 'flex items-center justify-between gap-3 px-4 py-3 text-sm' }"
           >
-            <span class="text-gray-700 truncate">{{ a.name }}</span>
-            <a
+            <span class="truncate text-muted">{{ a.name }}</span>
+            <UButton
               :href="a.url"
               target="_blank"
-              class="text-green-600 hover:underline ml-4 shrink-0"
+              size="sm"
+              color="neutral"
+              variant="outline"
             >
               Descargar
-            </a>
-          </div>
+            </UButton>
+          </UCard>
         </div>
-        <p v-else class="text-sm text-gray-400 mb-3">No hay archivos adjuntos.</p>
+        <p v-else class="text-sm text-muted">No hay archivos adjuntos.</p>
 
-        <label class="flex items-center gap-2 cursor-pointer w-fit">
-          <span class="border px-3 py-1 rounded text-sm">Adjuntar archivo</span>
-          <input
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png"
-            class="hidden"
-            :disabled="loading"
-            @change="subirArchivo"
-          />
-        </label>
-        <p class="text-xs text-gray-400 mt-1">PDF, JPG o PNG. Máximo 10MB.</p>
-      </div>
+        <div class="mt-4">
+          <label class="inline-flex cursor-pointer items-center gap-2">
+            <UButton as="span" color="neutral" variant="outline">
+              Adjuntar archivo
+            </UButton>
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              class="hidden"
+              :disabled="loading"
+              @change="subirArchivo"
+            >
+          </label>
+          <p class="mt-2 text-xs text-toned">PDF, JPG o PNG. Máximo 10MB.</p>
+        </div>
+      </UCard>
 
-      <div class="mt-6">
-        <h2 class="font-medium mb-3">Comentarios</h2>
+      <UCard>
+        <template #header>
+          <div>
+            <h2 class="font-semibold text-highlighted">Comentarios</h2>
+            <p class="mt-1 text-sm text-muted">Conversación del trámite y notas internas cuando correspondan.</p>
+          </div>
+        </template>
 
-        <div v-if="comentarios.length" class="grid gap-3 mb-4">
-          <div
+        <div v-if="comentarios.length" class="mb-4 grid gap-3">
+          <UCard
             v-for="c in comentarios"
             :key="c.id"
-            class="border rounded px-3 py-2 text-sm"
-            :class="c.is_internal ? 'bg-amber-50 border-amber-200' : 'bg-white'"
+            :variant="c.is_internal ? 'soft' : 'outline'"
           >
-            <p class="text-gray-700">{{ c.content }}</p>
-            <div class="flex gap-2 mt-1 items-center">
-              <span v-if="c.is_internal" class="text-xs text-amber-600">Interno</span>
-              <span class="text-xs text-gray-500">
-                {{ c.author_name || 'Usuario' }}
-              </span>
-              <span class="text-xs text-gray-400">
-                {{ new Date(c.created_at).toLocaleString('es-CR') }}
-              </span>
+            <p class="text-sm text-muted">{{ c.content }}</p>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <UBadge v-if="c.is_internal" color="warning" variant="subtle">Interno</UBadge>
+              <span class="text-xs text-muted">{{ c.author_name || 'Usuario' }}</span>
+              <span class="text-xs text-toned">{{ new Date(c.created_at).toLocaleString('es-CR') }}</span>
             </div>
-          </div>
+          </UCard>
         </div>
-        <p v-else class="text-sm text-gray-400 mb-4">Sin comentarios.</p>
+        <p v-else class="mb-4 text-sm text-muted">Sin comentarios.</p>
 
-        <div class="grid gap-2">
-          <textarea
-            v-model="nuevoComentario"
-            class="border rounded px-3 py-2 w-full text-sm"
-            placeholder="Escribir comentario..."
-            rows="3"
-          />
-          <div class="flex items-center justify-between flex-wrap gap-2">
-            <label v-if="esAdmin || profile?.role === 'abogado'" class="flex items-center gap-2 text-sm">
-              <input v-model="comentarioInterno" type="checkbox" />
-              Solo interno (no visible al cliente)
-            </label>
-            <button
-              class="bg-green-600 text-white px-4 py-2 rounded text-sm w-fit"
+        <div class="grid gap-3">
+          <UFormField label="Nuevo comentario">
+            <UTextarea
+              v-model="nuevoComentario"
+              placeholder="Escribir comentario..."
+              :rows="3"
+            />
+          </UFormField>
+          <div class="flex items-center justify-between flex-wrap gap-3">
+            <UCheckbox
+              v-if="esAdmin || profile?.role === 'abogado'"
+              v-model="comentarioInterno"
+              label="Solo interno (no visible al cliente)"
+            />
+            <UButton
               :disabled="loadingComentario || !nuevoComentario.trim()"
+              :loading="loadingComentario"
               @click="agregarComentario"
             >
               Agregar
-            </button>
+            </UButton>
           </div>
         </div>
-      </div>
+      </UCard>
 
-      <div v-if="historial.length" class="mt-6">
-        <h2 class="font-medium mb-3">Historial</h2>
-        <div class="border-l-2 border-gray-200 pl-4 grid gap-4">
+      <UCard v-if="historial.length">
+        <template #header>
+          <div>
+            <h2 class="font-semibold text-highlighted">Historial</h2>
+            <p class="mt-1 text-sm text-muted">Cambios de estado y notas registradas en el caso.</p>
+          </div>
+        </template>
+        <div class="border-l-2 border-default pl-4 grid gap-4">
           <div v-for="h in historial" :key="h.id">
-            <p class="text-sm text-gray-700">
+            <p class="text-sm text-muted">
               <span v-if="h.old_status">
                 {{ etiquetaEstado[h.old_status] ?? h.old_status }} →
               </span>
               <strong>{{ etiquetaEstado[h.new_status] ?? h.new_status }}</strong>
             </p>
-            <p v-if="h.notes" class="text-sm text-gray-500">{{ h.notes }}</p>
-            <p class="text-xs text-gray-400">
+            <p v-if="h.notes" class="text-sm text-muted">{{ h.notes }}</p>
+            <p class="text-xs text-toned">
               {{ new Date(h.created_at).toLocaleString('es-CR') }}
             </p>
           </div>
         </div>
-      </div>
+      </UCard>
     </div>
   </div>
 </template>

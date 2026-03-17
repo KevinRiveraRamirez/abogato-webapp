@@ -26,49 +26,53 @@ const submitReview = () => {
     />
 
     <template #content>
-      <UContainer class="max-w-2xl mx-auto p-4">
-        <h2 class="text-xl font-semibold">Añadir reseña</h2>
-        <p class="text-gray-600 text-sm mb-5">
-          Deja tu reseña sobre el producto.
-        </p>
-        <form class="grid grid-cols-1 gap-4 mb-5">
-          <input type="hidden" v-model="rating" />
+      <UCard :ui="{ body: 'grid gap-5 p-6' }">
+        <div>
+          <h2 class="text-xl font-semibold text-highlighted">Añadir reseña</h2>
+          <p class="mt-1 text-sm text-muted">
+            Deja tu reseña sobre el producto.
+          </p>
+        </div>
 
-          <!-- Stars -->
-          <div class="col-span-1">
-            <div class="flex items-center gap-2">
-              <UIcon
-                name="i-lucide-star"
-                class="text-gray-600 text-xl cursor-pointer"
-                :class="{ 'text-yellow-500': rating >= star }"
-                v-for="star in 5"
-                :key="star"
-                @click="rating = star"
-              />
-            </div>
-          </div>
-
-          <div class="col-span-1">
-            <UTextarea
-              v-model="reviewText"
-              placeholder="Escribe tu reseña"
-              class="w-full"
-              :rows="6"
+        <div class="flex items-center gap-2">
+          <UButton
+            v-for="star in 5"
+            :key="star"
+            color="neutral"
+            variant="ghost"
+            size="xl"
+            square
+            :aria-label="`Seleccionar ${star} estrellas`"
+            @click="rating = star"
+          >
+            <UIcon
+              name="i-lucide-star"
+              class="text-xl"
+              :class="rating >= star ? 'text-amber-500' : 'text-muted'"
             />
-          </div>
+          </UButton>
+        </div>
 
-          <div class="flex flex-1 items-end">
-            <UButton
-              color="primary"
-              variant="solid"
-              block
-              label="Enviar reseña"
-              :disabled="!reviewText || rating === 0"
-              @click="submitReview"
-            />
+        <UFormField label="Comentario" required>
+          <UTextarea
+            v-model="reviewText"
+            placeholder="Escribe tu reseña"
+            class="w-full"
+            :rows="6"
+          />
+        </UFormField>
+
+        <div class="flex flex-1 items-end">
+          <UButton
+            color="primary"
+            variant="solid"
+            block
+            label="Enviar reseña"
+            :disabled="!reviewText || rating === 0"
+            @click="submitReview"
+          />
           </div>
-        </form>
-      </UContainer>
+      </UCard>
     </template>
   </UModal>
 </template>

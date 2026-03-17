@@ -1,51 +1,17 @@
 <template>
-  <nav>
-    <ul>
-      <li>
-        <NuxtLink to="/"> Home </NuxtLink>
-      </li>
-      <li>
-        <NuxtLink :to="{ path: 'about' }"> about </NuxtLink>
-      </li>
-      <li>
-        <NuxtLink to="/pricing"> Pricing </NuxtLink>
-      </li>
-      <li>
-        <NuxtLink to="/contact"> products </NuxtLink>
-      </li>
-      <li>
-        <NuxtLink to="/dashboard"> Dash </NuxtLink>
-      </li>
-    </ul>
-  </nav>
+  <UNavigationMenu :items="items" highlight />
 </template>
-<style scoper>
-nav {
-  padding: 20px;
-  background-color: rgba(0, 220, 130, 0.1);
-  margin-bottom: 20px;
-}
 
-ul {
-  list-style: none;
-  display: flex;
-  gap: 20px;
-  padding: 0;
-  margin: 0;
-}
+<script setup lang="ts">
+import type { NavigationMenuItem } from '#ui/types'
 
-a {
-  color: #00dc82;
-  text-decoration: none;
-  font-weight: 500;
-  transition: opacity 0.3s;
-}
+const route = useRoute()
 
-a:hover {
-  opacity: 0.7;
-}
-
-a.router-link-active {
-  text-decoration: underline;
-}
-</style>
+const items = computed<NavigationMenuItem[]>(() => [
+  { label: 'Inicio', to: '/', active: route.path === '/' },
+  { label: 'Servicios', to: '/servicios/servicios', active: route.path.startsWith('/servicios') },
+  { label: 'Sobre nosotros', to: '/about/about', active: route.path.startsWith('/about') },
+  { label: 'Contacto', to: '/contact/contact', active: route.path.startsWith('/contact') },
+  { label: 'Dashboard', to: '/dashboard', active: route.path.startsWith('/dashboard') },
+])
+</script>

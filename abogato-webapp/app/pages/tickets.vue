@@ -297,6 +297,19 @@ const plantillaSeleccionada = computed(() =>
   plantillas.value.find(p => p.id === tramiteSeleccionadoId.value) ?? null
 )
 
+const opcionesTramite = computed(() =>
+  plantillas.value.map((p) => ({
+    label: `${servicios.value.find((s) => s.id === p.servicio_id)?.nombre ?? 'Trámite'} - ${p.title}`,
+    value: p.id,
+  }))
+)
+
+const opcionesPrioridad = [
+  { label: 'Baja', value: 'low' },
+  { label: 'Normal', value: 'normal' },
+  { label: 'Alta', value: 'high' },
+] as const
+
 const camposFormulario = computed(() => plantillaSeleccionada.value?.fields ?? [])
 
 const resumenTramiteSeleccionado = computed(() => {
@@ -421,13 +434,21 @@ const etiquetaPrioridad: Record<string, string> = {
   high: 'Alta'
 }
 
-const claseEstado: Record<string, string> = {
-  open: 'bg-yellow-100 text-yellow-800',
-  in_progress: 'bg-blue-100 text-blue-800',
-  resolved: 'bg-green-100 text-green-800',
-  closed: 'bg-gray-100 text-gray-600',
-  cancelled: 'bg-red-100 text-red-700'
+const colorEstado: Record<string, 'warning' | 'info' | 'success' | 'neutral' | 'error'> = {
+  open: 'warning',
+  in_progress: 'info',
+  resolved: 'success',
+  closed: 'neutral',
+  cancelled: 'error'
 }
+
+const colorPrioridad: Record<Ticket['priority'], 'neutral' | 'warning' | 'error'> = {
+  low: 'neutral',
+  normal: 'warning',
+  high: 'error'
+}
+
+const filtrosEstado = ['todos', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
 
 const ticketsFiltrados = computed(() => {
   if (filtroEstado.value === 'todos') return tickets.value
@@ -604,230 +625,221 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto py-8 px-4">
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-semibold">Mis tickets</h1>
-      <button
-        class="bg-green-600 text-white px-4 py-2 rounded text-sm"
-        @click="mostrarFormulario ? cerrarFormularioNuevoTicket() : abrirFormularioNuevoTicket()"
-      >
+  <div class="mx-auto max-w-5xl">
+    <div class="mb-6 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-semibold text-highlighted">Mis tickets</h1>
+        <p class="mt-1 text-sm text-muted">
+          Creá solicitudes, adjuntá documentos y seguí el estado de cada trámite.
+        </p>
+      </div>
+      <UButton @click="mostrarFormulario ? cerrarFormularioNuevoTicket() : abrirFormularioNuevoTicket()">
         {{ mostrarFormulario ? 'Cancelar' : 'Nuevo ticket' }}
-      </button>
+      </UButton>
     </div>
 
-    <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
-      {{ errorMsg }}
-    </div>
-    <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded mb-4 text-sm">
-      {{ successMsg }}
-    </div>
-    <div
+    <UAlert
+      v-if="errorMsg"
+      color="error"
+      variant="soft"
+      title="No se pudo completar la acción"
+      :description="errorMsg"
+      class="mb-4"
+    />
+
+    <UAlert
+      v-if="successMsg"
+      color="success"
+      variant="soft"
+      title="Operación exitosa"
+      :description="successMsg"
+      class="mb-4"
+    />
+
+    <UCard
       v-if="successMsg && ticketRecienCreadoId"
-      class="bg-blue-50 text-blue-700 p-3 rounded mb-4 text-sm flex items-center justify-between gap-3 flex-wrap"
-      >
-      <span>Ya podés completar el traspaso de propiedad para este ticket.</span>
-      <NuxtLink
-        :to="`/traspaso-carro/${ticketRecienCreadoId}`"
-        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm"
-      >
-        Ir a traspaso de carro
-       </NuxtLink>
-    </div>
-    <div v-if="mostrarFormulario" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm p-6 mb-6">
-      <h2 class="text-lg font-semibold mb-1">Nuevo ticket</h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
-        Seleccioná el tipo de trámite, completá los datos necesarios y agregá cualquier contexto extra o archivos de respaldo.
-      </p>
+      class="mb-4"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-sm text-muted">El ticket quedó creado. Si necesitás cargar datos del vehículo, continuá desde la página de traspasos.</p>
+        <UButton :to="`/traspaso-carro?ticket=${ticketRecienCreadoId}`">
+          Ir a traspasos
+        </UButton>
+      </div>
+    </UCard>
 
-      <div class="grid gap-4">
-        <div class="grid gap-1">
-          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Tipo de trámite <span class="text-red-500">*</span></label>
-          <select
-            v-model="tramiteSeleccionadoId"
-            class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 w-full bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-          >
-            <option value="">Seleccioná un trámite</option>
-            <option v-for="p in plantillas" :key="p.id" :value="p.id">
-              {{ servicios.find(s => s.id === p.servicio_id)?.nombre ?? 'Trámite' }} - {{ p.title }}
-            </option>
-          </select>
-        </div>
-
-        <div v-if="plantillaSeleccionada" class="rounded-xl border border-green-100 bg-green-50/80 dark:border-green-900 dark:bg-green-950/30 p-4">
-          <p class="text-sm font-medium text-green-800 dark:text-green-200">Trámite seleccionado</p>
-          <p class="text-sm text-green-700 dark:text-green-300 mt-1">{{ resumenTramiteSeleccionado }}</p>
-          <p class="text-xs text-green-700/80 dark:text-green-400 mt-2">
-            Completá todos los campos marcados con asterisco para generar correctamente la solicitud inicial.
+    <UCard v-if="mostrarFormulario" class="mb-6">
+      <template #header>
+        <div>
+          <h2 class="text-lg font-semibold text-highlighted">Nuevo ticket</h2>
+          <p class="mt-1 text-sm text-muted">
+            Seleccioná el tipo de trámite, completá los datos necesarios y agregá contexto o archivos de respaldo.
           </p>
         </div>
+      </template>
 
-        <div v-if="camposFormulario.length" class="grid gap-4">
-          <div v-for="field in camposOrdenados" :key="field.key" class="grid gap-1">
-            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ field.label }} <span class="text-red-500">*</span>
-            </label>
-            <input
+      <div class="grid gap-4">
+        <UFormField label="Tipo de trámite" required>
+          <USelect
+            v-model="tramiteSeleccionadoId"
+            placeholder="Seleccioná un trámite"
+            value-key="value"
+            :items="opcionesTramite"
+          />
+        </UFormField>
+
+        <UAlert
+          v-if="plantillaSeleccionada"
+          color="success"
+          variant="soft"
+          title="Trámite seleccionado"
+          :description="resumenTramiteSeleccionado"
+        />
+
+        <div v-if="camposFormulario.length" class="grid gap-4 md:grid-cols-2">
+          <UFormField
+            v-for="field in camposOrdenados"
+            :key="field.key"
+            :label="field.label"
+            required
+            :help="esCampoCedula(field) ? padronMensajes[field.key] : undefined"
+          >
+            <UInput
               v-model="fieldValues[field.key]"
               :type="field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'"
-              class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 w-full bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               :placeholder="`Ingresá ${field.label.toLowerCase()}`"
             />
-            <p
-              v-if="esCampoCedula(field) && padronMensajes[field.key]"
-              class="text-xs"
-              :class="padronMensajes[field.key].startsWith('Datos encontrados') ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'"
-            >
-              {{ padronMensajes[field.key] }}
-            </p>
-          </div>
+          </UFormField>
         </div>
 
-        <div v-if="tramiteSeleccionadoId && !camposFormulario.length" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Este trámite no tiene campos configurados aún. Igual podés agregar una descripción y adjuntos.
-        </div>
+        <UAlert
+          v-if="tramiteSeleccionadoId && !camposFormulario.length"
+          color="warning"
+          variant="soft"
+          title="Plantilla sin campos"
+          description="Este trámite no tiene campos configurados aún. Igual podés agregar una descripción y adjuntos."
+        />
 
-        <div class="grid gap-1">
-          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Descripción adicional</label>
-          <textarea
+        <UFormField label="Descripción adicional">
+          <UTextarea
             v-model="nuevaDescripcion"
-            class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 w-full bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             placeholder="Agregá contexto, dudas o instrucciones para el abogado"
-            rows="4"
+            :rows="4"
           />
-        </div>
+        </UFormField>
 
-        <div class="grid gap-1">
-          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Adjuntar archivos
-          </label>
-
+        <UFormField
+          label="Adjuntar archivos"
+          help="Podés adjuntar varios archivos. Formatos permitidos: PDF, JPG, PNG, DOC, DOCX, XLS y XLSX. Máximo 10MB por archivo."
+        >
           <input
             type="file"
             multiple
-            class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 w-full bg-white dark:bg-gray-800 text-sm"
+            class="block w-full rounded-xl border border-default bg-default px-4 py-3 text-sm"
             @change="seleccionarArchivo"
-          />
-
-          <p class="text-xs text-gray-500 dark:text-gray-400">
-            Podés adjuntar varios archivos. Formatos permitidos: PDF, JPG, PNG, DOC, DOCX, XLS y XLSX. Máximo 10MB por archivo.
-          </p>
-
-          <ul v-if="archivosAdjuntos.length" class="grid gap-1 text-xs text-green-700 dark:text-green-300">
-            <li v-for="archivo in archivosAdjuntos" :key="`${archivo.name}-${archivo.size}`">
-              Archivo seleccionado: {{ archivo.name }}
-            </li>
-          </ul>
-        </div>
-
-        <div class="flex gap-4 flex-wrap">
-          <div class="grid gap-1">
-            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Prioridad</label>
-            <select v-model="nuevaPrioridad" class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-sm">
-              <option value="low">Baja</option>
-              <option value="normal">Normal</option>
-              <option value="high">Alta</option>
-            </select>
-          </div>
-          <!--
-          <div class="grid gap-1">
-            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Abogado</label>
-            <select v-model="nuevoAbogado" class="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-sm">
-              <option value="">Asignar automáticamente</option>
-              <option v-for="a in abogados" :key="a.user_id" :value="a.user_id">
-                {{ a.display_name ?? 'Abogado' }}
-              </option>
-            </select>
-          </div>
-          -->
-        </div>
-
-        <div class="flex gap-2 pt-1">
-          <button
-            class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"
-            :disabled="loading"
-            @click="crearTicket"
           >
+        </UFormField>
+
+        <div v-if="archivosAdjuntos.length" class="grid gap-2">
+          <UBadge
+            v-for="archivo in archivosAdjuntos"
+            :key="`${archivo.name}-${archivo.size}`"
+            color="success"
+            variant="subtle"
+            class="w-fit"
+          >
+            {{ archivo.name }}
+          </UBadge>
+        </div>
+
+        <div class="grid gap-4 sm:max-w-xs">
+          <UFormField label="Prioridad">
+            <USelect
+              v-model="nuevaPrioridad"
+              value-key="value"
+              :items="opcionesPrioridad"
+            />
+          </UFormField>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+          <UButton :loading="loading" @click="crearTicket">
             {{ loading ? 'Creando...' : 'Crear ticket' }}
-          </button>
-          <button
-            class="border border-gray-300 dark:border-gray-600 px-5 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            @click="cerrarFormularioNuevoTicket()"
-          >
+          </UButton>
+          <UButton color="neutral" variant="ghost" @click="cerrarFormularioNuevoTicket()">
             Cancelar
-          </button>
+          </UButton>
         </div>
       </div>
-    </div>
+    </UCard>
 
-    <div class="flex gap-2 flex-wrap mb-4">
-      <button
-        v-for="f in ['todos', 'open', 'in_progress', 'resolved', 'closed', 'cancelled']"
+    <div class="mb-4 flex flex-wrap gap-2">
+      <UButton
+        v-for="f in filtrosEstado"
         :key="f"
-        class="px-3 py-1 rounded border text-sm"
-        :class="filtroEstado === f ? 'bg-green-600 text-white border-green-600' : 'border-gray-300'"
+        size="sm"
+        :color="filtroEstado === f ? 'primary' : 'neutral'"
+        :variant="filtroEstado === f ? 'solid' : 'outline'"
         @click="filtroEstado = f"
       >
         {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
-      </button>
+      </UButton>
     </div>
 
-    <p v-if="loading" class="text-gray-500 text-sm">Cargando...</p>
+    <UCard v-if="loading">
+      <p class="text-sm text-muted">Cargando...</p>
+    </UCard>
 
-    <div v-else-if="ticketsFiltrados.length === 0" class="text-center py-10 text-gray-400">
-      <p>No hay tickets{{ filtroEstado !== 'todos' ? ' con ese estado' : '' }}.</p>
-    </div>
+    <UCard v-else-if="ticketsFiltrados.length === 0">
+      <p class="text-sm text-muted">No hay tickets{{ filtroEstado !== 'todos' ? ' con ese estado' : '' }}.</p>
+    </UCard>
 
     <div v-else class="grid gap-3">
-      <div
+      <UCard
         v-for="t in ticketsFiltrados"
         :key="t.id"
-        class="border rounded p-4 hover:shadow-sm transition-shadow"
       >
         <div class="flex justify-between items-start gap-2 flex-wrap">
           <div>
-            <NuxtLink :to="`/ticket/${t.id}`" class="font-medium hover:underline">
+            <NuxtLink :to="`/ticket/${t.id}`" class="font-medium text-highlighted hover:text-primary">
               {{ t.title }}
             </NuxtLink>
-            <div class="flex gap-2 mt-1 flex-wrap items-center">
-              <span class="text-xs px-2 py-0.5 rounded-full" :class="claseEstado[t.status]">
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <UBadge :color="colorEstado[t.status]" variant="subtle">
                 {{ etiquetaEstado[t.status] }}
-              </span>
-              <span class="text-xs text-gray-500">
+              </UBadge>
+              <UBadge :color="colorPrioridad[t.priority]" variant="outline">
                 Prioridad: {{ etiquetaPrioridad[t.priority] }}
-              </span>
+              </UBadge>
             </div>
-            <p class="text-xs text-gray-400 mt-1">
+            <p class="mt-1 text-xs text-toned">
               {{ new Date(t.created_at).toLocaleDateString('es-CR') }}
             </p>
           </div>
 
-          <button
+          <UButton
             v-if="t.status === 'open'"
-            class="text-sm text-red-500 hover:underline"
+            color="error"
+            variant="ghost"
             :disabled="loading"
             @click="cancelarTicket(t.id)"
           >
             Cancelar ticket
-          </button>
+          </UButton>
         </div>
 
-        <p v-if="t.description" class="text-sm text-gray-600 mt-2">{{ t.description }}</p>
-        <div class="mt-3 flex gap-2 flex-wrap">
-        <NuxtLink
-          :to="`/ticket/${t.id}`"
-          class="border border-gray-300 dark:border-gray-600 px-3 py-1.5 rounded text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-        >
-          Ver ticket
-        </NuxtLink>
+        <p v-if="t.description" class="mt-3 text-sm text-muted">{{ t.description }}</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <UButton
+            :to="`/ticket/${t.id}`"
+            color="neutral"
+            variant="outline"
+          >
+            Ver ticket
+          </UButton>
 
-        <NuxtLink
-          :to="`/traspaso-carro/${t.id}`"
-          class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm transition-colors"
-        >
-          Traspaso de carro
-        </NuxtLink>
-      </div>
-      </div>
+        </div>
+      </UCard>
     </div>
   </div>
 </template>

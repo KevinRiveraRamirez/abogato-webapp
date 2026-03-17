@@ -1,47 +1,49 @@
 <template>
-  <footer class="border-t border-gray-200 dark:border-gray-800 mt-16">
-    <div class="max-w-6xl mx-auto px-4 py-12">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
-        <div class="md:col-span-1 space-y-3">
+  <footer class="mt-16 border-t border-default/60 bg-default/70 backdrop-blur">
+    <UContainer class="py-12">
+      <div class="grid grid-cols-1 gap-8 md:grid-cols-4">
+        <div class="space-y-3 md:col-span-1">
           <IconsLogo />
-          <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+          <p class="text-sm leading-relaxed text-muted">
             Soluciones legales accesibles, rápidas y transparentes para personas y empresas.
           </p>
         </div>
 
         <div class="space-y-3">
-          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Servicios</h4>
-          <ul class="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-            <li><NuxtLink to="/servicios/servicios" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Traspaso de bienes</NuxtLink></li>
-            <li><NuxtLink to="/servicios/servicios" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Trámites notariales</NuxtLink></li>
-            <li><NuxtLink to="/servicios/servicios" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Asesoría jurídica</NuxtLink></li>
-            <li><NuxtLink to="/servicios/servicios" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Derecho familiar</NuxtLink></li>
-          </ul>
+          <h4 class="text-sm font-semibold text-highlighted">Servicios</h4>
+          <div class="grid gap-2 text-sm text-muted">
+            <NuxtLink to="/servicios/servicios" class="hover:text-primary">Traspaso de bienes</NuxtLink>
+            <NuxtLink to="/servicios/servicios" class="hover:text-primary">Trámites notariales</NuxtLink>
+            <NuxtLink to="/servicios/servicios" class="hover:text-primary">Asesoría jurídica</NuxtLink>
+            <NuxtLink to="/servicios/servicios" class="hover:text-primary">Derecho familiar</NuxtLink>
+          </div>
         </div>
 
         <div class="space-y-3">
-          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Empresa</h4>
-          <ul class="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-            <li><NuxtLink to="/about/about" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Sobre nosotros</NuxtLink></li>
-            <li><NuxtLink to="/recurso/recursos" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Recursos legales</NuxtLink></li>
-            <li><NuxtLink to="/contact/contact" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Contacto</NuxtLink></li>
-          </ul>
+          <h4 class="text-sm font-semibold text-highlighted">Empresa</h4>
+          <div class="grid gap-2 text-sm text-muted">
+            <NuxtLink to="/about/about" class="hover:text-primary">Sobre nosotros</NuxtLink>
+            <NuxtLink to="/recurso/recursos" class="hover:text-primary">Recursos legales</NuxtLink>
+            <NuxtLink to="/contact/contact" class="hover:text-primary">Contacto</NuxtLink>
+          </div>
         </div>
 
         <div class="space-y-3">
-          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Cuenta</h4>
-          <ul class="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-            <li><NuxtLink to="/login" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Iniciar sesión</NuxtLink></li>
-            <li><NuxtLink to="/signup" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Crear cuenta</NuxtLink></li>
-            <li><NuxtLink to="/tickets" class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Mis trámites</NuxtLink></li>
-          </ul>
+          <h4 class="text-sm font-semibold text-highlighted">Cuenta</h4>
+          <div class="grid gap-2 text-sm text-muted">
+            <NuxtLink to="/login" class="hover:text-primary">Iniciar sesión</NuxtLink>
+            <NuxtLink to="/signup" class="hover:text-primary">Crear cuenta</NuxtLink>
+            <NuxtLink to="/tickets" class="hover:text-primary">Mis trámites</NuxtLink>
+          </div>
         </div>
       </div>
 
-      <div class="mt-10 pt-6 border-t border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-400 dark:text-gray-500">
+      <USeparator class="my-8" />
+
+      <div class="flex flex-col items-center justify-between gap-4 text-sm text-toned sm:flex-row">
         <p>© {{ new Date().getFullYear() }} Abogato. Todos los derechos reservados.</p>
         <p>Plataforma de gestión legal digital</p>
       </div>
-    </div>
+    </UContainer>
   </footer>
 </template>

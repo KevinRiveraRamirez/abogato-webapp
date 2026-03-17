@@ -1,27 +1,44 @@
 <template>
-  <UHeader>
+  <UHeader
+    mode="drawer"
+    toggle-side="right"
+    class="border-b border-default/60 bg-default/80 backdrop-blur-xl"
+  >
     <template #title>
       <IconsLogo />
     </template>
 
-    <UNavigationMenu :items="items" />
+    <UNavigationMenu :items="items" highlight class="hidden lg:flex" />
 
     <template #right>
-      <UColorModeButton />
+      <UColorModeButton variant="ghost" color="neutral" />
 
       <template v-if="user">
-        <UButton color="primary" variant="ghost" to="/tickets" label="Mi panel" />
+        <UButton color="neutral" variant="ghost" to="/tickets" label="Mi panel" />
         <UButton color="error" variant="soft" :loading="loading" @click="cerrarSesion" label="Cerrar sesión" />
       </template>
 
       <template v-else>
-        <UButton color="primary" variant="ghost" to="/signup" label="Registrarte" />
+        <UButton color="neutral" variant="ghost" to="/signup" label="Registrarte" />
         <UButton color="primary" variant="solid" to="/login" label="Iniciar sesión" />
       </template>
     </template>
 
     <template #body>
-      <UNavigationMenu :items="items" orientation="vertical" class="-mx-2.5" />
+      <div class="grid gap-4 px-1 py-3">
+        <UNavigationMenu :items="items" orientation="vertical" highlight class="-mx-2.5" />
+        <div class="flex items-center gap-3 border-t border-default pt-4 lg:hidden">
+          <UColorModeButton variant="ghost" color="neutral" />
+          <template v-if="user">
+            <UButton color="neutral" variant="ghost" to="/tickets" label="Mi panel" />
+            <UButton color="error" variant="soft" :loading="loading" @click="cerrarSesion" label="Cerrar sesión" />
+          </template>
+          <template v-else>
+            <UButton color="neutral" variant="ghost" to="/signup" label="Registrarte" />
+            <UButton to="/login" label="Iniciar sesión" />
+          </template>
+        </div>
+      </div>
     </template>
   </UHeader>
 </template>
@@ -45,6 +62,6 @@ const items = computed<NavigationMenuItem[]>(() => [
   { label: "Servicios", to: "/servicios/servicios", active: route.path.startsWith("/servicios") },
   { label: "Sobre Nosotros", to: "/about/about", active: route.path.startsWith("/about") },
   { label: "Contacto", to: "/contact/contact", active: route.path.startsWith("/contact") },
-  { label: "Recursos", to: "/recurso/recursos", active: route.path.startsWith("/recursos") },
+  { label: "Recursos", to: "/recurso/recursos", active: route.path.startsWith("/recurso") },
 ]);
 </script>

@@ -93,52 +93,116 @@ onMounted(async () => {
 
 <template>
   <ClientOnly fallback="Cargando...">
-    <div class="max-w-3xl mx-auto py-8 px-4">
-      <NuxtLink :to="`/ticket/${route.params.id}`" class="text-sm text-gray-500 hover:underline mb-6 inline-block">
-        ← Volver al ticket
-      </NuxtLink>
-
-      <h1 class="text-2xl font-semibold mb-2">Generar documento legal</h1>
-      <p v-if="ticket" class="text-sm text-gray-500 mb-6">Ticket: {{ ticket.title }}</p>
-      <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">{{ errorMsg }}</div>
-
-      <div v-if="paso === 'seleccionar'">
-        <h2 class="text-lg font-medium mb-4">Seleccioná el tipo de documento</h2>
-        <div v-if="plantillas.length === 0" class="text-gray-400 text-sm">No hay plantillas disponibles aún.</div>
-        <div class="grid gap-3">
-          <div v-for="p in plantillas" :key="p.id" class="border rounded-xl p-4 cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors" @click="seleccionarPlantilla(p)">
-            <p class="font-medium">{{ p.title }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ p.fields.length }} campos a completar</p>
-          </div>
+    <div class="mx-auto max-w-4xl">
+      <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-semibold text-highlighted">Generar documento legal</h1>
+          <p v-if="ticket" class="mt-1 text-sm text-muted">Ticket: {{ ticket.title }}</p>
         </div>
+        <UButton
+          :to="`/ticket/${route.params.id}`"
+          color="neutral"
+          variant="ghost"
+          leading-icon="i-lucide-arrow-left"
+        >
+          Volver al ticket
+        </UButton>
       </div>
 
-      <div v-if="paso === 'llenar'">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-medium">Completá la información</h2>
-          <button class="text-sm text-gray-500 hover:underline" @click="paso = 'seleccionar'">← Cambiar plantilla</button>
+      <UAlert
+        v-if="errorMsg"
+        color="error"
+        variant="soft"
+        title="No se pudo continuar"
+        :description="errorMsg"
+        class="mb-4"
+      />
+
+      <UCard v-if="paso === 'seleccionar'">
+        <template #header>
+          <div>
+            <h2 class="text-lg font-semibold text-highlighted">Seleccioná el tipo de documento</h2>
+            <p class="mt-1 text-sm text-muted">Elegí una plantilla para comenzar.</p>
+          </div>
+        </template>
+
+        <div v-if="plantillas.length === 0" class="text-sm text-muted">No hay plantillas disponibles aún.</div>
+        <div v-else class="grid gap-3">
+          <UCard
+            v-for="p in plantillas"
+            :key="p.id"
+            :ui="{ body: 'cursor-pointer px-5 py-4 transition-colors hover:bg-elevated/60' }"
+            @click="seleccionarPlantilla(p)"
+          >
+            <p class="font-medium text-highlighted">{{ p.title }}</p>
+            <p class="mt-1 text-sm text-muted">{{ p.fields.length }} campos a completar</p>
+          </UCard>
         </div>
-        <p class="text-sm text-gray-500 mb-4">{{ plantillaSeleccionada?.title }}</p>
+      </UCard>
+
+      <UCard v-if="paso === 'llenar'">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-semibold text-highlighted">Completá la información</h2>
+              <p class="mt-1 text-sm text-muted">{{ plantillaSeleccionada?.title }}</p>
+            </div>
+            <UButton color="neutral" variant="ghost" leading-icon="i-lucide-arrow-left" @click="paso = 'seleccionar'">
+              Cambiar plantilla
+            </UButton>
+          </div>
+        </template>
+
         <div class="grid gap-4">
-          <div v-for="f in plantillaSeleccionada?.fields" :key="f.key" class="grid gap-1">
-            <label class="text-sm font-medium">{{ f.label }} <span class="text-red-500">*</span></label>
-            <input v-model="fieldValues[f.key]" :type="f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'" class="border rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-green-500" :placeholder="`Ingresá ${f.label.toLowerCase()}`" />
-          </div>
+          <UFormField
+            v-for="f in plantillaSeleccionada?.fields"
+            :key="f.key"
+            :label="f.label"
+            required
+          >
+            <UInput
+              v-model="fieldValues[f.key]"
+              :type="f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'"
+              :placeholder="`Ingresá ${f.label.toLowerCase()}`"
+            />
+          </UFormField>
         </div>
-        <button class="mt-6 bg-green-600 text-white px-5 py-2 rounded-lg text-sm" @click="previsualizarDocumento">Previsualizar documento →</button>
-      </div>
 
-      <div v-if="paso === 'previsualizar'">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-medium">Previsualización del documento</h2>
-          <button class="text-sm text-gray-500 hover:underline" @click="paso = 'llenar'">← Editar información</button>
+        <template #footer>
+          <UButton trailing-icon="i-lucide-arrow-right" @click="previsualizarDocumento">
+            Previsualizar documento
+          </UButton>
+        </template>
+      </UCard>
+
+      <UCard v-if="paso === 'previsualizar'">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-semibold text-highlighted">Previsualización del documento</h2>
+              <p class="mt-1 text-sm text-muted">Revisá el texto antes de enviarlo al abogado.</p>
+            </div>
+            <UButton color="neutral" variant="ghost" leading-icon="i-lucide-pencil" @click="paso = 'llenar'">
+              Editar información
+            </UButton>
+          </div>
+        </template>
+
+        <div class="rounded-2xl border border-default bg-elevated/40 p-6 font-serif text-sm leading-relaxed whitespace-pre-wrap">
+          {{ documentoGenerado }}
         </div>
-        <div class="border rounded-xl p-6 bg-white dark:bg-gray-900 font-serif text-sm leading-relaxed whitespace-pre-wrap mb-6">{{ documentoGenerado }}</div>
-        <div class="flex gap-3">
-          <button class="bg-green-600 text-white px-5 py-2 rounded-lg text-sm" :disabled="loading" @click="guardarDocumento">{{ loading ? 'Enviando...' : 'Enviar al abogado' }}</button>
-          <button class="border px-5 py-2 rounded-lg text-sm text-gray-600" @click="paso = 'llenar'">Corregir información</button>
-        </div>
-      </div>
+
+        <template #footer>
+          <div class="flex flex-wrap gap-3">
+            <UButton :loading="loading" @click="guardarDocumento">
+              {{ loading ? 'Enviando...' : 'Enviar al abogado' }}
+            </UButton>
+            <UButton color="neutral" variant="outline" @click="paso = 'llenar'">
+              Corregir información
+            </UButton>
+          </div>
+        </template>
+      </UCard>
     </div>
   </ClientOnly>
 </template>

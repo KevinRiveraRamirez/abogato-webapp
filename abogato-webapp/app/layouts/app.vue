@@ -3,10 +3,12 @@ Este layout se usa para todo lo que requiera estar DESPUES de un login
 -->
 
 <template>
-  <div class="flex flex-col h-screen">
+  <div class="flex min-h-screen flex-col">
     <HeaderApp />
-    <main class="container mx-auto flex-1 mt-2">
-      <slot />
+    <main class="flex-1">
+      <UContainer class="py-6 sm:py-8">
+        <slot />
+      </UContainer>
     </main>
   </div>
 </template>
@@ -14,15 +16,3 @@ Este layout se usa para todo lo que requiera estar DESPUES de un login
 <script setup lang="ts">
 import HeaderApp from '~/components/shared/HeaderApp.vue'
 </script>
-
-
-
-<!-- <template>
-  <UApp>
-    <NuxtLayout>
-      <NuxtPage />
-    </NuxtLayout>
-  </UApp>
-</template>
-
-<style></style>  -->

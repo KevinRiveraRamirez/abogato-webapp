@@ -99,97 +99,105 @@ function splitDisplayName(displayName?: string | null) {
 </script>
 
 <template>
-  <div class="max-w-2xl mx-auto py-8 px-4">
-    <h1 class="text-2xl font-semibold mb-6">Mi perfil</h1>
-
-    <div class="border rounded p-6 grid gap-5">
-      <div class="grid sm:grid-cols-2 gap-4">
-        <div class="grid gap-1">
-          <label class="text-sm font-medium">Nombre</label>
-          <input
-            v-model="firstName"
-            class="border rounded px-3 py-2 w-full"
-            placeholder="Tu nombre"
-          />
-        </div>
-
-        <div class="grid gap-1">
-          <label class="text-sm font-medium">Apellido</label>
-          <input
-            v-model="lastName"
-            class="border rounded px-3 py-2 w-full"
-            placeholder="Tus apellidos"
-          />
-        </div>
-      </div>
-
-      <div class="grid sm:grid-cols-2 gap-4">
-        <div class="grid gap-1">
-          <label class="text-sm font-medium">Correo de contacto</label>
-          <input
-            :value="authEmail"
-            type="email"
-            class="border rounded px-3 py-2 w-full bg-gray-50 text-gray-500"
-            placeholder="correo@ejemplo.com"
-            disabled
-            readonly
-          />
-          <p class="text-xs text-gray-500">El correo se administra desde tu cuenta de acceso y no se puede editar aquí.</p>
-        </div>
-
-        <div class="grid gap-1">
-          <label class="text-sm font-medium">Teléfono de contacto</label>
-          <input
-            v-model="contactPhone"
-            type="tel"
-            class="border rounded px-3 py-2 w-full"
-            placeholder="8888-8888"
-          />
-        </div>
-      </div>
-
-      <div class="grid gap-1">
-        <label class="text-sm font-medium">Dirección personal</label>
-        <textarea
-          v-model="personalAddress"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Tu dirección exacta"
-          rows="3"
-        />
-      </div>
-
-      <div v-if="profile?.role === 'abogado' || profile?.role === 'admin'" class="grid gap-1">
-        <label class="text-sm font-medium">Dirección de oficina / notaría</label>
-        <textarea
-          v-model="officeAddress"
-          class="border rounded px-3 py-2 w-full"
-          placeholder="Dirección exacta de la oficina abierta"
-          rows="3"
-        />
-      </div>
-
-      <p class="text-xs text-gray-500">
-        El correo mostrado proviene de Supabase Auth. Este formulario solo actualiza tus datos de perfil en la app.
+  <div class="mx-auto max-w-3xl">
+    <div class="mb-6">
+      <h1 class="text-2xl font-semibold text-highlighted">Mi perfil</h1>
+      <p class="mt-1 text-sm text-muted">
+        Actualizá tus datos personales y la información visible en la plataforma.
       </p>
-
-      <div v-if="errorMsg" class="bg-red-50 text-red-700 p-3 rounded text-sm">
-        {{ errorMsg }}
-      </div>
-      <div v-if="successMsg" class="bg-green-50 text-green-700 p-3 rounded text-sm">
-        {{ successMsg }}
-      </div>
-
-      <button
-        class="bg-green-600 text-white px-4 py-2 rounded text-sm w-fit"
-        :disabled="loading"
-        @click="guardarCambios"
-      >
-        {{ loading ? 'Guardando...' : 'Guardar cambios' }}
-      </button>
-
-      <NuxtLink to="/account/security" class="text-sm text-gray-500 hover:underline">
-        Cambiar contraseña →
-      </NuxtLink>
     </div>
+
+    <UCard>
+      <div class="grid gap-5">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <UFormField label="Nombre">
+            <UInput v-model="firstName" placeholder="Tu nombre" />
+          </UFormField>
+
+          <UFormField label="Apellido">
+            <UInput v-model="lastName" placeholder="Tus apellidos" />
+          </UFormField>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <UFormField
+            label="Correo de contacto"
+            help="El correo se administra desde tu cuenta de acceso y no se puede editar aquí."
+          >
+            <UInput
+              :model-value="authEmail"
+              type="email"
+              placeholder="correo@ejemplo.com"
+              disabled
+              readonly
+            />
+          </UFormField>
+
+          <UFormField label="Teléfono de contacto">
+            <UInput
+              v-model="contactPhone"
+              type="tel"
+              placeholder="8888-8888"
+            />
+          </UFormField>
+        </div>
+
+        <UFormField label="Dirección personal">
+          <UTextarea
+            v-model="personalAddress"
+            placeholder="Tu dirección exacta"
+            :rows="3"
+          />
+        </UFormField>
+
+        <UFormField
+          v-if="profile?.role === 'abogado' || profile?.role === 'admin'"
+          label="Dirección de oficina / notaría"
+        >
+          <UTextarea
+            v-model="officeAddress"
+            placeholder="Dirección exacta de la oficina"
+            :rows="3"
+          />
+        </UFormField>
+
+        <UAlert
+          color="neutral"
+          variant="soft"
+          title="Dato importante"
+          description="El correo mostrado proviene de Supabase Auth. Este formulario solo actualiza tus datos de perfil en la app."
+        />
+
+        <UAlert
+          v-if="errorMsg"
+          color="error"
+          variant="soft"
+          title="No se pudo guardar"
+          :description="errorMsg"
+        />
+
+        <UAlert
+          v-if="successMsg"
+          color="success"
+          variant="soft"
+          title="Perfil actualizado"
+          :description="successMsg"
+        />
+
+        <div class="flex flex-wrap items-center gap-3">
+          <UButton :loading="loading" @click="guardarCambios">
+            Guardar cambios
+          </UButton>
+          <UButton
+            to="/account/security"
+            color="neutral"
+            variant="ghost"
+            trailing-icon="i-lucide-arrow-right"
+          >
+            Cambiar contraseña
+          </UButton>
+        </div>
+      </div>
+    </UCard>
   </div>
 </template>

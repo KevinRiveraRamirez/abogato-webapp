@@ -71,7 +71,7 @@ async function signUp() {
       </template>
 
       <div class="auth-body">
-        <UFormGroup label="Correo" name="email">
+        <UFormField label="Correo" name="email">
           <UInput
             v-model="email"
             type="email"
@@ -79,9 +79,9 @@ async function signUp() {
             autocomplete="email"
             size="lg"
           />
-        </UFormGroup>
+        </UFormField>
 
-        <UFormGroup label="Contraseña" name="password">
+        <UFormField label="Contraseña" name="password">
           <UInput
             v-model="password"
             :type="mostrarPassword ? 'text' : 'password'"
@@ -101,7 +101,7 @@ async function signUp() {
               </button>
             </template>
           </UInput>
-        </UFormGroup>
+        </UFormField>
 
         <UAlert
           v-if="errorMsg"
