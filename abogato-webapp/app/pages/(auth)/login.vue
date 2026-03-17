@@ -42,7 +42,12 @@ async function signIn() {
       .maybeSingle();
 
     if (!profile) {
-      await supabase.from('profiles').insert([{ user_id: userId, role: 'cliente' }]);
+      await supabase.from('profiles').insert([{
+        user_id: userId,
+        role: 'cliente',
+        contact_email: data.user?.email ?? null,
+        contact_phone: data.user?.phone ?? null
+      }]);
     }
 
     const role = profile?.role ?? 'cliente';

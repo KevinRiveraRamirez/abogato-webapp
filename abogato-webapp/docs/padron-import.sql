@@ -269,7 +269,7 @@ end;
 $$;
 
 create or replace function public.padron_deactivate_missing_electores(
-  p_import_id uuid,
+  p_source_hash text,
   p_after_cedula text default null,
   p_batch_size integer default 25000
 )
@@ -288,13 +288,9 @@ begin
   with batch as (
     select e.cedula
     from public.padron_electores e
-    where (p_after_cedula is null or e.cedula > p_after_cedula)
-      and not exists (
-        select 1
-        from public.padron_electores_staging s
-        where s.import_id = p_import_id
-          and s.cedula = e.cedula
-      )
+    where e.is_active = true
+      and e.source_hash is distinct from p_source_hash
+      and (p_after_cedula is null or e.cedula > p_after_cedula)
     order by e.cedula
     limit p_batch_size
   ),
@@ -320,7 +316,7 @@ end;
 $$;
 
 create or replace function public.padron_count_missing_electores(
-  p_import_id uuid
+  p_source_hash text
 )
 returns table (
   total_missing integer
@@ -330,12 +326,8 @@ security definer
 as $$
   select count(*)::integer as total_missing
   from public.padron_electores e
-  where not exists (
-    select 1
-    from public.padron_electores_staging s
-    where s.import_id = p_import_id
-      and s.cedula = e.cedula
-  );
+  where e.is_active = true
+    and e.source_hash is distinct from p_source_hash;
 $$;
 
 create or replace function public.padron_clear_staging(
@@ -349,6 +341,63 @@ begin
   delete from public.padron_electores_staging
   where import_id = p_import_id;
 
+  delete from public.padron_distritos_staging
+  where import_id = p_import_id;
+end;
+$$;
+
+create or replace function public.padron_clear_electores_staging_batch(
+  p_import_id uuid,
+  p_after_cedula text default null,
+  p_batch_size integer default 5000
+)
+returns table (
+  processed_count integer,
+  last_cedula text,
+  done boolean
+)
+language plpgsql
+security definer
+as $$
+declare
+  v_processed_count integer;
+  v_last_cedula text;
+begin
+  with batch as (
+    select cedula
+    from public.padron_electores_staging
+    where import_id = p_import_id
+      and (p_after_cedula is null or cedula > p_after_cedula)
+    order by cedula
+    limit p_batch_size
+  ),
+  deleted as (
+    delete from public.padron_electores_staging
+    where import_id = p_import_id
+      and cedula in (select cedula from batch)
+    returning cedula
+  )
+  select
+    coalesce((select count(*) from batch), 0),
+    (select max(cedula) from batch)
+  into v_processed_count, v_last_cedula;
+
+  return query
+  select
+    v_processed_count,
+    v_last_cedula,
+    v_processed_count < p_batch_size;
+end;
+$$;
+
+create or replace function public.padron_clear_distritos_staging(
+  p_import_id uuid
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
   delete from public.padron_distritos_staging
   where import_id = p_import_id;
 end;

@@ -50,9 +50,7 @@ const tramiteSeleccionadoId = ref('')
 const nuevaDescripcion = ref('')
 const nuevaPrioridad = ref<'low' | 'normal' | 'high'>('normal')
 const nuevoAbogado = ref('')
-const fieldValues = ref<Record<string, string>>({})
 const ticketRecienCreadoId = ref('')
-
 const fieldValues = ref<Record<string, FieldValue>>({})
 
 const archivosAdjuntos = ref<File[]>([])

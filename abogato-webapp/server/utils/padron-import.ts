@@ -86,11 +86,13 @@ const MERGE_DISTRICTS_RPC = "padron_merge_distritos";
 const MERGE_VOTERS_RPC = "padron_merge_electores";
 const DEACTIVATE_REMOVED_RPC = "padron_deactivate_missing_electores";
 const COUNT_DEACTIVATE_RPC = "padron_count_missing_electores";
-const CLEAR_STAGING_RPC = "padron_clear_staging";
+const CLEAR_DISTRICTS_STAGING_RPC = "padron_clear_distritos_staging";
+const CLEAR_VOTERS_STAGING_RPC = "padron_clear_electores_staging_batch";
 const COMPLETE_IMPORT_RPC = "padron_complete_import";
 const UPSERT_CHUNK_SIZE = 500;
 const MERGE_ELECTORES_BATCH_SIZE = 5000;
 const DEACTIVATE_BATCH_SIZE = 5000;
+const MIN_RPC_BATCH_SIZE = 250;
 
 const SPANISH_MONTHS: Record<string, string> = {
   enero: "01",
@@ -294,14 +296,24 @@ async function executePadronImport(options: {
 
     let mergeCursor: string | null = null;
     let mergedElectores = 0;
+    let mergeBatchSize = MERGE_ELECTORES_BATCH_SIZE;
 
     while (true) {
       await assertNotCancelled(admin, options.runId);
-      const mergeBatch = await admin.callRpc<Array<BatchResult>>(MERGE_VOTERS_RPC, {
-        p_import_id: options.runId,
-        p_after_cedula: mergeCursor,
-        p_batch_size: MERGE_ELECTORES_BATCH_SIZE,
+      const mergeCall = await callRpcBatchWithAdaptiveSize<Array<BatchResult>>({
+        admin,
+        rpcName: MERGE_VOTERS_RPC,
+        batchSize: mergeBatchSize,
+        minBatchSize: MIN_RPC_BATCH_SIZE,
+        payloadFactory: (batchSize) => ({
+          p_import_id: options.runId,
+          p_after_cedula: mergeCursor,
+          p_batch_size: batchSize,
+        }),
+        operationLabel: "merge de electores",
       });
+      const mergeBatch = mergeCall.rows;
+      mergeBatchSize = mergeCall.batchSize;
 
       const result = mergeBatch[0] ?? { processed_count: 0, last_cedula: null, done: true };
       mergedElectores += result.processed_count;
@@ -329,20 +341,39 @@ async function executePadronImport(options: {
     });
 
     const deactivateCountRows = await admin.callRpc<Array<{ total_missing: number }>>(COUNT_DEACTIVATE_RPC, {
-      p_import_id: options.runId,
+      p_source_hash: sourceHash,
+    }).catch((error) => {
+      if (isStatementTimeoutError(error)) {
+        console.warn(
+          `[padron-import] Supabase agotó el statement_timeout al contar electores faltantes para ${options.runId}. Se continuará sin porcentaje detallado de esta fase.`,
+        );
+        return [] as Array<{ total_missing: number }>;
+      }
+
+      throw error;
     });
     const totalMissing = deactivateCountRows[0]?.total_missing ?? 0;
 
     let deactivateCursor: string | null = null;
     let deactivatedCount = 0;
+    let deactivateBatchSize = DEACTIVATE_BATCH_SIZE;
 
     while (true) {
       await assertNotCancelled(admin, options.runId);
-      const deactivateBatch = await admin.callRpc<Array<BatchResult>>(DEACTIVATE_REMOVED_RPC, {
-        p_import_id: options.runId,
-        p_after_cedula: deactivateCursor,
-        p_batch_size: DEACTIVATE_BATCH_SIZE,
+      const deactivateCall = await callRpcBatchWithAdaptiveSize<Array<BatchResult>>({
+        admin,
+        rpcName: DEACTIVATE_REMOVED_RPC,
+        batchSize: deactivateBatchSize,
+        minBatchSize: MIN_RPC_BATCH_SIZE,
+        payloadFactory: (batchSize) => ({
+          p_source_hash: sourceHash,
+          p_after_cedula: deactivateCursor,
+          p_batch_size: batchSize,
+        }),
+        operationLabel: "desactivación de electores faltantes",
       });
+      const deactivateBatch = deactivateCall.rows;
+      deactivateBatchSize = deactivateCall.batchSize;
 
       const result = deactivateBatch[0] ?? { processed_count: 0, last_cedula: null, done: true };
       deactivatedCount += result.processed_count;
@@ -369,7 +400,13 @@ async function executePadronImport(options: {
       phase_progress: 92,
     });
 
-    await admin.callRpc(CLEAR_STAGING_RPC, { p_import_id: options.runId });
+    await clearStagingBatches(admin, options.runId, voterRows.length, async (phaseProgress) => {
+      await admin.updateImportRun(options.runId, {
+        status: "merging",
+        phase: "cleaning_staging",
+        phase_progress: phaseProgress,
+      });
+    });
 
     await admin.updateImportRun(options.runId, {
       status: "merging",
@@ -389,7 +426,7 @@ async function executePadronImport(options: {
     });
   } catch (error) {
     if (error instanceof ImportCancelledError) {
-      await admin.clearStaging(options.runId);
+      await safeCleanup(admin, options.runId);
       await admin.updateImportRun(options.runId, {
         status: "cancelled",
         phase: "cancelled",
@@ -400,7 +437,7 @@ async function executePadronImport(options: {
       return;
     }
 
-    await admin.clearStaging(options.runId);
+    await safeCleanup(admin, options.runId);
     await admin.updateImportRun(options.runId, {
       status: "failed",
       phase: "failed",
@@ -416,6 +453,58 @@ async function assertNotCancelled(admin: ReturnType<typeof createSupabaseAdmin>,
   if (row?.cancel_requested) {
     throw new ImportCancelledError();
   }
+}
+
+async function safeCleanup(admin: ReturnType<typeof createSupabaseAdmin>, importId: string) {
+  try {
+    const row = await admin.getImport(importId);
+    await clearStagingBatches(admin, importId, row?.total_rows ?? 0);
+  } catch (cleanupError) {
+    console.error("No se pudo limpiar staging para la corrida", importId, cleanupError);
+  }
+}
+
+async function clearStagingBatches(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  importId: string,
+  totalRows: number,
+  onProgress?: (phaseProgress: number) => Promise<void>,
+) {
+  let clearCursor: string | null = null;
+  let clearedRows = 0;
+  let clearBatchSize = DEACTIVATE_BATCH_SIZE;
+
+  while (true) {
+    const clearCall = await callRpcBatchWithAdaptiveSize<Array<BatchResult>>({
+      admin,
+      rpcName: CLEAR_VOTERS_STAGING_RPC,
+      batchSize: clearBatchSize,
+      minBatchSize: MIN_RPC_BATCH_SIZE,
+      payloadFactory: (batchSize) => ({
+        p_import_id: importId,
+        p_after_cedula: clearCursor,
+        p_batch_size: batchSize,
+      }),
+      operationLabel: "limpieza de staging",
+    });
+    const batch = clearCall.rows;
+    clearBatchSize = clearCall.batchSize;
+
+    const result = batch[0] ?? { processed_count: 0, last_cedula: null, done: true };
+    clearedRows += result.processed_count;
+    clearCursor = result.last_cedula;
+
+    if (onProgress && totalRows > 0) {
+      const progress = 92 + Math.round((clearedRows / totalRows) * 5);
+      await onProgress(Math.min(97, progress));
+    }
+
+    if (result.done) {
+      break;
+    }
+  }
+
+  await admin.callRpc(CLEAR_DISTRICTS_STAGING_RPC, { p_import_id: importId });
 }
 
 async function resolvePadronSource(config: RuntimeConfigLike): Promise<SourceInfo> {
@@ -661,6 +750,22 @@ function createSupabaseAdmin(config: RuntimeConfigLike) {
     return (body ? JSON.parse(body) : null) as T;
   }
 
+  async function requestRpc<T>(fnName: string, payload: Record<string, unknown>) {
+    const response = await fetch(`${baseUrl}/rpc/${fnName}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Supabase respondió ${response.status}: ${text}`);
+    }
+
+    const body = await response.text();
+    return (body ? JSON.parse(body) : null) as T;
+  }
+
   return {
     async findActiveImport() {
       const params = new URLSearchParams({
@@ -748,31 +853,8 @@ function createSupabaseAdmin(config: RuntimeConfigLike) {
       });
     },
 
-    async clearStaging(importId: string) {
-      const params = new URLSearchParams({
-        import_id: `eq.${importId}`,
-      });
-
-      await request(`/${VOTERS_STAGING_TABLE}?${params.toString()}`, {
-        method: "DELETE",
-        headers: {
-          Prefer: "return=minimal",
-        },
-      });
-
-      await request(`/${DISTRICTS_STAGING_TABLE}?${params.toString()}`, {
-        method: "DELETE",
-        headers: {
-          Prefer: "return=minimal",
-        },
-      });
-    },
-
     async callRpc<T>(name: string, payload: Record<string, unknown>) {
-      return await request<T>(`/${name}`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      return await requestRpc<T>(name, payload);
     },
 
     async completeImport(payload: {
@@ -785,18 +867,15 @@ function createSupabaseAdmin(config: RuntimeConfigLike) {
       phase: string;
       phaseProgress: number;
     }) {
-      await request(`/${COMPLETE_IMPORT_RPC}`, {
-        method: "POST",
-        body: JSON.stringify({
-          p_import_id: payload.importId,
-          p_source_hash: payload.sourceHash,
-          p_snapshot_date: payload.snapshotDate,
-          p_rows_processed: payload.votersProcessed,
-          p_district_rows_processed: payload.districtsProcessed,
-          p_total_rows: payload.totalRows,
-          p_phase: payload.phase,
-          p_phase_progress: payload.phaseProgress,
-        }),
+      await requestRpc(COMPLETE_IMPORT_RPC, {
+        p_import_id: payload.importId,
+        p_source_hash: payload.sourceHash,
+        p_snapshot_date: payload.snapshotDate,
+        p_rows_processed: payload.votersProcessed,
+        p_district_rows_processed: payload.districtsProcessed,
+        p_total_rows: payload.totalRows,
+        p_phase: payload.phase,
+        p_phase_progress: payload.phaseProgress,
       });
     },
   };
@@ -819,6 +898,42 @@ class ImportCancelledError extends Error {
   constructor() {
     super("Importación cancelada");
   }
+}
+
+async function callRpcBatchWithAdaptiveSize<T>(
+  options: {
+    admin: ReturnType<typeof createSupabaseAdmin>;
+    rpcName: string;
+    batchSize: number;
+    minBatchSize: number;
+    payloadFactory: (batchSize: number) => Record<string, unknown>;
+    operationLabel: string;
+  },
+) {
+  let batchSize = options.batchSize;
+
+  while (true) {
+    try {
+      const rows = await options.admin.callRpc<T>(options.rpcName, options.payloadFactory(batchSize));
+      return { rows, batchSize };
+    } catch (error) {
+      if (!isStatementTimeoutError(error) || batchSize <= options.minBatchSize) {
+        throw error;
+      }
+
+      const nextBatchSize = Math.max(options.minBatchSize, Math.floor(batchSize / 2));
+      console.warn(
+        `[padron-import] Supabase agotó el statement_timeout durante ${options.operationLabel}. Reintentando con lote ${nextBatchSize} (antes ${batchSize}).`,
+      );
+      batchSize = nextBatchSize;
+    }
+  }
+}
+
+function isStatementTimeoutError(error: unknown) {
+  return error instanceof Error
+    && error.message.includes("\"code\":\"57014\"")
+    && /statement timeout/i.test(error.message);
 }
 
 type BatchResult = {

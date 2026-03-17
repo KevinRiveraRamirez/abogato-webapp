@@ -7,7 +7,7 @@ export function useEnsureProfile() {
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('user_id, role, display_name, office_address')
+      .select('user_id, role, display_name, first_name, last_name, contact_email, contact_phone, personal_address, office_address')
       .eq('user_id', user.value.id)
       .maybeSingle()
 
@@ -16,7 +16,12 @@ export function useEnsureProfile() {
     if (!data) {
       await supabase
         .from('profiles')
-        .insert([{ user_id: user.value.id, role: defaultRole }])
+        .insert([{
+          user_id: user.value.id,
+          role: defaultRole,
+          contact_email: user.value.email ?? null,
+          contact_phone: user.value.phone ?? null
+        }])
     }
   }
 }

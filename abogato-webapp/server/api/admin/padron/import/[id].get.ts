@@ -8,21 +8,24 @@ export default defineEventHandler(async (event) => {
   if (!config.padronImportSecret) {
     throw createError({
       statusCode: 500,
-      statusMessage: "Falta configurar PADRON_IMPORT_SECRET.",
+      statusMessage: "Config error",
+      message: "Falta configurar PADRON_IMPORT_SECRET.",
     });
   }
 
   if (secret !== config.padronImportSecret) {
     throw createError({
       statusCode: 401,
-      statusMessage: "No autorizado para consultar la importación del padrón.",
+      statusMessage: "Unauthorized",
+      message: "No autorizado para consultar la importación del padrón.",
     });
   }
 
   if (!importId) {
     throw createError({
       statusCode: 400,
-      statusMessage: "Falta el identificador de importación.",
+      statusMessage: "Bad request",
+      message: "Falta el identificador de importación.",
     });
   }
 
@@ -31,7 +34,8 @@ export default defineEventHandler(async (event) => {
   } catch (error) {
     throw createError({
       statusCode: 500,
-      statusMessage: error instanceof Error ? error.message : "No se pudo consultar el estado de la importación.",
+      statusMessage: "Padron status failed",
+      message: error instanceof Error ? error.message : "No se pudo consultar el estado de la importación.",
     });
   }
 });

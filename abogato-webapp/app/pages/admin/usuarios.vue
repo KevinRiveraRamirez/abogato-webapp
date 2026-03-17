@@ -87,6 +87,7 @@ async function crearAbogado() {
       user_id: data.user.id,
       role: nuevoRol.value,
       display_name: nombre || null,
+      contact_email: email || null,
       office_address: officeAddress || null
     })
 
