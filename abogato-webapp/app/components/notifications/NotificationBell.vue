@@ -8,6 +8,7 @@ const {
   unreadCount,
   loading,
   lastError,
+  ensureLoaded,
   refresh,
   markAsRead,
   markAllAsRead,
@@ -66,7 +67,7 @@ function handleEscape(event: KeyboardEvent) {
 }
 
 onMounted(() => {
-  refresh()
+  ensureLoaded()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleEscape)
 })
@@ -117,6 +118,7 @@ onBeforeUnmount(() => {
           :error="lastError"
           @select="handleSelect"
           @mark-all="handleMarkAll"
+          @refresh="refresh"
         />
       </div>
     </Transition>

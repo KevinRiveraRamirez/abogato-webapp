@@ -1,6 +1,7 @@
 import type { NotificationPayload, NotificationRecord } from '~~/shared/types/notification'
 
 const NOTIFICATIONS_PAGE_SIZE = 25
+let refreshPromise: Promise<void> | null = null
 
 function normalizeNotificationPayload(value: unknown): NotificationPayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -26,6 +27,10 @@ function normalizeNotification(row: Partial<NotificationRecord>): NotificationRe
     read_at: row.read_at ?? null,
     created_at: row.created_at ?? new Date().toISOString(),
   }
+}
+
+function sortNotifications(list: NotificationRecord[]) {
+  return [...list].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
 }
 
 export function useNotifications() {
@@ -62,44 +67,59 @@ export function useNotifications() {
   }
 
   async function refresh() {
-    const userId = await resolveCurrentUserId()
-
-    if (!userId) {
-      reset()
+    if (refreshPromise) {
+      await refreshPromise
       return
     }
 
-    loading.value = true
-    lastError.value = null
+    refreshPromise = (async () => {
+      const userId = await resolveCurrentUserId()
 
-    const notificationsResult = await supabase
-      .from('notifications')
-      .select('id, recipient_user_id, actor_user_id, type, title, body, link_path, ticket_id, entity_type, entity_id, payload, read_at, created_at')
-      .eq('recipient_user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(NOTIFICATIONS_PAGE_SIZE)
+      if (!userId) {
+        reset()
+        return
+      }
 
-    loading.value = false
+      loading.value = true
+      lastError.value = null
 
-    if (notificationsResult.error) {
-      lastError.value = notificationsResult.error.message
-      return
-    }
+      try {
+        const notificationsResult = await supabase
+          .from('notifications')
+          .select('id, recipient_user_id, actor_user_id, type, title, body, link_path, ticket_id, entity_type, entity_id, payload, read_at, created_at')
+          .eq('recipient_user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(NOTIFICATIONS_PAGE_SIZE)
 
-    notifications.value = (notificationsResult.data ?? []).map(row =>
-      normalizeNotification(row as Partial<NotificationRecord>)
-    )
-    unreadCount.value = notifications.value.filter(notification => !notification.read_at).length
-    initializedForUserId.value = userId
+        if (notificationsResult.error) {
+          lastError.value = notificationsResult.error.message
+          return
+        }
 
-    const unreadResult = await supabase
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('recipient_user_id', userId)
-      .is('read_at', null)
+        notifications.value = (notificationsResult.data ?? []).map(row =>
+          normalizeNotification(row as Partial<NotificationRecord>)
+        )
+        unreadCount.value = notifications.value.filter(notification => !notification.read_at).length
+        initializedForUserId.value = userId
 
-    if (!unreadResult.error && typeof unreadResult.count === 'number') {
-      unreadCount.value = unreadResult.count
+        const unreadResult = await supabase
+          .from('notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('recipient_user_id', userId)
+          .is('read_at', null)
+
+        if (!unreadResult.error && typeof unreadResult.count === 'number') {
+          unreadCount.value = unreadResult.count
+        }
+      } finally {
+        loading.value = false
+      }
+    })()
+
+    try {
+      await refreshPromise
+    } finally {
+      refreshPromise = null
     }
   }
 
@@ -159,6 +179,46 @@ export function useNotifications() {
     unreadCount.value = 0
   }
 
+  function upsertFromRealtime(row: Partial<NotificationRecord>) {
+    const notification = normalizeNotification(row)
+
+    if (!notification.id || !notification.recipient_user_id) return
+
+    const existing = notifications.value.find(item => item.id === notification.id)
+
+    if (existing) {
+      const wasUnread = !existing.read_at
+      const isUnread = !notification.read_at
+
+      notifications.value = sortNotifications(
+        notifications.value.map(item =>
+          item.id === notification.id
+            ? { ...item, ...notification }
+            : item
+        )
+      ).slice(0, NOTIFICATIONS_PAGE_SIZE)
+
+      if (wasUnread && !isUnread) {
+        unreadCount.value = Math.max(0, unreadCount.value - 1)
+      } else if (!wasUnread && isUnread) {
+        unreadCount.value += 1
+      }
+
+      return
+    }
+
+    notifications.value = sortNotifications([
+      notification,
+      ...notifications.value,
+    ]).slice(0, NOTIFICATIONS_PAGE_SIZE)
+
+    if (!notification.read_at) {
+      unreadCount.value += 1
+    }
+
+    initializedForUserId.value = notification.recipient_user_id
+  }
+
   return {
     notifications,
     unreadCount,
@@ -168,6 +228,7 @@ export function useNotifications() {
     ensureLoaded,
     markAsRead,
     markAllAsRead,
+    upsertFromRealtime,
     reset,
   }
 }
