@@ -22,7 +22,6 @@ const itemsAbogado = [
 const itemsAdmin = [
   { label: 'Dashboard', to: '/admin/dashboard' },
   { label: 'Tickets', to: '/admin/tickets' },
-  { label: 'Traspaso de carro', to: '/traspaso-carro' },
   { label: 'Usuarios', to: '/admin/usuarios' },
   { label: 'Mi perfil', to: '/account/profile' },
 ]

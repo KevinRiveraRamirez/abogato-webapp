@@ -13,7 +13,7 @@ import type { ButtonProps } from "#ui/types";
 const links = ref<ButtonProps[]>([
   {
     label: "Ver servicios",
-    to: "/servicios/servicios",
+    to: "/servicios",
     icon: "i-lucide-scale",
   },
   {

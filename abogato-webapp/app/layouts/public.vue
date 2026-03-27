@@ -1,19 +1,17 @@
-<!-- DashboardDespuesDeLogin
-Este layout se usa para landing y páginas públicas.
--->
+<!-- Layout para landing y páginas públicas. -->
 <template>
   <div class="flex min-h-screen flex-col">
-    <HeaderPublic />
+    <PublicHeader />
     <main class="flex-1">
       <UContainer class="py-6 sm:py-8">
         <slot />
       </UContainer>
     </main>
-    <FooterPublic />
+    <PublicFooter />
   </div>
 </template>
 
 <script setup lang="ts">
-import HeaderPublic from '~/components/shared/HeaderPublic.vue'
-import FooterPublic from '~/components/shared/FooterPublic.vue'
+import PublicFooter from '~/components/layout/PublicFooter.vue'
+import PublicHeader from '~/components/layout/PublicHeader.vue'
 </script>

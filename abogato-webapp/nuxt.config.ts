@@ -291,6 +291,13 @@ export default defineNuxtConfig({
     supabaseUrl: process.env.SUPABASE_URL ?? process.env.NUXT_PUBLIC_SUPABASE_URL,
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY ?? "",
   },
+  routeRules: {
+    "/about/about": { redirect: "/about" },
+    "/contact/contact": { redirect: "/contact" },
+    "/dashboard/products": { redirect: "/admin/dashboard" },
+    "/recurso/recursos": { redirect: "/recursos" },
+    "/servicios/servicios": { redirect: "/servicios" },
+  },
 
   modules: [
     "@nuxt/eslint",

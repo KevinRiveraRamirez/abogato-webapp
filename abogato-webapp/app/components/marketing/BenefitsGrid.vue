@@ -4,13 +4,13 @@ const cards = ref([
     title: 'Asesoría Legal',
     description: 'Consultoría personalizada en derecho civil, familiar y comercial con abogados especializados.',
     icon: 'i-lucide-scale',
-    to: '/servicios/servicios'
+    to: '/servicios'
   },
   {
     title: 'Trámites Notariales',
     description: 'Gestión completa de escrituras, traspasos y documentos con validez legal ante notario.',
     icon: 'i-lucide-file-text',
-    to: '/servicios/servicios'
+    to: '/servicios'
   },
   {
     title: 'Seguimiento Digital',

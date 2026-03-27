@@ -1,10 +1,8 @@
-<!-- DashboardDespuesDeLogin 
-Este layout se usa para todo lo que requiera estar DESPUES de un login 
--->
+<!-- Layout para el panel autenticado. -->
 
 <template>
   <div class="flex min-h-screen flex-col">
-    <HeaderApp />
+    <AppHeader />
     <main class="flex-1">
       <UContainer class="py-6 sm:py-8">
         <slot />
@@ -14,5 +12,5 @@ Este layout se usa para todo lo que requiera estar DESPUES de un login
 </template>
 
 <script setup lang="ts">
-import HeaderApp from '~/components/shared/HeaderApp.vue'
+import AppHeader from '~/components/layout/AppHeader.vue'
 </script>

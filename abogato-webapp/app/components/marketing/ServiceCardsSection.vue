@@ -62,7 +62,7 @@ defineProps({
   title: { type: String, required: true },
   description: { type: String, required: true },
   ctaText: { type: String, default: 'Ver todos los trámites' },
-  ctaHref: { type: String, default: '/tramites' },
+  ctaHref: { type: String, default: '/servicios' },
   cards: {
     type: Array,
     required: true,

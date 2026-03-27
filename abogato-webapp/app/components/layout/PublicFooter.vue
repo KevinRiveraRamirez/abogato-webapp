@@ -12,19 +12,19 @@
         <div class="space-y-3">
           <h4 class="text-sm font-semibold text-highlighted">Servicios</h4>
           <div class="grid gap-2 text-sm text-muted">
-            <NuxtLink to="/servicios/servicios" class="hover:text-primary">Traspaso de bienes</NuxtLink>
-            <NuxtLink to="/servicios/servicios" class="hover:text-primary">Trámites notariales</NuxtLink>
-            <NuxtLink to="/servicios/servicios" class="hover:text-primary">Asesoría jurídica</NuxtLink>
-            <NuxtLink to="/servicios/servicios" class="hover:text-primary">Derecho familiar</NuxtLink>
+            <NuxtLink to="/servicios" class="hover:text-primary">Traspaso de bienes</NuxtLink>
+            <NuxtLink to="/servicios" class="hover:text-primary">Trámites notariales</NuxtLink>
+            <NuxtLink to="/servicios" class="hover:text-primary">Asesoría jurídica</NuxtLink>
+            <NuxtLink to="/servicios" class="hover:text-primary">Derecho familiar</NuxtLink>
           </div>
         </div>
 
         <div class="space-y-3">
           <h4 class="text-sm font-semibold text-highlighted">Empresa</h4>
           <div class="grid gap-2 text-sm text-muted">
-            <NuxtLink to="/about/about" class="hover:text-primary">Sobre nosotros</NuxtLink>
-            <NuxtLink to="/recurso/recursos" class="hover:text-primary">Recursos legales</NuxtLink>
-            <NuxtLink to="/contact/contact" class="hover:text-primary">Contacto</NuxtLink>
+            <NuxtLink to="/about" class="hover:text-primary">Sobre nosotros</NuxtLink>
+            <NuxtLink to="/recursos" class="hover:text-primary">Recursos legales</NuxtLink>
+            <NuxtLink to="/contact" class="hover:text-primary">Contacto</NuxtLink>
           </div>
         </div>
 

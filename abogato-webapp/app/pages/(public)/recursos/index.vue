@@ -65,7 +65,7 @@ const recursos = [
         <h3 class="text-xl font-bold text-gray-900 dark:text-white">¿Necesitás asesoría personalizada?</h3>
         <p class="text-gray-600 dark:text-gray-300">Nuestro equipo puede ayudarte a resolver cualquier consulta legal específica.</p>
         <div class="flex gap-3 justify-center">
-          <UButton to="/contact/contact" size="lg">Contactanos</UButton>
+          <UButton to="/contact" size="lg">Contactanos</UButton>
           <UButton to="/signup" variant="soft" size="lg">Crear cuenta</UButton>
         </div>
       </div>

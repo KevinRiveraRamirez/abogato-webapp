@@ -66,10 +66,10 @@ async function cerrarSesion() {
 }
 
 const items = computed<NavigationMenuItem[]>(() => [
-  { label: "Servicios", to: "/servicios/servicios", active: route.path.startsWith("/servicios") },
-  { label: "Sobre Nosotros", to: "/about/about", active: route.path.startsWith("/about") },
-  { label: "Contacto", to: "/contact/contact", active: route.path.startsWith("/contact") },
-  { label: "Recursos", to: "/recurso/recursos", active: route.path.startsWith("/recurso") },
+  { label: "Servicios", to: "/servicios", active: route.path.startsWith("/servicios") },
+  { label: "Sobre Nosotros", to: "/about", active: route.path.startsWith("/about") },
+  { label: "Contacto", to: "/contact", active: route.path.startsWith("/contact") },
+  { label: "Recursos", to: "/recursos", active: route.path.startsWith("/recursos") },
 ]);
 
 onMounted(() => {

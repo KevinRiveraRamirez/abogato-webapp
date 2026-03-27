@@ -65,7 +65,7 @@ const servicios = [
 
       <div class="mt-12 text-center space-y-3">
         <p class="text-gray-600 dark:text-gray-300">¿No encontrás lo que buscás?</p>
-        <UButton to="/contact/contact" color="primary" size="lg">Contactanos</UButton>
+        <UButton to="/contact" color="primary" size="lg">Contactanos</UButton>
       </div>
     </div>
   </div>
