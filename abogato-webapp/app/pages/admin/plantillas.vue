@@ -1,5 +1,7 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'app', middleware: 'auth' })
+import type { Database, Json } from '~/types/database.types'
+
+definePageMeta({ layout: 'app', middleware: ['auth', 'admin'] })
 
 const supabase = useSupabaseClient()
 const { profile, cargarPerfil } = useUsuario()
@@ -14,6 +16,33 @@ type Template = {
   servicio_id: number
   activo: boolean
   created_at: string
+}
+
+type TemplateRow = Database['public']['Tables']['document_templates']['Row']
+
+function esListaDeCampos(value: Json): value is Field[] {
+  return Array.isArray(value) && value.every((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+
+    const field = item as Record<string, unknown>
+    return typeof field.key === 'string'
+      && typeof field.label === 'string'
+      && ['text', 'date', 'number'].includes(String(field.type))
+  })
+}
+
+function normalizarPlantilla(row: TemplateRow): Template | null {
+  if (row.servicio_id == null) return null
+
+  return {
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    fields: esListaDeCampos(row.fields) ? row.fields : [],
+    servicio_id: row.servicio_id,
+    activo: row.activo ?? true,
+    created_at: row.created_at ?? new Date().toISOString(),
+  }
 }
 
 const servicios = ref<Servicio[]>([])
@@ -42,7 +71,10 @@ async function cargarPlantillas() {
     .from('document_templates')
     .select('*')
     .order('created_at', { ascending: false })
-  plantillas.value = data ?? []
+
+  plantillas.value = (data ?? [])
+    .map(normalizarPlantilla)
+    .filter((template): template is Template => template !== null)
 }
 
 function agregarField() {

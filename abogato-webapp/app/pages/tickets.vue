@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { h, resolveComponent } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '#ui/types'
+import type { Database, Json } from '~/types/database.types'
 
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
@@ -18,7 +19,10 @@ type Field = {
   type: 'text' | 'date' | 'number'
 }
 
-type FieldValue = string | number | null | undefined
+type FieldValue = string | number | undefined
+type TicketRow = Database['public']['Tables']['tickets']['Row']
+type TemplateRow = Database['public']['Tables']['document_templates']['Row']
+type DocumentRow = Database['public']['Tables']['documents']['Row']
 
 type Template = {
   id: string
@@ -43,6 +47,54 @@ type DocumentoResumen = {
   ticket_id: string | null
   status: string
   created_at: string
+}
+
+function esListaDeCampos(value: Json): value is Field[] {
+  return Array.isArray(value) && value.every((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+
+    const field = item as Record<string, unknown>
+    return typeof field.key === 'string'
+      && typeof field.label === 'string'
+      && ['text', 'date', 'number'].includes(String(field.type))
+  })
+}
+
+function normalizarEstadoTicket(value: string): Ticket['status'] {
+  return ['open', 'in_progress', 'resolved', 'closed', 'cancelled'].includes(value)
+    ? value as Ticket['status']
+    : 'open'
+}
+
+function normalizarPrioridad(value: string): Ticket['priority'] {
+  return ['low', 'normal', 'high'].includes(value)
+    ? value as Ticket['priority']
+    : 'normal'
+}
+
+function normalizarPlantilla(row: Pick<TemplateRow, 'id' | 'title' | 'fields' | 'servicio_id' | 'activo'>): Template | null {
+  if (row.servicio_id == null) return null
+
+  return {
+    id: row.id,
+    title: row.title,
+    fields: esListaDeCampos(row.fields) ? row.fields : [],
+    servicio_id: row.servicio_id,
+    activo: row.activo ?? true,
+  }
+}
+
+function normalizarTicket(row: TicketRow): Ticket {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    status: normalizarEstadoTicket(row.status),
+    priority: normalizarPrioridad(row.priority),
+    created_by: row.created_by,
+    assigned_to: row.assigned_to,
+    created_at: row.created_at,
+  }
 }
 
 const tickets = ref<Ticket[]>([])
@@ -323,7 +375,7 @@ const opcionesPrioridad = [
   { label: 'Baja', value: 'low' },
   { label: 'Normal', value: 'normal' },
   { label: 'Alta', value: 'high' },
-] as const
+] as Array<{ label: string, value: Ticket['priority'] }>
 
 const camposFormulario = computed(() => plantillaSeleccionada.value?.fields ?? [])
 
@@ -348,12 +400,14 @@ watch(tramiteSeleccionadoId, (templateId) => {
 })
 
 watch(fieldValues, (values) => {
-  const cedulas = indicesCedula.value.map((index) => {
+  const cedulas = indicesCedula.value.flatMap((index) => {
     const field = camposFormulario.value[index]
-    return {
+    if (!field) return []
+
+    return [{
       key: field.key,
       value: textoDeCampo(values[field.key]).replace(/\D/g, ''),
-    }
+    }]
   })
 
   cedulas.forEach(({ key, value }) => {
@@ -481,7 +535,7 @@ const ticketsFiltrados = computed(() => {
       etiquetaEstado[ticket.status],
       etiquetaPrioridad[ticket.priority],
       estadoDocumentoPorTicket.value[ticket.id] === 'rejected' ? 'documento rechazado' : '',
-    ].some((value) => value.toLowerCase().includes(termino))
+    ].some((value) => String(value).toLowerCase().includes(termino))
   })
 })
 
@@ -625,7 +679,9 @@ async function cargarPlantillas() {
     .eq('activo', true)
     .order('title')
 
-  plantillas.value = (data ?? []) as Template[]
+  plantillas.value = (data ?? [])
+    .map((row) => normalizarPlantilla(row as Pick<TemplateRow, 'id' | 'title' | 'fields' | 'servicio_id' | 'activo'>))
+    .filter((template): template is Template => template !== null)
 }
 
 async function cargarEstadosDocumento(ticketIds: string[]) {
@@ -647,7 +703,8 @@ async function cargarEstadosDocumento(ticketIds: string[]) {
 
   const siguienteEstado: Record<string, string> = {}
 
-  for (const documento of (data ?? []) as DocumentoResumen[]) {
+  for (const documento of (data ?? []) as Array<Pick<DocumentRow, 'ticket_id' | 'status' | 'created_at'>>) {
+    if (!documento.status || !documento.created_at) continue
     if (!documento.ticket_id || siguienteEstado[documento.ticket_id]) continue
     siguienteEstado[documento.ticket_id] = documento.status
   }
@@ -671,7 +728,7 @@ async function cargarTickets() {
   loading.value = false
 
   if (error) { errorMsg.value = error.message; return }
-  tickets.value = data ?? []
+  tickets.value = (data ?? []).map((row) => normalizarTicket(row as TicketRow))
   await cargarEstadosDocumento(tickets.value.map(ticket => ticket.id))
 }
 
@@ -886,9 +943,10 @@ onMounted(async () => {
             :help="esCampoCedula(field) ? padronMensajes[field.key] : undefined"
           >
             <UInput
-              v-model="fieldValues[field.key]"
+              :model-value="fieldValues[field.key] ?? ''"
               :type="field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'"
               :placeholder="`Ingresá ${field.label.toLowerCase()}`"
+              @update:model-value="(value) => { fieldValues[field.key] = value }"
             />
           </UFormField>
         </div>

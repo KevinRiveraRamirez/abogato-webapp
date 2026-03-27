@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { h, resolveComponent } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '#ui/types'
+import type { Database } from '~/types/database.types'
 import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
 
 definePageMeta({ layout: 'app', middleware: ['auth', 'lawyer'] })
@@ -8,6 +9,8 @@ definePageMeta({ layout: 'app', middleware: ['auth', 'lawyer'] })
 const supabase = useSupabaseClient()
 const { profile, cargarPerfil } = useUsuario()
 type FieldValue = string | number | null | undefined
+type TicketRow = Database['public']['Tables']['tickets']['Row']
+type DocumentRow = Database['public']['Tables']['documents']['Row']
 
 type Ticket = {
   id: string
@@ -24,7 +27,7 @@ type Ticket = {
 type Documento = {
   id: string
   status: string
-  field_values: any
+  field_values: Record<string, FieldValue>
   template_id: string
   created_at: string
   ticket_id: string
@@ -123,6 +126,55 @@ const etiquetaAccion: Partial<Record<Ticket['status'], string>> = {
   resolved: 'Cerrar ticket'
 }
 
+function normalizarEstadoTicket(value: string): Ticket['status'] {
+  return ['open', 'in_progress', 'resolved', 'closed', 'cancelled'].includes(value)
+    ? value as Ticket['status']
+    : 'open'
+}
+
+function normalizarPrioridad(value: string): Ticket['priority'] {
+  return ['low', 'normal', 'high'].includes(value)
+    ? value as Ticket['priority']
+    : 'normal'
+}
+
+function esRegistroCampo(value: unknown): value is Record<string, FieldValue> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizarTicket(row: TicketRow): Ticket {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    status: normalizarEstadoTicket(row.status),
+    priority: normalizarPrioridad(row.priority),
+    created_by: row.created_by,
+    assigned_to: row.assigned_to,
+    created_at: row.created_at,
+    reopen_requested: row.reopen_requested,
+  }
+}
+
+function normalizarDocumento(
+  row: Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'ticket_id' | 'rejection_reason'> & {
+    document_templates?: { title: string | null, content: string | null } | { title: string | null, content: string | null }[] | null
+  }
+): Documento | null {
+  if (!row.status || !row.template_id || !row.created_at || !row.ticket_id) return null
+
+  return {
+    id: row.id,
+    status: row.status,
+    field_values: esRegistroCampo(row.field_values) ? row.field_values : {},
+    template_id: row.template_id,
+    created_at: row.created_at,
+    ticket_id: row.ticket_id,
+    rejection_reason: row.rejection_reason,
+    document_templates: row.document_templates ?? null,
+  }
+}
+
 const ticketsFiltrados = computed(() => {
   const termino = busqueda.value.trim().toLowerCase()
 
@@ -139,7 +191,7 @@ const ticketsFiltrados = computed(() => {
       obtenerNombreResponsable(ticket),
       etiquetaEstado[ticket.status],
       etiquetaPrioridad[ticket.priority],
-    ].some(value => value.toLowerCase().includes(termino))
+    ].some(value => String(value).toLowerCase().includes(termino))
   })
 })
 
@@ -171,7 +223,7 @@ async function cargarTickets() {
 
   loading.value = false
   if (error) { errorMsg.value = error.message; return }
-  tickets.value = data ?? []
+  tickets.value = (data ?? []).map((row) => normalizarTicket(row as TicketRow))
 
   if (ticketExpandido.value && !tickets.value.some(ticket => ticket.id === ticketExpandido.value)) {
     ticketExpandido.value = null
@@ -208,7 +260,12 @@ async function cargarDocumentosTicket(ticketId: string) {
     .select('id, status, field_values, template_id, created_at, ticket_id, rejection_reason, document_templates(title, content)')
     .eq('ticket_id', ticketId)
     .order('created_at', { ascending: false })
-  documentosPorTicket.value[ticketId] = (data ?? []) as Documento[]
+
+  documentosPorTicket.value[ticketId] = (data ?? [])
+    .map((row) => normalizarDocumento(row as Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'ticket_id' | 'rejection_reason'> & {
+      document_templates?: { title: string | null, content: string | null } | { title: string | null, content: string | null }[] | null
+    }))
+    .filter((documento): documento is Documento => documento !== null)
 }
 
 async function cargarPerfilAbogado(userId: string | null) {

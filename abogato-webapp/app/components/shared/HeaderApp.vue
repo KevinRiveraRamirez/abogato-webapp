@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import NotificationsNotificationBell from '~/components/notifications/NotificationBell.vue'
+
 const { profile, cargarPerfil } = useUsuario()
 const logout = useLogout()
 const loading = ref(false)
@@ -18,8 +20,8 @@ const itemsAbogado = [
 ]
 
 const itemsAdmin = [
-  { label: 'Dashboard', to: '/dashboard' },
-  { label: 'Tickets', to: '/lawyer/tickets' },
+  { label: 'Dashboard', to: '/admin/dashboard' },
+  { label: 'Tickets', to: '/admin/tickets' },
   { label: 'Traspaso de carro', to: '/traspaso-carro' },
   { label: 'Usuarios', to: '/admin/usuarios' },
   { label: 'Mi perfil', to: '/account/profile' },
@@ -55,6 +57,7 @@ async function signOut() {
 
     <template #right>
       <UColorModeButton variant="ghost" color="neutral" />
+      <NotificationsNotificationBell />
       <UButton
         icon="i-lucide-log-out"
         color="error"

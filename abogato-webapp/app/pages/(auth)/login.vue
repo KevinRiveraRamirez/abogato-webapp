@@ -3,6 +3,7 @@ definePageMeta({ layout: "login-layout" });
 
 
 const supabase = useSupabaseClient();
+const route = useRoute();
 
 const email = ref("");
 const password = ref("");
@@ -13,6 +14,12 @@ const errorMsg = ref("");
 const mostrarRecuperacion = ref(false);
 const emailRecuperacion = ref("");
 const mensajeRecuperacion = ref("");
+
+onMounted(() => {
+  if (route.query.inactive === '1') {
+    errorMsg.value = 'Tu cuenta está desactivada. Contactá al administrador para reactivarla.'
+  }
+})
 
 async function signIn() {
   errorMsg.value = "";
@@ -35,19 +42,37 @@ async function signIn() {
     const userId = data.user?.id;
     if (!userId) { errorMsg.value = "No se pudo obtener el usuario."; return; }
 
-    const { data: profile } = await supabase
+    let profile: { role: 'cliente' | 'abogado' | 'admin', is_active: boolean } | null = null
+
+    const { data: existingProfile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, is_active')
       .eq('user_id', userId)
       .maybeSingle();
 
+    profile = existingProfile as typeof profile
+
     if (!profile) {
-      await supabase.from('profiles').insert([{
+      const { error: insertProfileError } = await supabase.from('profiles').insert([{
         user_id: userId,
         role: 'cliente',
+        is_active: true,
         contact_email: data.user?.email ?? null,
         contact_phone: data.user?.phone ?? null
       }]);
+
+      if (!insertProfileError) {
+        profile = {
+          role: 'cliente',
+          is_active: true,
+        }
+      }
+    }
+
+    if (profile?.is_active === false) {
+      await supabase.auth.signOut()
+      errorMsg.value = 'Tu cuenta está desactivada. Contactá al administrador para reactivarla.'
+      return
     }
 
     const role = profile?.role ?? 'cliente';
@@ -58,7 +83,7 @@ async function signIn() {
     }
 
     if (role === 'admin') {
-      await navigateTo("/lawyer/tickets", { replace: true });
+      await navigateTo("/admin/dashboard", { replace: true });
       return;
     }
 

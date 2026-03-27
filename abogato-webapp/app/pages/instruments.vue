@@ -3,10 +3,10 @@ const supabase = useSupabaseClient()
 const user = useSupabaseUser()
 
 type Instrument = {
-  id: string
+  id: number
   name: string
-  created_at: string
-  owner_id: string
+  created_at: string | null
+  owner_id: string | null
 }
 
 const instruments = ref<Instrument[]>([])
@@ -66,7 +66,7 @@ async function add() {
   await refresh()
 }
 
-async function updateName(id: string, newName: string) {
+async function updateName(id: number, newName: string) {
   if (!user.value) {
     errorMsg.value = 'Debes iniciar sesión para editar.'
     return
@@ -93,7 +93,7 @@ async function updateName(id: string, newName: string) {
   await refresh()
 }
 
-async function remove(id: string) {
+async function remove(id: number) {
   if (!user.value) {
     errorMsg.value = 'Debes iniciar sesión para borrar.'
     return

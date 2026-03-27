@@ -1,6 +1,7 @@
 type Profile = {
   user_id: string
   role: 'cliente' | 'abogado' | 'admin'
+  is_active: boolean
   display_name: string | null
   first_name: string | null
   last_name: string | null
@@ -24,7 +25,7 @@ export function useUsuario() {
 
     const { data } = await supabase
       .from('profiles')
-      .select('user_id, role, display_name, first_name, last_name, contact_email, contact_phone, personal_address, office_address')
+      .select('user_id, role, is_active, display_name, first_name, last_name, contact_email, contact_phone, personal_address, office_address')
       .eq('user_id', user.id)
       .maybeSingle()
 

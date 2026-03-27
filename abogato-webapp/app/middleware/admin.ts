@@ -25,11 +25,11 @@ export default defineNuxtRouteMiddleware(async () => {
     return navigateTo('/login?inactive=1', { replace: true })
   }
 
-  if (data.role === 'admin') {
-    return navigateTo('/admin/dashboard', { replace: true })
+  if (data.role === 'abogado') {
+    return navigateTo('/lawyer/tickets', { replace: true })
   }
 
-  if (data.role !== 'abogado') {
+  if (data.role !== 'admin') {
     return navigateTo('/tickets', { replace: true })
   }
 })

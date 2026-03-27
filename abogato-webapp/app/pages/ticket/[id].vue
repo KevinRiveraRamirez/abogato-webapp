@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Database } from '~/types/database.types'
 import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
 
 definePageMeta({ layout: 'app', middleware: 'auth' })
@@ -7,6 +8,7 @@ const supabase = useSupabaseClient()
 const user = useSupabaseUser()
 const route = useRoute()
 const { profile, cargarPerfil } = useUsuario()
+type DocumentRow = Database['public']['Tables']['documents']['Row']
 
 type Ticket = {
   id: string
@@ -106,9 +108,10 @@ const etiquetaEstadoDocumento: Record<string, string> = {
 
 const esCliente = computed(() => profile.value?.role === 'cliente')
 const esAdmin = computed(() => profile.value?.role === 'admin')
+const esAbogado = computed(() => profile.value?.role === 'abogado')
 
 const puedeEditar = computed(() =>
-  (esCliente.value || esAdmin.value) && ticket.value?.status === 'open'
+  esCliente.value && ticket.value?.status === 'open'
 )
 
 const puedeReabrir = computed(() =>
@@ -116,6 +119,9 @@ const puedeReabrir = computed(() =>
   (ticket.value?.status === 'resolved' || ticket.value?.status === 'closed') &&
   !ticket.value?.reopen_requested
 )
+
+const puedeAdjuntar = computed(() => !esAdmin.value)
+const puedeComentar = computed(() => !esAdmin.value)
 
 async function cargarTicket() {
   loading.value = true
@@ -252,6 +258,10 @@ async function cargarComentarios() {
 
 async function agregarComentario() {
   if (!ticket.value) return
+  if (esAdmin.value) {
+    errorMsg.value = 'La cuenta admin solo puede consultar el detalle del ticket.'
+    return
+  }
 
   const texto = nuevoComentario.value.trim()
   if (!texto) return
@@ -281,6 +291,10 @@ async function agregarComentario() {
 
 async function guardarEdicion() {
   if (!ticket.value) return
+  if (esAdmin.value) {
+    errorMsg.value = 'La cuenta admin no puede editar tickets desde esta vista.'
+    return
+  }
 
   const titulo = editTitulo.value.trim()
   if (!titulo) { errorMsg.value = 'El título no puede estar vacío.'; return }
@@ -318,6 +332,10 @@ async function subirArchivo(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file || !ticket.value) return
+  if (esAdmin.value) {
+    errorMsg.value = 'La cuenta admin no puede adjuntar archivos desde esta vista.'
+    return
+  }
 
   if (file.size > 10 * 1024 * 1024) {
     errorMsg.value = 'El archivo no puede superar 10MB.'
@@ -349,13 +367,35 @@ async function subirArchivo(event: Event) {
 type Documento = {
   id: string
   status: string
-  field_values: Record<string, string> | null
+  field_values: Record<string, string | number | null | undefined>
   template_id: string
   created_at: string
   rejection_reason?: string | null
   document_templates?: { title: string | null; content: string | null } | null
 }
 const documentos = ref<Documento[]>([])
+
+function esRegistroDocumento(value: unknown): value is Record<string, string | number | null | undefined> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizarDocumento(
+  row: Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'rejection_reason'> & {
+    document_templates?: { title: string | null; content: string | null } | null
+  }
+): Documento | null {
+  if (!row.status || !row.template_id || !row.created_at) return null
+
+  return {
+    id: row.id,
+    status: row.status,
+    field_values: esRegistroDocumento(row.field_values) ? row.field_values : {},
+    template_id: row.template_id,
+    created_at: row.created_at,
+    rejection_reason: row.rejection_reason,
+    document_templates: row.document_templates ?? null,
+  }
+}
 
 function obtenerVariablesSistemaDocumento() {
   return {
@@ -370,7 +410,11 @@ async function cargarDocumentos() {
     .select('*, document_templates(title, content)')
     .order('created_at', { ascending: false })
     .eq('ticket_id', route.params.id as string)
-  documentos.value = data ?? []
+  documentos.value = (data ?? [])
+    .map((row) => normalizarDocumento(row as Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'rejection_reason'> & {
+      document_templates?: { title: string | null; content: string | null } | null
+    }))
+    .filter((documento): documento is Documento => documento !== null)
 }
 
 function descargarDocumento(doc: Documento) {
@@ -408,7 +452,7 @@ watch(user, async (newUser) => {
   <div class="mx-auto max-w-5xl">
     <div class="mb-6">
       <UButton
-        :to="profile?.role === 'abogado' || profile?.role === 'admin' ? '/lawyer/tickets' : '/tickets'"
+        :to="profile?.role === 'admin' ? '/admin/tickets' : profile?.role === 'abogado' ? '/lawyer/tickets' : '/tickets'"
         color="neutral"
         variant="ghost"
         leading-icon="i-lucide-arrow-left"
@@ -595,7 +639,7 @@ watch(user, async (newUser) => {
         </div>
         <p v-else class="text-sm text-muted">No hay archivos adjuntos.</p>
 
-        <div class="mt-4">
+        <div v-if="puedeAdjuntar" class="mt-4">
           <label class="inline-flex cursor-pointer items-center gap-2">
             <UButton as="span" color="neutral" variant="outline">
               Adjuntar archivo
@@ -636,7 +680,7 @@ watch(user, async (newUser) => {
         </div>
         <p v-else class="mb-4 text-sm text-muted">Sin comentarios.</p>
 
-        <div class="grid gap-3">
+        <div v-if="puedeComentar" class="grid gap-3">
           <UFormField label="Nuevo comentario">
             <UTextarea
               v-model="nuevoComentario"
@@ -646,7 +690,7 @@ watch(user, async (newUser) => {
           </UFormField>
           <div class="flex items-center justify-between flex-wrap gap-3">
             <UCheckbox
-              v-if="esAdmin || profile?.role === 'abogado'"
+              v-if="esAbogado"
               v-model="comentarioInterno"
               label="Solo interno (no visible al cliente)"
             />
@@ -659,6 +703,9 @@ watch(user, async (newUser) => {
             </UButton>
           </div>
         </div>
+        <p v-else class="text-sm text-muted">
+          La cuenta admin puede revisar la conversación, pero no agregar comentarios desde esta pantalla.
+        </p>
       </UCard>
 
       <UCard v-if="historial.length">

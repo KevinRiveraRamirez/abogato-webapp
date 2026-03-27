@@ -39,6 +39,14 @@ async function signUp() {
     }
 
     if (data.user?.id) {
+      await supabase.from('profiles').upsert({
+        user_id: data.user.id,
+        role: 'cliente',
+        is_active: true,
+        contact_email: data.user.email ?? email.value.trim(),
+        contact_phone: data.user.phone ?? null,
+      })
+
       await navigateTo("/tickets", { replace: true });
       return;
     }

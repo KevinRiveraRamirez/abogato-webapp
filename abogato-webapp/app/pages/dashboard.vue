@@ -1,15 +1,11 @@
 <script setup lang="ts">
 definePageMeta({
-  layout:'dashboard-layout'
+  middleware: ['auth', 'admin']
 })
+
+await navigateTo('/admin/dashboard', { replace: true })
 </script>
 
 <template>
-<div>
-    <h3>
-        hola Dashs
-    </h3>
-    <NuxtPage></NuxtPage>
-</div>
-
+  <div />
 </template>

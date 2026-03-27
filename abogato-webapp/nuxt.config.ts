@@ -289,7 +289,7 @@ export default defineNuxtConfig({
     padronTsePageUrl: process.env.PADRON_TSE_PAGE_URL ?? "https://www.tse.go.cr/descarga_padron.html",
     padronTseZipUrl: process.env.PADRON_TSE_ZIP_URL ?? "",
     supabaseUrl: process.env.SUPABASE_URL ?? process.env.NUXT_PUBLIC_SUPABASE_URL,
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_KEY ?? "",
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY ?? "",
   },
 
   modules: [
@@ -306,7 +306,7 @@ export default defineNuxtConfig({
     async "app:templatesGenerated"(app) {
       const uiTemplates = app.templates
         .map((template) => template.filename)
-        .filter((filename) => filename.startsWith("ui/") && filename.endsWith(".ts"))
+        .filter((filename): filename is string => typeof filename === "string" && filename.startsWith("ui/") && filename.endsWith(".ts"))
 
       for (const filename of uiTemplates) {
         const proxyFilename = filename.slice(0, -3)

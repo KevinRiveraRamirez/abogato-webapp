@@ -547,9 +547,10 @@ function extractSnapshotDate(html: string) {
   const parts = normalized.split(/\s+de\s+/);
   if (parts.length !== 3) return null;
 
-  const [day, monthName, year] = parts;
+  const [day = "", monthName = "", year = ""] = parts;
   const month = SPANISH_MONTHS[monthName];
   if (!month) return null;
+  if (!day || !year) return null;
 
   return `${year}-${month}-${day.padStart(2, "0")}`;
 }
@@ -722,7 +723,11 @@ function createSupabaseAdmin(config: RuntimeConfigLike) {
   const serviceRoleKey = config.supabaseServiceRoleKey?.trim();
 
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error("Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY para ejecutar la importación del padrón.");
+    throw new Error("Faltan SUPABASE_URL y una clave server de Supabase en SUPABASE_SERVICE_ROLE_KEY o SUPABASE_SECRET_KEY para ejecutar la importación del padrón.");
+  }
+
+  if (serviceRoleKey.startsWith("sb_publishable_")) {
+    throw new Error("La clave configurada para el servidor es publishable. Usá SUPABASE_SERVICE_ROLE_KEY o SUPABASE_SECRET_KEY para procesos administrativos.");
   }
 
   const baseUrl = `${supabaseUrl.replace(/\/$/, "")}/rest/v1`;

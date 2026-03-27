@@ -14,7 +14,7 @@
       <UColorModeButton variant="ghost" color="neutral" />
 
       <template v-if="user">
-        <UButton color="neutral" variant="ghost" to="/tickets" label="Mi panel" />
+        <UButton color="neutral" variant="ghost" :to="panelPath" label="Mi panel" />
         <UButton color="error" variant="soft" :loading="loading" @click="cerrarSesion" label="Cerrar sesión" />
       </template>
 
@@ -30,7 +30,7 @@
         <div class="flex items-center gap-3 border-t border-default pt-4 lg:hidden">
           <UColorModeButton variant="ghost" color="neutral" />
           <template v-if="user">
-            <UButton color="neutral" variant="ghost" to="/tickets" label="Mi panel" />
+            <UButton color="neutral" variant="ghost" :to="panelPath" label="Mi panel" />
             <UButton color="error" variant="soft" :loading="loading" @click="cerrarSesion" label="Cerrar sesión" />
           </template>
           <template v-else>
@@ -48,8 +48,15 @@ import type { NavigationMenuItem } from "#ui/types";
 
 const supabase = useSupabaseClient();
 const user = useSupabaseUser();
+const { profile, cargarPerfil } = useUsuario()
 const loading = ref(false);
 const route = useRoute();
+
+const panelPath = computed(() => {
+  if (profile.value?.role === 'admin') return '/admin/dashboard'
+  if (profile.value?.role === 'abogado') return '/lawyer/tickets'
+  return '/tickets'
+})
 
 async function cerrarSesion() {
   loading.value = true;
@@ -64,4 +71,19 @@ const items = computed<NavigationMenuItem[]>(() => [
   { label: "Contacto", to: "/contact/contact", active: route.path.startsWith("/contact") },
   { label: "Recursos", to: "/recurso/recursos", active: route.path.startsWith("/recurso") },
 ]);
+
+onMounted(() => {
+  if (user.value) {
+    cargarPerfil()
+  }
+})
+
+watch(user, async (currentUser) => {
+  if (currentUser) {
+    await cargarPerfil()
+    return
+  }
+
+  profile.value = null
+})
 </script>

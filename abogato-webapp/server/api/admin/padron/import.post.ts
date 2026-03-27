@@ -24,7 +24,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const body = await readBody<ImportRequestBody>(event).catch(() => ({}));
+  const body = await readBody<ImportRequestBody>(event).catch(() => ({} as ImportRequestBody));
 
   try {
     return await queuePadronImport({
