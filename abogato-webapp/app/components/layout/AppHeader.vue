@@ -8,12 +8,14 @@ const loading = ref(false)
 onMounted(() => cargarPerfil())
 
 const itemsCliente = [
+  { label: 'Dashboard', to: '/dashboard' },
   { label: 'Mis tickets', to: '/tickets' },
   { label: 'Traspaso de carro', to: '/traspaso-carro' },
   { label: 'Mi perfil', to: '/account/profile' },
 ]
 
 const itemsAbogado = [
+  { label: 'Dashboard', to: '/dashboard' },
   { label: 'Mis casos', to: '/lawyer/tickets' },
   { label: 'Traspaso de carro', to: '/traspaso-carro' },
   { label: 'Mi perfil', to: '/account/profile' },

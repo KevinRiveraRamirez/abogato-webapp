@@ -29,7 +29,11 @@ export default defineNuxtRouteMiddleware(async () => {
     return navigateTo('/admin/dashboard', { replace: true })
   }
 
-  if (data.role !== 'abogado') {
-    return navigateTo('/client/dashboard', { replace: true })
+  if (data.role === 'abogado') {
+    return navigateTo('/lawyer/dashboard', { replace: true })
+  }
+
+  if (data.role !== 'cliente') {
+    return navigateTo('/tickets', { replace: true })
   }
 })

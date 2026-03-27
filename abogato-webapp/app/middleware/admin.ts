@@ -26,10 +26,10 @@ export default defineNuxtRouteMiddleware(async () => {
   }
 
   if (data.role === 'abogado') {
-    return navigateTo('/lawyer/tickets', { replace: true })
+    return navigateTo('/lawyer/dashboard', { replace: true })
   }
 
   if (data.role !== 'admin') {
-    return navigateTo('/tickets', { replace: true })
+    return navigateTo('/client/dashboard', { replace: true })
   }
 })

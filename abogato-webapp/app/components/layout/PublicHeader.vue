@@ -54,8 +54,9 @@ const route = useRoute();
 
 const panelPath = computed(() => {
   if (profile.value?.role === 'admin') return '/admin/dashboard'
-  if (profile.value?.role === 'abogado') return '/lawyer/tickets'
-  return '/tickets'
+  if (profile.value?.role === 'abogado') return '/lawyer/dashboard'
+  if (profile.value?.role === 'cliente') return '/client/dashboard'
+  return '/dashboard'
 })
 
 async function cerrarSesion() {

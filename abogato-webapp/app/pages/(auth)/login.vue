@@ -78,7 +78,7 @@ async function signIn() {
     const role = profile?.role ?? 'cliente';
 
     if (role === 'abogado') {
-      await navigateTo("/lawyer/tickets", { replace: true });
+      await navigateTo("/lawyer/dashboard", { replace: true });
       return;
     }
 
@@ -87,7 +87,7 @@ async function signIn() {
       return;
     }
 
-    await navigateTo("/tickets", { replace: true });
+    await navigateTo("/client/dashboard", { replace: true });
   } finally {
     loading.value = false;
   }
