@@ -609,17 +609,14 @@ onMounted(() => {
 
     <template>
       <div class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <UCard>
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <h2 class="font-semibold text-highlighted">Proximos pasos</h2>
-                <p class="mt-1 text-sm text-muted">Lo mas importante para mantener tus casos avanzando sin friccion.</p>
-              </div>
-              <UBadge color="neutral" variant="outline">
-                {{ visibleName }}
-              </UBadge>
-            </div>
+        <DashboardCollapsibleCard
+          title="Proximos pasos"
+          description="Lo mas importante para mantener tus casos avanzando sin friccion."
+        >
+          <template #header-extra>
+            <UBadge color="neutral" variant="outline">
+              {{ visibleName }}
+            </UBadge>
           </template>
 
           <div class="grid gap-4">
@@ -645,16 +642,12 @@ onMounted(() => {
               </div>
             </div>
           </div>
-        </UCard>
+        </DashboardCollapsibleCard>
 
-        <UCard>
-          <template #header>
-            <div>
-              <h2 class="font-semibold text-highlighted">Estado de tus tramites</h2>
-              <p class="mt-1 text-sm text-muted">Distribucion rapida para entender donde esta cada ticket.</p>
-            </div>
-          </template>
-
+        <DashboardCollapsibleCard
+          title="Estado de tus tramites"
+          description="Distribucion rapida para entender donde esta cada ticket."
+        >
           <div class="grid gap-4">
             <div
               v-for="item in statusOverview"
@@ -690,24 +683,21 @@ onMounted(() => {
             </div>
             <div class="rounded-2xl border border-default/80 bg-default/80 px-4 py-3">
               <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">Perfil completo</p>
-              <p class="mt-2 text-2xl font-semibold text-highlighted">{{ profileCompletion }}%</p>
+                <p class="mt-2 text-2xl font-semibold text-highlighted">{{ profileCompletion }}%</p>
+              </div>
             </div>
-          </div>
-        </UCard>
+          </DashboardCollapsibleCard>
       </div>
 
       <div class="grid gap-6 xl:grid-cols-[1.12fr_0.88fr]">
-        <UCard>
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <h2 class="font-semibold text-highlighted">Tickets recientes</h2>
-                <p class="mt-1 text-sm text-muted">Tus casos mas recientes o con movimiento reciente.</p>
-              </div>
-              <UButton to="/tickets" color="neutral" variant="outline">
-                Ver todos
-              </UButton>
-            </div>
+        <DashboardCollapsibleCard
+          title="Tickets recientes"
+          description="Tus casos mas recientes o con movimiento reciente."
+        >
+          <template #header-extra>
+            <UButton to="/tickets" color="neutral" variant="outline">
+              Ver todos
+            </UButton>
           </template>
 
           <div v-if="recentTickets.length" class="grid gap-3">
@@ -750,17 +740,13 @@ onMounted(() => {
           <div v-else class="rounded-[1.5rem] border border-dashed border-default px-5 py-10 text-center text-sm text-muted">
             Cuando crees tu primer ticket, aca vas a ver el seguimiento resumido de cada caso.
           </div>
-        </UCard>
+        </DashboardCollapsibleCard>
 
         <div class="grid gap-6">
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Documentos recientes</h2>
-                <p class="mt-1 text-sm text-muted">Estado de lo ultimo que paso por revision o aprobacion.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Documentos recientes"
+            description="Estado de lo ultimo que paso por revision o aprobacion."
+          >
             <div v-if="recentDocuments.length" class="grid gap-3">
               <div
                 v-for="document in recentDocuments"
@@ -796,16 +782,12 @@ onMounted(() => {
             <div v-else class="rounded-2xl border border-dashed border-default px-4 py-8 text-center text-sm text-muted">
               Tus documentos aparecera aqui cuando un tramite requiera revision o generacion.
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
 
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Actividad reciente</h2>
-                <p class="mt-1 text-sm text-muted">Novedades que vale la pena revisar primero.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Actividad reciente"
+            description="Novedades que vale la pena revisar primero."
+          >
             <div v-if="recentNotifications.length" class="grid gap-3">
               <div
                 v-for="notification in recentNotifications"
@@ -836,16 +818,12 @@ onMounted(() => {
             <div v-else class="rounded-2xl border border-dashed border-default px-4 py-8 text-center text-sm text-muted">
               No hay notificaciones recientes. Cuando algo cambie en un caso, te avisaremos aqui.
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
 
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Accesos rapidos</h2>
-                <p class="mt-1 text-sm text-muted">Atajos utiles para moverte rapido dentro de la app.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Accesos rapidos"
+            description="Atajos utiles para moverte rapido dentro de la app."
+          >
             <div class="grid gap-3">
               <NuxtLink
                 v-for="item in quickLinks"
@@ -864,7 +842,7 @@ onMounted(() => {
                 </div>
               </NuxtLink>
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
         </div>
       </div>
     </template>

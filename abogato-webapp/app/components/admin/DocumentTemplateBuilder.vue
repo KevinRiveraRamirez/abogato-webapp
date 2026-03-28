@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick } from 'vue'
+import { nextTick, reactive, watch } from 'vue'
+import type { StepperItem } from '@nuxt/ui'
 import type { Database } from '~/types/database.types'
 import {
   groupTemplateFields,
@@ -28,6 +29,7 @@ type Template = {
 type TemplateRow = Database['public']['Tables']['document_templates']['Row']
 type PaletteKind = TemplateFieldType | 'section' | 'person_block'
 type BuilderField = TemplateField & { id: string }
+type BuilderStepId = 'form' | 'document'
 type BuilderSection = {
   id: string
   title: string
@@ -184,6 +186,17 @@ const documentContentTextarea = ref<HTMLTextAreaElement | null>(null)
 const documentContentSelectionStart = ref(0)
 const documentContentSelectionEnd = ref(0)
 const hasDocumentContentCursor = ref(false)
+const builderStep = ref<BuilderStepId>('form')
+const builderHeaderCollapsed = ref(false)
+const panelCollapsed = reactive({
+  components: false,
+  analytics: false,
+  activeSection: false,
+  fieldEditor: false,
+})
+const sectionCollapsed = reactive<Record<string, boolean>>({})
+const componentGroupCollapsed = reactive<Record<string, boolean>>({})
+const placeholderGroupCollapsed = reactive<Record<string, boolean>>({})
 
 function obtenerClavesUsadas(ignoreFieldId = '') {
   return new Set(
@@ -353,6 +366,34 @@ function crearSeccionesDesdePlantilla(fields: TemplateField[]) {
   }))
 }
 
+function syncSectionCollapsedState(defaultCollapsed = false) {
+  const ids = new Set(form.value.sections.map(section => section.id))
+
+  Object.keys(sectionCollapsed).forEach((id) => {
+    if (!ids.has(id)) {
+      delete sectionCollapsed[id]
+    }
+  })
+
+  form.value.sections.forEach((section) => {
+    if (!(section.id in sectionCollapsed)) {
+      sectionCollapsed[section.id] = defaultCollapsed
+    }
+  })
+}
+
+function toggleSectionCollapse(sectionId: string) {
+  sectionCollapsed[sectionId] = !sectionCollapsed[sectionId]
+}
+
+function toggleComponentGroup(title: string) {
+  componentGroupCollapsed[title] = !componentGroupCollapsed[title]
+}
+
+function togglePlaceholderGroup(groupId: string) {
+  placeholderGroupCollapsed[groupId] = !placeholderGroupCollapsed[groupId]
+}
+
 function normalizarPlantilla(row: TemplateRow): Template {
   return {
     id: row.id,
@@ -449,6 +490,42 @@ const analytics = computed(() => {
     byType,
   }
 })
+
+const builderStepItems = computed<StepperItem[]>(() => [
+  {
+    value: 'form',
+    title: 'Formulario',
+    description: analytics.value.fields
+      ? `${analytics.value.sections} secciones · ${analytics.value.fields} campos`
+      : 'Definí el título, las secciones y los campos del trámite.',
+    icon: 'i-lucide-layout-template',
+  },
+  {
+    value: 'document',
+    title: 'Contenido',
+    description: form.value.content.trim()
+      ? 'Texto base listo para revisar y guardar.'
+      : `${analytics.value.placeholders} placeholders disponibles para insertar.`,
+    icon: 'i-lucide-file-text',
+  },
+])
+
+const isFormStep = computed(() => builderStep.value === 'form')
+const isDocumentStep = computed(() => builderStep.value === 'document')
+
+const builderStepSummary = computed(() => (
+  isFormStep.value
+    ? {
+        eyebrow: 'Paso 1 de 2',
+        title: 'Diseño del formulario',
+        description: 'Armá la estructura visual del trámite, agregá secciones y definí qué datos se le van a pedir al cliente.',
+      }
+    : {
+        eyebrow: 'Paso 2 de 2',
+        title: 'Contenido del documento',
+        description: 'Redactá el texto base del documento y usá los placeholders del formulario para insertar datos automáticamente.',
+      }
+))
 
 const availablePlaceholders = computed<AvailablePlaceholder[]>(() => [
   ...systemPlaceholders.map(item => ({
@@ -557,6 +634,13 @@ const documentContentError = computed(() => {
 function resetBuilder() {
   const nextForm = crearFormularioVacio()
   form.value = nextForm
+  syncSectionCollapsedState(false)
+  builderStep.value = 'form'
+  builderHeaderCollapsed.value = false
+  panelCollapsed.components = false
+  panelCollapsed.analytics = false
+  panelCollapsed.activeSection = false
+  panelCollapsed.fieldEditor = false
   activeSectionId.value = nextForm.sections[0]?.id ?? ''
   selectedFieldId.value = ''
   hasDocumentContentCursor.value = false
@@ -606,6 +690,13 @@ async function cargarPlantillaParaEdicion() {
     content: template.content,
     sections: crearSeccionesDesdePlantilla(template.fields),
   }
+  syncSectionCollapsedState(false)
+  builderStep.value = 'form'
+  builderHeaderCollapsed.value = false
+  panelCollapsed.components = false
+  panelCollapsed.analytics = false
+  panelCollapsed.activeSection = false
+  panelCollapsed.fieldEditor = false
   hasDocumentContentCursor.value = false
   documentContentSelectionStart.value = template.content.length
   documentContentSelectionEnd.value = template.content.length
@@ -640,6 +731,8 @@ async function agregarSeccion(afterSectionId?: string) {
   }
 
   form.value.sections = nextSections
+  syncSectionCollapsedState(false)
+  sectionCollapsed[section.id] = false
   activeSectionId.value = section.id
   selectedFieldId.value = ''
 
@@ -660,6 +753,11 @@ function eliminarSeccion(sectionId: string) {
   }
 
   form.value.sections = form.value.sections.filter(item => item.id !== sectionId)
+  delete sectionCollapsed[sectionId]
+
+  if (section.fields.some(field => field.id === selectedFieldId.value)) {
+    selectedFieldId.value = ''
+  }
 
   if (activeSectionId.value === sectionId) {
     activeSectionId.value = form.value.sections[0]?.id ?? ''
@@ -695,6 +793,8 @@ async function agregarBloquePersona(afterSectionId?: string) {
   }
 
   form.value.sections = nextSections
+  syncSectionCollapsedState(false)
+  sectionCollapsed[section.id] = false
   activeSectionId.value = section.id
   selectedFieldId.value = section.fields[0]?.id ?? ''
 
@@ -1046,6 +1146,31 @@ async function guardarPlantilla() {
   })
 }
 
+function irAlPasoSiguiente() {
+  if (builderStep.value === 'form') {
+    builderStep.value = 'document'
+  }
+}
+
+function irAlPasoAnterior() {
+  if (builderStep.value === 'document') {
+    builderStep.value = 'form'
+  }
+}
+
+function togglePanel(panel: keyof typeof panelCollapsed) {
+  panelCollapsed[panel] = !panelCollapsed[panel]
+}
+
+watch(builderStep, async (step) => {
+  errorMsg.value = ''
+
+  if (step !== 'document') return
+
+  await nextTick()
+  documentContentTextarea.value?.focus()
+})
+
 onMounted(async () => {
   await cargarPerfil()
   resetBuilder()
@@ -1082,41 +1207,34 @@ onMounted(async () => {
       v-else
       class="flex min-h-0 flex-1 flex-col"
     >
-      <div class="sticky top-0 z-20 rounded-[34px] border border-white/45 bg-default/64 px-5 py-5 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-3xl backdrop-brightness-105 backdrop-saturate-150 lg:px-8 xl:shrink-0">
-        <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
-          <div class="flex items-start gap-4">
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-arrow-left"
-              square
-              @click="void volverAlListado()"
-            />
-            <div>
-              <h2 class="text-2xl font-semibold text-highlighted">
-                {{ isEditing ? 'Editar plantilla' : 'Form Builder' }}
-              </h2>
-              <p class="mt-1 text-sm text-muted">
-                {{
-                  isEditing
-                    ? 'Actualizá la estructura del formulario y el contenido antes de guardar los cambios.'
-                    : 'Armá el formulario visual y luego definí el texto base que se insertará en Supabase.'
-                }}
-              </p>
-            </div>
+      <div
+        class="sticky top-0 z-20 rounded-[34px] border border-white/45 bg-default/64 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-3xl backdrop-brightness-105 backdrop-saturate-150 lg:px-8 xl:shrink-0"
+        :class="builderHeaderCollapsed ? 'px-5 py-3' : 'px-5 py-5'"
+      >
+        <div v-if="builderHeaderCollapsed" class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex min-w-0 flex-wrap items-center gap-3">
+            <h2 class="text-lg font-semibold text-highlighted">
+              {{ isEditing ? 'Editar plantilla' : 'Crear plantilla' }}
+            </h2>
+            <UBadge color="primary" variant="soft">
+              {{ builderStepSummary.eyebrow }}
+            </UBadge>
           </div>
 
-          <div class="flex flex-wrap items-center gap-3 2xl:justify-end">
-            <div class="text-left 2xl:text-right">
-              <p class="text-sm text-muted">Guardado en base de datos al finalizar</p>
-              <p class="text-xs text-toned">{{ analytics.fields }} campos listos para insertar</p>
-            </div>
-
+          <div class="flex flex-wrap items-center justify-end gap-2">
             <UButton color="neutral" variant="outline" @click="void volverAlListado()">
               Cancelar
             </UButton>
 
-            <UButton :loading="loading" @click="guardarPlantilla">
+            <UButton
+              v-if="isFormStep"
+              trailing-icon="i-lucide-arrow-right"
+              @click="irAlPasoSiguiente"
+            >
+              Continuar
+            </UButton>
+
+            <UButton v-else :loading="loading" @click="guardarPlantilla">
               {{
                 loading
                   ? 'Guardando...'
@@ -1125,581 +1243,920 @@ onMounted(async () => {
                     : 'Guardar plantilla'
               }}
             </UButton>
+
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              square
+              icon="i-lucide-chevron-down"
+              @click="builderHeaderCollapsed = false"
+            />
+          </div>
+        </div>
+
+        <div v-else class="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+          <div>
+            <h2 class="text-2xl font-semibold text-highlighted">
+              {{ isEditing ? 'Editar plantilla' : 'Crear plantilla' }}
+            </h2>
+            <p class="mt-1 text-xs font-medium uppercase tracking-[0.22em] text-primary/80">
+              {{ builderStepSummary.eyebrow }}
+            </p>
+            <p class="mt-2 text-sm text-muted">
+              {{ builderStepSummary.description }}
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3 2xl:justify-end">
+            <div class="text-left 2xl:text-right">
+              <p class="text-sm text-muted">{{ builderStepSummary.title }}</p>
+              <p class="text-xs text-toned">
+                {{ analytics.fields }} campos listos para insertar · {{ analytics.placeholders }} placeholders disponibles
+              </p>
+            </div>
+
+            <UButton color="neutral" variant="outline" @click="void volverAlListado()">
+              Cancelar
+            </UButton>
+
+            <UButton
+              v-if="isFormStep"
+              trailing-icon="i-lucide-arrow-right"
+              @click="irAlPasoSiguiente"
+            >
+              Continuar
+            </UButton>
+
+            <UButton v-else :loading="loading" @click="guardarPlantilla">
+              {{
+                loading
+                  ? 'Guardando...'
+                  : isEditing
+                    ? 'Guardar cambios'
+                    : 'Guardar plantilla'
+              }}
+            </UButton>
+
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              square
+              icon="i-lucide-chevron-up"
+              @click="builderHeaderCollapsed = true"
+            />
           </div>
         </div>
       </div>
 
-      <div class="grid flex-1 gap-5 pt-5 xl:min-h-0 xl:grid-cols-[240px_minmax(0,1fr)] xl:overflow-y-auto 2xl:grid-cols-[260px_minmax(0,1fr)_320px]">
-        <aside class="grid gap-4 self-start xl:sticky xl:top-5">
-          <UCard class="xl:max-h-[calc(100vh-11rem)] xl:overflow-hidden">
-            <div class="grid gap-4 xl:max-h-[calc(100vh-13.5rem)] xl:overflow-y-auto xl:pr-1">
-              <UInput
-                v-model="paletteQuery"
-                icon="i-lucide-search"
-                placeholder="Buscar componentes"
-              />
-
+      <div class="grid flex-1 gap-5 pt-5 xl:grid-cols-[260px_minmax(0,1fr)] 2xl:min-h-0 2xl:grid-cols-[260px_minmax(0,1fr)_320px] 2xl:overflow-hidden">
+        <aside class="self-start 2xl:sticky 2xl:top-5 2xl:min-h-0">
+          <div class="flex flex-col gap-4 2xl:h-[calc(100vh-9.5rem)] 2xl:min-h-0">
+            <UCard class="rounded-[30px] border-white/50 bg-default/80 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl">
               <div class="grid gap-5">
-                <div
-                  v-for="group in paletteGroups"
-                  :key="group.title"
-                  class="grid gap-3"
-                >
-                  <p class="text-sm font-medium text-muted">{{ group.title }}</p>
-
-                  <div class="grid gap-3">
-                    <button
-                      v-for="item in group.items"
-                      :key="item.label"
-                      type="button"
-                      draggable="true"
-                      class="rounded-2xl border border-default bg-default px-4 py-3 text-left transition hover:border-primary hover:bg-primary/5"
-                      @click.prevent="void agregarComponente(item.kind)"
-                      @dragstart="(event) => iniciarDrag(item.kind, event)"
-                      @dragend="finalizarDrag"
-                    >
-                      <div class="flex items-start gap-3">
-                        <div class="rounded-xl bg-primary/10 p-2 text-primary">
-                          <UIcon :name="item.icon" class="size-5" />
-                        </div>
-
-                        <div class="min-w-0">
-                          <p class="font-medium text-highlighted">{{ item.label }}</p>
-                          <p class="mt-1 text-sm text-muted">{{ item.description }}</p>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </UCard>
-        </aside>
-
-        <div class="grid min-w-0 gap-5">
-          <UCard>
-            <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <UFormField label="Título de la plantilla" required>
-                <UInput
-                  v-model="form.title"
-                  placeholder="Ej: Poder generalísimo sin límite de suma"
-                />
-              </UFormField>
-
-              <div class="rounded-2xl border border-default bg-muted/30 p-4">
-                <p class="text-xs uppercase tracking-wide text-toned">Nombre en trámites</p>
-                <p class="mt-2 font-medium text-highlighted">
-                  {{ form.title.trim() || 'Escribí un título para definir el nombre visible.' }}
-                </p>
-                <p class="mt-2 text-sm text-muted">
-                  Este título se guarda como `title` y es el nombre que después aparece en la selección de trámites.
-                </p>
-              </div>
-            </div>
-          </UCard>
-
-          <UCard>
-            <template #header>
-              <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 class="text-lg font-semibold text-highlighted">Canvas del formulario</h3>
-                  <p class="mt-1 text-sm text-muted">
-                    Arrastrá componentes desde la izquierda o hacé clic para agregarlos a la sección activa.
+                  <p class="text-xs font-medium uppercase tracking-[0.22em] text-primary/80">
+                    Flujo de creación
+                  </p>
+                  <h3 class="mt-2 text-lg font-semibold text-highlighted">{{ builderStepSummary.title }}</h3>
+                  <p class="mt-2 text-sm text-muted">
+                    {{ builderStepSummary.description }}
                   </p>
                 </div>
 
-                <div class="flex items-center gap-2">
-                  <UBadge color="neutral" variant="subtle">
-                    {{ analytics.sections }} secciones
-                  </UBadge>
-                  <UBadge color="primary" variant="soft">
-                    {{ analytics.fields }} campos
-                  </UBadge>
-                  <UButton color="primary" variant="soft" @click="void agregarBloquePersona()">
-                    Agregar nombre | cédula
-                  </UButton>
-                  <UButton color="neutral" variant="outline" @click="void agregarSeccion()">
-                    Agregar sección
-                  </UButton>
-                </div>
+                <UStepper
+                  v-model="builderStep"
+                  orientation="vertical"
+                  size="lg"
+                  :linear="false"
+                  value-key="value"
+                  :items="builderStepItems"
+                  class="w-full"
+                />
               </div>
-            </template>
+            </UCard>
 
-            <div class="grid gap-5" @dragover.prevent @drop.prevent="(event) => void soltarEnCanvas(event)">
-              <div
-                class="rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-4 py-4 text-sm text-primary"
-                @dragover.prevent
-                @drop.prevent="(event) => void soltarEnCanvas(event)"
-              >
-                Soltá elementos aquí para agregarlos al canvas. Los elementos de layout crean nuevas secciones.
-              </div>
-
-              <article
-                v-for="(section, sectionIndex) in form.sections"
-                :key="section.id"
-                :data-section-id="section.id"
-                class="rounded-[28px] border p-5 transition"
-                :class="activeSectionId === section.id ? 'border-primary bg-primary/5' : 'border-default bg-default'"
-                @click="seleccionarSeccion(section.id)"
-                @dragover.prevent
-                @drop.prevent="(event) => void soltarEnSeccion(section.id, event)"
-              >
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                  <div class="min-w-0 flex-1 grid gap-3">
-                    <UInput
-                      :model-value="section.title"
-                      placeholder="Título de la sección"
-                      @update:model-value="(value) => { section.title = value }"
-                    />
-                    <UTextarea
-                      :model-value="section.description"
-                      :rows="2"
-                      placeholder="Descripción opcional para orientar al cliente"
-                      @update:model-value="(value) => { section.description = value }"
-                    />
-                  </div>
-
-                  <div class="flex items-center gap-2">
-                    <UButton
-                      size="sm"
-                      color="neutral"
-                      variant="ghost"
-                      icon="i-lucide-arrow-up"
-                      square
-                      :disabled="sectionIndex === 0"
-                      @click.stop="moverSeccion(section.id, -1)"
-                    />
-                    <UButton
-                      size="sm"
-                      color="neutral"
-                      variant="ghost"
-                      icon="i-lucide-arrow-down"
-                      square
-                      :disabled="sectionIndex === form.sections.length - 1"
-                      @click.stop="moverSeccion(section.id, 1)"
-                    />
-                    <UButton
-                      size="sm"
-                      color="error"
-                      variant="ghost"
-                      icon="i-lucide-trash-2"
-                      square
-                      :disabled="form.sections.length === 1"
-                      @click.stop="eliminarSeccion(section.id)"
-                    />
-                  </div>
-                </div>
-
-                <div v-if="section.fields.length" class="mt-5 grid gap-4 md:grid-cols-2">
-                  <article
-                    v-for="(field, fieldIndex) in section.fields"
-                    :key="field.id"
-                    role="button"
-                    tabindex="0"
-                    class="rounded-2xl border px-4 py-4 text-left transition"
-                    :class="[
-                      field.width === 'full' ? 'md:col-span-2' : '',
-                      selectedFieldId === field.id
-                        ? 'border-primary bg-default shadow-sm'
-                        : 'border-default bg-muted/30 hover:border-primary/60 hover:bg-default'
-                    ]"
-                    @click.stop="seleccionarCampo(section.id, field.id)"
-                    @keydown.enter.prevent="seleccionarCampo(section.id, field.id)"
-                    @keydown.space.prevent="seleccionarCampo(section.id, field.id)"
-                  >
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p class="font-medium text-highlighted">
-                          {{ field.label || 'Campo sin título' }}
-                          <span v-if="field.required" class="text-error">*</span>
-                        </p>
-                        <p class="mt-1 text-xs text-toned">{{ field.key || 'clave_pendiente' }}</p>
-                      </div>
-
-                      <UBadge color="neutral" variant="subtle">
-                        {{ fieldTypeLabels[field.type] }}
-                      </UBadge>
-                    </div>
-
-                    <div v-if="field.padron_source || field.padron_source_key" class="mt-3 flex flex-wrap gap-2">
-                      <UBadge v-if="field.padron_source" color="success" variant="soft">
-                        Consulta padrón por cédula
-                      </UBadge>
-                      <UBadge v-if="field.padron_source_key" color="primary" variant="soft">
-                        Se completa desde otra cédula
-                      </UBadge>
-                    </div>
-
-                    <div class="mt-4">
-                      <input
-                        v-if="field.type === 'text' || field.type === 'number' || field.type === 'date'"
-                        :type="field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'"
-                        :placeholder="field.placeholder || field.label"
-                        disabled
-                        class="w-full rounded-xl border border-default bg-default px-4 py-3 text-sm text-muted"
-                      >
-
-                      <textarea
-                        v-else-if="field.type === 'textarea'"
-                        :placeholder="field.placeholder || field.label"
-                        disabled
-                        rows="4"
-                        class="w-full rounded-xl border border-default bg-default px-4 py-3 text-sm text-muted"
-                      />
-
-                      <div v-else class="flex items-center gap-6 rounded-xl border border-default bg-default px-4 py-3 text-sm text-highlighted">
-                        <label class="flex items-center gap-2">
-                          <input type="radio" disabled>
-                          <span>Sí</span>
-                        </label>
-                        <label class="flex items-center gap-2">
-                          <input type="radio" disabled>
-                          <span>No</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <p v-if="field.help" class="mt-3 text-xs text-muted">
-                      {{ field.help }}
-                    </p>
-
-                    <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
-                      <span class="text-xs text-toned">
-                        {{ field.width === 'full' ? 'Ancho completo' : 'Media columna' }}
-                      </span>
-
-                      <div class="flex items-center gap-1">
-                        <UButton
-                          size="xs"
-                          color="neutral"
-                          variant="ghost"
-                          icon="i-lucide-arrow-up"
-                          square
-                          :disabled="fieldIndex === 0"
-                          @click.stop="moverCampo(section.id, field.id, -1)"
-                        />
-                        <UButton
-                          size="xs"
-                          color="neutral"
-                          variant="ghost"
-                          icon="i-lucide-arrow-down"
-                          square
-                          :disabled="fieldIndex === section.fields.length - 1"
-                          @click.stop="moverCampo(section.id, field.id, 1)"
-                        />
-                        <UButton
-                          size="xs"
-                          color="neutral"
-                          variant="ghost"
-                          icon="i-lucide-copy"
-                          square
-                          @click.stop="duplicarCampo(section.id, field.id)"
-                        />
-                        <UButton
-                          size="xs"
-                          color="error"
-                          variant="ghost"
-                          icon="i-lucide-trash-2"
-                          square
-                          @click.stop="eliminarCampo(section.id, field.id)"
-                        />
-                      </div>
-                    </div>
-                  </article>
-                </div>
-
-                <div
-                  class="mt-5 rounded-2xl border border-dashed border-primary/50 bg-primary/5 px-4 py-5 text-sm text-primary"
-                  @dragover.prevent
-                  @drop.prevent="(event) => void soltarEnSeccion(section.id, event)"
-                >
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p class="font-medium">Soltá un componente acá</p>
-                      <p class="mt-1 text-primary/80">
-                        También podés usar la paleta para agregar campos a esta sección.
-                      </p>
-                    </div>
-
-                    <UButton color="primary" variant="soft" @click.stop="seleccionarSeccion(section.id)">
-                      Sección activa
-                    </UButton>
-                  </div>
-                </div>
-              </article>
-            </div>
-          </UCard>
-
-          <UCard>
-            <template #header>
-              <div>
-                <h3 class="text-lg font-semibold text-highlighted">Contenido del documento</h3>
-                <p class="mt-1 text-sm text-muted">
-                  Este texto se guarda en `content`. Los placeholders del formulario y del notario se reemplazan al generar el documento.
-                </p>
-              </div>
-            </template>
-
-            <div class="grid gap-4">
-              <p class="text-sm text-muted">
-                Los placeholders se agrupan por sección del formulario para que sea más claro qué datos pertenecen a cada bloque del documento.
-              </p>
-
-              <div class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)] xl:items-start">
-                <div class="grid gap-4 rounded-2xl border border-default bg-muted/20 p-4 xl:max-h-[calc(100vh-20rem)] xl:overflow-y-auto">
+            <UCard
+              v-if="isFormStep"
+              :ui="{
+                header: panelCollapsed.components
+                  ? 'px-4 py-3 sm:px-4 sm:py-3'
+                  : 'p-4 sm:px-6',
+                body: panelCollapsed.components
+                  ? 'p-4 sm:p-6'
+                  : 'min-h-0 flex flex-1 flex-col p-4 sm:p-6'
+              }"
+              :class="panelCollapsed.components
+                ? '2xl:flex-none'
+                : '2xl:min-h-0 2xl:flex 2xl:flex-1 2xl:flex-col 2xl:overflow-hidden'"
+            >
+              <template #header>
+                <div class="flex justify-between gap-3" :class="panelCollapsed.components ? 'items-center' : 'items-start'">
                   <div>
-                    <p class="font-medium text-highlighted">Bloques de placeholders</p>
-                    <p class="mt-1 text-sm text-muted">
-                      Hacé clic en cualquier variable para insertarla en el texto de la derecha.
+                    <h3
+                      class="font-semibold text-highlighted"
+                      :class="panelCollapsed.components ? 'text-base' : 'text-lg'"
+                    >
+                      Componentes
+                    </h3>
+                    <p v-if="!panelCollapsed.components" class="mt-1 text-sm text-muted">
+                      Layout elements, bloques guiados y campos para construir el formulario.
                     </p>
                   </div>
 
-                  <div class="grid gap-4">
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    square
+                    :icon="panelCollapsed.components ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
+                    @click="togglePanel('components')"
+                  />
+                </div>
+              </template>
+
+              <UScrollArea
+                v-if="!panelCollapsed.components"
+                class="min-h-0 2xl:flex-1 2xl:overscroll-contain 2xl:[scrollbar-gutter:stable]"
+              >
+                <div class="grid gap-4 2xl:pr-1">
+                  <UInput
+                    v-model="paletteQuery"
+                    icon="i-lucide-search"
+                    placeholder="Buscar componentes"
+                  />
+
+                  <div class="grid gap-5">
                     <div
-                      v-for="group in availablePlaceholderGroups"
-                      :key="group.id"
-                      class="grid gap-3 rounded-2xl border border-default bg-default p-4"
+                      v-for="group in paletteGroups"
+                      :key="group.title"
+                      class="grid gap-3"
                     >
-                      <div>
-                        <p class="font-medium text-highlighted">{{ group.title }}</p>
-                        <p v-if="group.description" class="mt-1 text-sm text-muted">
-                          {{ group.description }}
-                        </p>
+                      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                        <div class="flex min-w-0 flex-wrap items-center gap-2">
+                          <p class="text-sm font-medium text-muted">{{ group.title }}</p>
+                          <UBadge color="neutral" variant="subtle" size="sm">
+                            {{ group.items.length }}
+                          </UBadge>
+                        </div>
+
+                        <UButton
+                          color="neutral"
+                          variant="ghost"
+                          size="xs"
+                          square
+                          :icon="componentGroupCollapsed[group.title] ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
+                          @click.stop="toggleComponentGroup(group.title)"
+                        />
                       </div>
 
-                      <div class="grid gap-3">
+                      <div v-if="componentGroupCollapsed[group.title]" class="rounded-2xl border border-dashed border-default bg-muted/20 px-4 py-3 text-sm text-muted">
+                        Grupo minimizado
+                      </div>
+
+                      <div v-else class="grid gap-3">
                         <button
-                          v-for="placeholder in group.items"
-                          :key="placeholder.token"
+                          v-for="item in group.items"
+                          :key="item.label"
                           type="button"
-                          class="rounded-2xl border border-default bg-muted/20 px-4 py-3 text-left transition hover:border-primary hover:bg-primary/5"
-                          @click="insertarPlaceholder(placeholder.key)"
+                          draggable="true"
+                          class="rounded-2xl border border-default bg-default px-4 py-3 text-left transition hover:border-primary hover:bg-primary/5"
+                          @click.prevent="void agregarComponente(item.kind)"
+                          @dragstart="(event) => iniciarDrag(item.kind, event)"
+                          @dragend="finalizarDrag"
                         >
-                          <p class="text-sm font-medium text-highlighted">
-                            {{ placeholder.label }}
-                          </p>
-                          <p class="mt-1 text-xs text-muted">
-                            {{ placeholder.source }}
-                          </p>
-                          <p class="mt-2 font-mono text-xs text-toned">
-                            {{ placeholder.token }}
-                          </p>
+                          <div class="flex items-start gap-3">
+                            <div class="rounded-xl bg-primary/10 p-2 text-primary">
+                              <UIcon :name="item.icon" class="size-5" />
+                            </div>
+
+                            <div class="min-w-0">
+                              <p class="font-medium text-highlighted">{{ item.label }}</p>
+                              <p class="mt-1 text-sm text-muted">{{ item.description }}</p>
+                            </div>
+                          </div>
                         </button>
                       </div>
                     </div>
                   </div>
                 </div>
+              </UScrollArea>
+            </UCard>
+          </div>
+        </aside>
 
-                <div class="grid gap-4">
-                  <textarea
-                    ref="documentContentTextarea"
-                    :value="form.content"
-                    rows="20"
-                    placeholder="Ejemplo: Yo {{nombre_cliente}}, cédula {{cedula_cliente}}, comparezco ante {{nombre_notario}}..."
-                    class="min-h-[520px] w-full rounded-2xl border border-default bg-default px-4 py-3 font-mono text-sm text-highlighted outline-none transition focus:border-primary"
-                    @input="actualizarContenidoDocumento"
-                    @click="recordarCursorContenido"
-                    @focus="recordarCursorContenido"
-                    @keyup="recordarCursorContenido"
-                    @select="recordarCursorContenido"
-                  ></textarea>
+        <template v-if="isFormStep">
+          <div class="grid min-w-0 gap-5 2xl:flex 2xl:h-[calc(100vh-9.5rem)] 2xl:min-h-0 2xl:flex-col">
+            <UCard>
+                <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                  <UFormField label="Título de la plantilla" required>
+                    <UInput
+                      v-model="form.title"
+                      placeholder="Ej: Poder generalísimo sin límite de suma"
+                    />
+                  </UFormField>
 
-                  <UAlert
-                    v-if="documentContentError"
-                    color="warning"
-                    variant="soft"
-                    title="Revisá el formato del documento"
-                    :description="documentContentError"
-                  />
-                </div>
-              </div>
-            </div>
-          </UCard>
-        </div>
-
-        <aside class="grid gap-4 self-start xl:col-span-2 2xl:col-span-1">
-          <UCard>
-            <template #header>
-              <div>
-                <h3 class="text-lg font-semibold text-highlighted">Analytics</h3>
-                <p class="mt-1 text-sm text-muted">Resumen rápido del builder antes de guardar.</p>
-              </div>
-            </template>
-
-            <div class="grid gap-3">
-              <div class="grid grid-cols-2 gap-3">
-                <div class="rounded-2xl border border-default bg-muted/30 p-4">
-                  <p class="text-xs uppercase tracking-wide text-toned">Secciones</p>
-                  <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.sections }}</p>
-                </div>
-                <div class="rounded-2xl border border-default bg-muted/30 p-4">
-                  <p class="text-xs uppercase tracking-wide text-toned">Campos</p>
-                  <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.fields }}</p>
-                </div>
-                <div class="rounded-2xl border border-default bg-muted/30 p-4">
-                  <p class="text-xs uppercase tracking-wide text-toned">Obligatorios</p>
-                  <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.required }}</p>
-                </div>
-                <div class="rounded-2xl border border-default bg-muted/30 p-4">
-                  <p class="text-xs uppercase tracking-wide text-toned">Placeholders</p>
-                  <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.placeholders }}</p>
-                </div>
-              </div>
-
-              <div class="rounded-2xl border border-default p-4">
-                <p class="text-sm font-medium text-highlighted">Distribución por tipo</p>
-                <div class="mt-3 grid gap-2 text-sm text-muted">
-                  <div class="flex items-center justify-between">
-                    <span>Texto corto</span>
-                    <span>{{ analytics.byType.text }}</span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span>Texto largo</span>
-                    <span>{{ analytics.byType.textarea }}</span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span>Número</span>
-                    <span>{{ analytics.byType.number }}</span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span>Fecha</span>
-                    <span>{{ analytics.byType.date }}</span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span>Sí / No</span>
-                    <span>{{ analytics.byType.boolean }}</span>
+                  <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                    <p class="text-xs uppercase tracking-wide text-toned">Nombre en trámites</p>
+                    <p class="mt-2 font-medium text-highlighted">
+                      {{ form.title.trim() || 'Escribí un título para definir el nombre visible.' }}
+                    </p>
+                    <p class="mt-2 text-sm text-muted">
+                      Este título se guarda como `title` y es el nombre que después aparece en la selección de trámites.
+                    </p>
                   </div>
                 </div>
-              </div>
-            </div>
-          </UCard>
+              </UCard>
 
-          <UCard v-if="activeSection">
-            <template #header>
-              <div>
-                <h3 class="text-lg font-semibold text-highlighted">Sección activa</h3>
-                <p class="mt-1 text-sm text-muted">Los componentes nuevos se agregan acá.</p>
-              </div>
-            </template>
+            <UCard
+              class="2xl:min-h-0 2xl:flex 2xl:flex-1 2xl:flex-col 2xl:overflow-hidden"
+              :ui="{ body: 'min-h-0 flex flex-1 flex-col p-4 sm:p-6' }"
+            >
+                <template #header>
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 class="text-lg font-semibold text-highlighted">Canvas del formulario</h3>
+                      <p class="mt-1 text-sm text-muted">
+                        Arrastrá componentes desde la izquierda o hacé clic para agregarlos a la sección activa.
+                      </p>
+                    </div>
 
-            <div class="grid gap-3 text-sm">
-              <div class="rounded-2xl border border-default bg-muted/30 p-4">
-                <p class="font-medium text-highlighted">{{ activeSection.title || 'Sección sin título' }}</p>
-                <p class="mt-2 text-muted">
-                  {{ activeSection.description || 'Sin descripción configurada.' }}
-                </p>
-              </div>
-              <p class="text-muted">
-                {{ activeSection.fields.length }} campo(s) dentro de esta sección.
-              </p>
-            </div>
-          </UCard>
+                    <div class="flex items-center gap-2">
+                      <UBadge color="neutral" variant="subtle">
+                        {{ analytics.sections }} secciones
+                      </UBadge>
+                      <UBadge color="primary" variant="soft">
+                        {{ analytics.fields }} campos
+                      </UBadge>
+                      <UButton color="primary" variant="soft" @click="void agregarBloquePersona()">
+                        Agregar nombre | cédula
+                      </UButton>
+                      <UButton color="neutral" variant="outline" @click="void agregarSeccion()">
+                        Agregar sección
+                      </UButton>
+                    </div>
+                  </div>
+                </template>
 
-          <UCard v-if="selectedField">
-            <template #header>
-              <div>
-                <h3 class="text-lg font-semibold text-highlighted">Editor del campo</h3>
-                <p class="mt-1 text-sm text-muted">Ajustá el campo seleccionado en el canvas.</p>
-              </div>
-            </template>
+                <UScrollArea
+                  class="min-h-0 2xl:flex-1 2xl:overscroll-contain 2xl:[scrollbar-gutter:stable]"
+                  @dragover.prevent
+                  @drop.prevent="(event) => void soltarEnCanvas(event)"
+                >
+                  <div class="grid gap-5 2xl:pr-1">
+                    <div
+                      class="rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-4 py-4 text-sm text-primary"
+                      @dragover.prevent
+                      @drop.prevent="(event) => void soltarEnCanvas(event)"
+                    >
+                      Soltá elementos aquí para agregarlos al canvas. Los elementos de layout crean nuevas secciones.
+                    </div>
 
-            <div class="grid gap-4">
-              <UFormField label="Etiqueta" required>
-                <UInput
-                  :model-value="selectedField.label"
-                  placeholder="Nombre visible del campo"
-                  @update:model-value="(value) => { actualizarCampoSeleccionado({ label: value }) }"
-                />
-              </UFormField>
+                    <article
+                      v-for="(section, sectionIndex) in form.sections"
+                      :key="section.id"
+                      :data-section-id="section.id"
+                      class="rounded-[28px] border transition"
+                      :class="[
+                        activeSectionId === section.id ? 'border-primary bg-primary/5' : 'border-default bg-default',
+                        sectionCollapsed[section.id] ? 'p-4' : 'p-5'
+                      ]"
+                      @click="seleccionarSeccion(section.id)"
+                      @dragover.prevent
+                      @drop.prevent="(event) => void soltarEnSeccion(section.id, event)"
+                    >
+                      <div
+                        class="flex flex-wrap justify-between gap-4"
+                        :class="sectionCollapsed[section.id] ? 'items-center' : 'items-start'"
+                      >
+                        <div class="min-w-0 flex-1">
+                          <div v-if="sectionCollapsed[section.id]" class="flex flex-wrap items-center gap-2">
+                            <p class="truncate font-semibold text-highlighted">
+                              {{ section.title || `Sección ${sectionIndex + 1}` }}
+                            </p>
+                            <UBadge color="neutral" variant="subtle">
+                              {{ section.fields.length }} campo(s)
+                            </UBadge>
+                            <UBadge color="warning" variant="soft">
+                              Minimizada
+                            </UBadge>
+                          </div>
 
-              <div class="grid gap-2">
-                <UFormField label="Clave del placeholder" required>
-                  <UInput
-                    :model-value="selectedField.key"
-                    placeholder="nombre_cliente"
-                    @update:model-value="(value) => { actualizarCampoSeleccionado({ key: normalizarTextoPlano(String(value ?? '')) }) }"
-                  />
-                </UFormField>
-                <div class="flex justify-end">
-                  <UButton color="neutral" variant="ghost" size="sm" @click="regenerarClaveSeleccionada">
-                    Autogenerar clave
-                  </UButton>
-                </div>
-              </div>
+                          <div v-else class="grid gap-3">
+                            <UInput
+                              :model-value="section.title"
+                              placeholder="Título de la sección"
+                              @update:model-value="(value) => { section.title = value }"
+                            />
+                            <UTextarea
+                              :model-value="section.description"
+                              :rows="2"
+                              placeholder="Descripción opcional para orientar al cliente"
+                              @update:model-value="(value) => { section.description = value }"
+                            />
+                          </div>
+                        </div>
 
-              <UFormField label="Tipo">
-                <UInput :model-value="fieldTypeLabels[selectedField.type]" disabled />
-              </UFormField>
+                        <div class="flex items-center gap-2">
+                          <UButton
+                            size="sm"
+                            color="neutral"
+                            variant="ghost"
+                            :icon="sectionCollapsed[section.id] ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
+                            square
+                            @click.stop="toggleSectionCollapse(section.id)"
+                          />
+                          <UButton
+                            size="sm"
+                            color="neutral"
+                            variant="ghost"
+                            icon="i-lucide-arrow-up"
+                            square
+                            :disabled="sectionIndex === 0"
+                            @click.stop="moverSeccion(section.id, -1)"
+                          />
+                          <UButton
+                            size="sm"
+                            color="neutral"
+                            variant="ghost"
+                            icon="i-lucide-arrow-down"
+                            square
+                            :disabled="sectionIndex === form.sections.length - 1"
+                            @click.stop="moverSeccion(section.id, 1)"
+                          />
+                          <UButton
+                            size="sm"
+                            color="error"
+                            variant="ghost"
+                            icon="i-lucide-trash-2"
+                            square
+                            :disabled="form.sections.length === 1"
+                            @click.stop="eliminarSeccion(section.id)"
+                          />
+                        </div>
+                      </div>
 
-              <UFormField label="Placeholder">
-                <UInput
-                  :model-value="selectedField.placeholder"
-                  placeholder="Texto guía dentro del input"
-                  @update:model-value="(value) => { actualizarCampoSeleccionado({ placeholder: value }) }"
-                />
-              </UFormField>
+                      <div v-if="!sectionCollapsed[section.id] && section.fields.length" class="mt-5 grid gap-4 md:grid-cols-2">
+                        <article
+                          v-for="(field, fieldIndex) in section.fields"
+                          :key="field.id"
+                          role="button"
+                          tabindex="0"
+                          class="rounded-2xl border px-4 py-4 text-left transition"
+                          :class="[
+                            field.width === 'full' ? 'md:col-span-2' : '',
+                            selectedFieldId === field.id
+                              ? 'border-primary bg-default shadow-sm'
+                              : 'border-default bg-muted/30 hover:border-primary/60 hover:bg-default'
+                          ]"
+                          @click.stop="seleccionarCampo(section.id, field.id)"
+                          @keydown.enter.prevent="seleccionarCampo(section.id, field.id)"
+                          @keydown.space.prevent="seleccionarCampo(section.id, field.id)"
+                        >
+                          <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p class="font-medium text-highlighted">
+                                {{ field.label || 'Campo sin título' }}
+                                <span v-if="field.required" class="text-error">*</span>
+                              </p>
+                              <p class="mt-1 text-xs text-toned">{{ field.key || 'clave_pendiente' }}</p>
+                            </div>
 
-              <UFormField label="Ayuda adicional">
-                <UTextarea
-                  :model-value="selectedField.help"
-                  :rows="3"
-                  placeholder="Mensaje complementario para orientar al cliente"
-                  @update:model-value="(value) => { actualizarCampoSeleccionado({ help: value }) }"
-                />
-              </UFormField>
+                            <UBadge color="neutral" variant="subtle">
+                              {{ fieldTypeLabels[field.type] }}
+                            </UBadge>
+                          </div>
 
-              <div
-                v-if="selectedField.padron_source || selectedField.padron_source_key"
-                class="grid gap-4 rounded-2xl border border-default bg-muted/30 p-4"
+                          <div v-if="field.padron_source || field.padron_source_key" class="mt-3 flex flex-wrap gap-2">
+                            <UBadge v-if="field.padron_source" color="success" variant="soft">
+                              Consulta padrón por cédula
+                            </UBadge>
+                            <UBadge v-if="field.padron_source_key" color="primary" variant="soft">
+                              Se completa desde otra cédula
+                            </UBadge>
+                          </div>
+
+                          <div class="mt-4">
+                            <input
+                              v-if="field.type === 'text' || field.type === 'number' || field.type === 'date'"
+                              :type="field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'"
+                              :placeholder="field.placeholder || field.label"
+                              disabled
+                              class="w-full rounded-xl border border-default bg-default px-4 py-3 text-sm text-muted"
+                            >
+
+                            <textarea
+                              v-else-if="field.type === 'textarea'"
+                              :placeholder="field.placeholder || field.label"
+                              disabled
+                              rows="4"
+                              class="w-full rounded-xl border border-default bg-default px-4 py-3 text-sm text-muted"
+                            />
+
+                            <div v-else class="flex items-center gap-6 rounded-xl border border-default bg-default px-4 py-3 text-sm text-highlighted">
+                              <label class="flex items-center gap-2">
+                                <input type="radio" disabled>
+                                <span>Sí</span>
+                              </label>
+                              <label class="flex items-center gap-2">
+                                <input type="radio" disabled>
+                                <span>No</span>
+                              </label>
+                            </div>
+                          </div>
+
+                          <p v-if="field.help" class="mt-3 text-xs text-muted">
+                            {{ field.help }}
+                          </p>
+
+                          <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+                            <span class="text-xs text-toned">
+                              {{ field.width === 'full' ? 'Ancho completo' : 'Media columna' }}
+                            </span>
+
+                            <div class="flex items-center gap-1">
+                              <UButton
+                                size="xs"
+                                color="neutral"
+                                variant="ghost"
+                                icon="i-lucide-arrow-up"
+                                square
+                                :disabled="fieldIndex === 0"
+                                @click.stop="moverCampo(section.id, field.id, -1)"
+                              />
+                              <UButton
+                                size="xs"
+                                color="neutral"
+                                variant="ghost"
+                                icon="i-lucide-arrow-down"
+                                square
+                                :disabled="fieldIndex === section.fields.length - 1"
+                                @click.stop="moverCampo(section.id, field.id, 1)"
+                              />
+                              <UButton
+                                size="xs"
+                                color="neutral"
+                                variant="ghost"
+                                icon="i-lucide-copy"
+                                square
+                                @click.stop="duplicarCampo(section.id, field.id)"
+                              />
+                              <UButton
+                                size="xs"
+                                color="error"
+                                variant="ghost"
+                                icon="i-lucide-trash-2"
+                                square
+                                @click.stop="eliminarCampo(section.id, field.id)"
+                              />
+                            </div>
+                          </div>
+                        </article>
+                      </div>
+
+                      <div
+                        v-if="!sectionCollapsed[section.id]"
+                        class="mt-5 rounded-2xl border border-dashed border-primary/50 bg-primary/5 px-4 py-5 text-sm text-primary"
+                        @dragover.prevent
+                        @drop.prevent="(event) => void soltarEnSeccion(section.id, event)"
+                      >
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p class="font-medium">Soltá un componente acá</p>
+                            <p class="mt-1 text-primary/80">
+                              También podés usar la paleta para agregar campos a esta sección.
+                            </p>
+                          </div>
+
+                          <UButton color="primary" variant="soft" @click.stop="seleccionarSeccion(section.id)">
+                            Sección activa
+                          </UButton>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </UScrollArea>
+            </UCard>
+          </div>
+
+          <aside class="self-start xl:col-span-2 2xl:col-span-1 2xl:sticky 2xl:top-5 2xl:min-h-0">
+            <div class="flex flex-col gap-4 2xl:h-[calc(100vh-9.5rem)] 2xl:min-h-0">
+              <UCard
+                :ui="{
+                  header: panelCollapsed.analytics
+                    ? 'px-4 py-3 sm:px-4 sm:py-3'
+                    : 'p-4 sm:px-6'
+                }"
               >
+                <template #header>
+                  <div class="flex justify-between gap-3" :class="panelCollapsed.analytics ? 'items-center' : 'items-start'">
+                    <div>
+                      <h3
+                        class="font-semibold text-highlighted"
+                        :class="panelCollapsed.analytics ? 'text-base' : 'text-lg'"
+                      >
+                        Analytics
+                      </h3>
+                      <p v-if="!panelCollapsed.analytics" class="mt-1 text-sm text-muted">Resumen rápido del builder antes de pasar al documento.</p>
+                    </div>
+
+                    <UButton
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      square
+                      :icon="panelCollapsed.analytics ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
+                      @click="togglePanel('analytics')"
+                    />
+                  </div>
+                </template>
+
+                <div v-if="!panelCollapsed.analytics" class="grid gap-3">
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                      <p class="text-xs uppercase tracking-wide text-toned">Secciones</p>
+                      <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.sections }}</p>
+                    </div>
+                    <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                      <p class="text-xs uppercase tracking-wide text-toned">Campos</p>
+                      <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.fields }}</p>
+                    </div>
+                    <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                      <p class="text-xs uppercase tracking-wide text-toned">Obligatorios</p>
+                      <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.required }}</p>
+                    </div>
+                    <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                      <p class="text-xs uppercase tracking-wide text-toned">Placeholders</p>
+                      <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.placeholders }}</p>
+                    </div>
+                  </div>
+
+                  <div class="rounded-2xl border border-default p-4">
+                    <p class="text-sm font-medium text-highlighted">Distribución por tipo</p>
+                    <div class="mt-3 grid gap-2 text-sm text-muted">
+                      <div class="flex items-center justify-between">
+                        <span>Texto corto</span>
+                        <span>{{ analytics.byType.text }}</span>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <span>Texto largo</span>
+                        <span>{{ analytics.byType.textarea }}</span>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <span>Número</span>
+                        <span>{{ analytics.byType.number }}</span>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <span>Fecha</span>
+                        <span>{{ analytics.byType.date }}</span>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <span>Sí / No</span>
+                        <span>{{ analytics.byType.boolean }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </UCard>
+
+              <UCard
+                v-if="activeSection"
+                :ui="{
+                  header: panelCollapsed.activeSection
+                    ? 'px-4 py-3 sm:px-4 sm:py-3'
+                    : 'p-4 sm:px-6'
+                }"
+              >
+                <template #header>
+                  <div class="flex justify-between gap-3" :class="panelCollapsed.activeSection ? 'items-center' : 'items-start'">
+                    <div>
+                      <h3
+                        class="font-semibold text-highlighted"
+                        :class="panelCollapsed.activeSection ? 'text-base' : 'text-lg'"
+                      >
+                        Sección activa
+                      </h3>
+                      <p v-if="!panelCollapsed.activeSection" class="mt-1 text-sm text-muted">Los componentes nuevos se agregan acá.</p>
+                    </div>
+
+                    <UButton
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      square
+                      :icon="panelCollapsed.activeSection ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
+                      @click="togglePanel('activeSection')"
+                    />
+                  </div>
+                </template>
+
+                <div v-if="!panelCollapsed.activeSection" class="grid gap-3 text-sm">
+                  <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                    <p class="font-medium text-highlighted">{{ activeSection.title || 'Sección sin título' }}</p>
+                    <p class="mt-2 text-muted">
+                      {{ activeSection.description || 'Sin descripción configurada.' }}
+                    </p>
+                  </div>
+                  <p class="text-muted">
+                    {{ activeSection.fields.length }} campo(s) dentro de esta sección.
+                  </p>
+                </div>
+              </UCard>
+
+              <UCard
+                :ui="{
+                  header: panelCollapsed.fieldEditor
+                    ? 'px-4 py-3 sm:px-4 sm:py-3'
+                    : 'p-4 sm:px-6',
+                  body: 'min-h-0 flex flex-1 flex-col p-4 sm:p-6'
+                }"
+                class="2xl:min-h-0 2xl:flex 2xl:flex-col 2xl:overflow-hidden"
+                :class="selectedField && !panelCollapsed.fieldEditor ? '2xl:flex-1' : '2xl:flex-none'"
+              >
+                <template #header>
+                  <div class="flex justify-between gap-3" :class="panelCollapsed.fieldEditor ? 'items-center' : 'items-start'">
+                    <div>
+                      <h3
+                        class="font-semibold text-highlighted"
+                        :class="panelCollapsed.fieldEditor ? 'text-base' : 'text-lg'"
+                      >
+                        Editor del campo
+                      </h3>
+                      <p v-if="!panelCollapsed.fieldEditor" class="mt-1 text-sm text-muted">Ajustá el campo seleccionado en el canvas.</p>
+                    </div>
+
+                    <UButton
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      square
+                      :icon="panelCollapsed.fieldEditor ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
+                      @click="togglePanel('fieldEditor')"
+                    />
+                  </div>
+                </template>
+
+                <UScrollArea
+                  v-if="!panelCollapsed.fieldEditor"
+                  class="min-h-0 2xl:flex-1 2xl:overscroll-contain 2xl:[scrollbar-gutter:stable]"
+                >
+                  <div class="grid gap-4 2xl:pr-1">
+                    <template v-if="selectedField">
+                    <UFormField label="Etiqueta" required>
+                      <UInput
+                        :model-value="selectedField.label"
+                        placeholder="Nombre visible del campo"
+                        @update:model-value="(value) => { actualizarCampoSeleccionado({ label: value }) }"
+                      />
+                    </UFormField>
+
+                    <div class="grid gap-2">
+                      <UFormField label="Clave del placeholder" required>
+                        <UInput
+                          :model-value="selectedField.key"
+                          placeholder="nombre_cliente"
+                          @update:model-value="(value) => { actualizarCampoSeleccionado({ key: normalizarTextoPlano(String(value ?? '')) }) }"
+                        />
+                      </UFormField>
+                      <div class="flex justify-end">
+                        <UButton color="neutral" variant="ghost" size="sm" @click="regenerarClaveSeleccionada">
+                          Autogenerar clave
+                        </UButton>
+                      </div>
+                    </div>
+
+                    <UFormField label="Tipo">
+                      <UInput :model-value="fieldTypeLabels[selectedField.type]" disabled />
+                    </UFormField>
+
+                    <UFormField label="Placeholder">
+                      <UInput
+                        :model-value="selectedField.placeholder"
+                        placeholder="Texto guía dentro del input"
+                        @update:model-value="(value) => { actualizarCampoSeleccionado({ placeholder: value }) }"
+                      />
+                    </UFormField>
+
+                    <UFormField label="Ayuda adicional">
+                      <UTextarea
+                        :model-value="selectedField.help"
+                        :rows="3"
+                        placeholder="Mensaje complementario para orientar al cliente"
+                        @update:model-value="(value) => { actualizarCampoSeleccionado({ help: value }) }"
+                      />
+                    </UFormField>
+
+                    <div
+                      v-if="selectedField.padron_source || selectedField.padron_source_key"
+                      class="grid gap-4 rounded-2xl border border-default bg-muted/30 p-4"
+                    >
+                      <div>
+                        <p class="font-medium text-highlighted">Autocompletado con padrón</p>
+                        <p class="mt-1 text-sm text-muted">
+                          Este campo ya forma parte de un bloque guiado de nombre y cédula.
+                        </p>
+                      </div>
+
+                      <p
+                        v-if="selectedField.padron_source"
+                        class="rounded-xl border border-success/30 bg-success/10 px-3 py-2 text-sm text-success"
+                      >
+                        Este es el campo fuente de cédula. Cuando el cliente escriba una cédula válida, el resto del bloque se completa automáticamente.
+                      </p>
+
+                      <p
+                        v-else
+                        class="rounded-xl border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-muted"
+                      >
+                        Este campo se llena desde la cédula vinculada del bloque. Si necesitás otro vínculo, agregá un nuevo bloque `Nombre | Cédula` desde la paleta.
+                      </p>
+                    </div>
+
+                    <UFormField label="Ancho">
+                      <USelect
+                        :model-value="selectedField.width ?? 'half'"
+                        value-key="value"
+                        :items="[
+                          { label: 'Media columna', value: 'half' },
+                          { label: 'Ancho completo', value: 'full' }
+                        ]"
+                        @update:model-value="actualizarAnchoSeleccionado"
+                      />
+                    </UFormField>
+
+                    <UCheckbox
+                      :model-value="selectedField.required ?? true"
+                      label="Campo obligatorio"
+                      @update:model-value="(value) => { actualizarCampoSeleccionado({ required: Boolean(value) }) }"
+                    />
+                    </template>
+
+                    <div
+                      v-else
+                      class="rounded-2xl border border-dashed border-default px-4 py-5 text-sm text-muted"
+                    >
+                      Seleccioná un campo del canvas para editar etiqueta, placeholder, ancho y obligatoriedad.
+                    </div>
+                  </div>
+                </UScrollArea>
+              </UCard>
+            </div>
+          </aside>
+        </template>
+
+        <template v-else>
+          <div class="grid min-w-0 gap-5">
+            <UCard>
+              <template #header>
                 <div>
-                  <p class="font-medium text-highlighted">Autocompletado con padrón</p>
+                  <h3 class="text-lg font-semibold text-highlighted">Contenido del documento</h3>
                   <p class="mt-1 text-sm text-muted">
-                    Este campo ya forma parte de un bloque guiado de nombre y cédula.
+                    Este texto se guarda en `content`. Los placeholders del formulario y del notario se reemplazan al generar el documento.
+                  </p>
+                </div>
+              </template>
+
+              <div class="grid gap-4">
+                <p class="text-sm text-muted">
+                  Los placeholders se agrupan por sección del formulario para que sea más claro qué datos pertenecen a cada bloque del documento.
+                </p>
+
+                <div class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)] xl:items-start">
+                  <div class="grid gap-4 rounded-2xl border border-default bg-muted/20 p-4 2xl:max-h-[calc(100vh-20rem)] 2xl:overflow-y-auto">
+                    <div>
+                      <p class="font-medium text-highlighted">Bloques de placeholders</p>
+                      <p class="mt-1 text-sm text-muted">
+                        Hacé clic en cualquier variable para insertarla en el texto de la derecha.
+                      </p>
+                    </div>
+
+                    <div class="grid gap-4">
+                      <div
+                        v-for="group in availablePlaceholderGroups"
+                        :key="group.id"
+                        class="grid gap-3 rounded-2xl border border-default bg-default p-4"
+                      >
+                        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                          <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                              <p class="font-medium text-highlighted">{{ group.title }}</p>
+                              <UBadge color="neutral" variant="subtle" size="sm">
+                                {{ group.items.length }}
+                              </UBadge>
+                            </div>
+                            <p v-if="group.description && !placeholderGroupCollapsed[group.id]" class="mt-1 text-sm text-muted">
+                              {{ group.description }}
+                            </p>
+                          </div>
+
+                          <UButton
+                            color="neutral"
+                            variant="ghost"
+                            size="xs"
+                            square
+                            :icon="placeholderGroupCollapsed[group.id] ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
+                            @click.stop="togglePlaceholderGroup(group.id)"
+                          />
+                        </div>
+
+                        <div
+                          v-if="placeholderGroupCollapsed[group.id]"
+                          class="rounded-2xl border border-dashed border-default bg-muted/20 px-4 py-3 text-sm text-muted"
+                        >
+                          Grupo minimizado
+                        </div>
+
+                        <div v-else class="grid gap-3">
+                          <button
+                            v-for="placeholder in group.items"
+                            :key="placeholder.token"
+                            type="button"
+                            class="rounded-2xl border border-default bg-muted/20 px-4 py-3 text-left transition hover:border-primary hover:bg-primary/5"
+                            @click="insertarPlaceholder(placeholder.key)"
+                          >
+                            <p class="text-sm font-medium text-highlighted">
+                              {{ placeholder.label }}
+                            </p>
+                            <p class="mt-1 text-xs text-muted">
+                              {{ placeholder.source }}
+                            </p>
+                            <p class="mt-2 font-mono text-xs text-toned">
+                              {{ placeholder.token }}
+                            </p>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="grid gap-4">
+                    <textarea
+                      ref="documentContentTextarea"
+                      :value="form.content"
+                      rows="20"
+                      placeholder="Ejemplo: Yo {{nombre_cliente}}, cédula {{cedula_cliente}}, comparezco ante {{nombre_notario}}..."
+                      class="min-h-[560px] w-full rounded-2xl border border-default bg-default px-4 py-3 font-mono text-sm text-highlighted outline-none transition focus:border-primary"
+                      @input="actualizarContenidoDocumento"
+                      @click="recordarCursorContenido"
+                      @focus="recordarCursorContenido"
+                      @keyup="recordarCursorContenido"
+                      @select="recordarCursorContenido"
+                    ></textarea>
+
+                    <UAlert
+                      v-if="documentContentError"
+                      color="warning"
+                      variant="soft"
+                      title="Revisá el formato del documento"
+                      :description="documentContentError"
+                    />
+                  </div>
+                </div>
+              </div>
+            </UCard>
+          </div>
+
+          <aside class="grid gap-4 self-start xl:col-span-2 2xl:col-span-1 2xl:sticky 2xl:top-5">
+            <UCard>
+              <template #header>
+                <div>
+                  <h3 class="text-lg font-semibold text-highlighted">Resumen</h3>
+                  <p class="mt-1 text-sm text-muted">Verificá la plantilla antes de guardarla.</p>
+                </div>
+              </template>
+
+              <div class="grid gap-4">
+                <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                  <p class="text-xs uppercase tracking-wide text-toned">Título visible</p>
+                  <p class="mt-2 font-medium text-highlighted">
+                    {{ form.title.trim() || 'Sin título todavía' }}
                   </p>
                 </div>
 
-                <p
-                  v-if="selectedField.padron_source"
-                  class="rounded-xl border border-success/30 bg-success/10 px-3 py-2 text-sm text-success"
-                >
-                  Este es el campo fuente de cédula. Cuando el cliente escriba una cédula válida, el resto del bloque se completa automáticamente.
-                </p>
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                    <p class="text-xs uppercase tracking-wide text-toned">Secciones</p>
+                    <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.sections }}</p>
+                  </div>
+                  <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                    <p class="text-xs uppercase tracking-wide text-toned">Campos</p>
+                    <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.fields }}</p>
+                  </div>
+                </div>
 
-                <p
-                  v-else
-                  class="rounded-xl border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-muted"
-                >
-                  Este campo se llena desde la cédula vinculada del bloque. Si necesitás otro vínculo, agregá un nuevo bloque `Nombre | Cédula` desde la paleta.
-                </p>
+                <div class="rounded-2xl border border-default p-4">
+                  <p class="text-sm font-medium text-highlighted">Guía rápida</p>
+                  <ul class="mt-3 grid gap-2 text-sm text-muted">
+                    <li>Usá los bloques de la izquierda para insertar placeholders válidos.</li>
+                    <li>Si querés corregir preguntas del cliente, volvés al paso de formulario sin perder el texto.</li>
+                    <li>El documento final se genera reemplazando cada `{{placeholder}}` con la respuesta real.</li>
+                  </ul>
+                </div>
               </div>
-
-              <UFormField label="Ancho">
-                <USelect
-                  :model-value="selectedField.width ?? 'half'"
-                  value-key="value"
-                  :items="[
-                    { label: 'Media columna', value: 'half' },
-                    { label: 'Ancho completo', value: 'full' }
-                  ]"
-                  @update:model-value="actualizarAnchoSeleccionado"
-                />
-              </UFormField>
-
-              <UCheckbox
-                :model-value="selectedField.required ?? true"
-                label="Campo obligatorio"
-                @update:model-value="(value) => { actualizarCampoSeleccionado({ required: Boolean(value) }) }"
-              />
-            </div>
-          </UCard>
-
-          <UCard v-else>
-            <div class="rounded-2xl border border-dashed border-default px-4 py-5 text-sm text-muted">
-              Seleccioná un campo del canvas para editar etiqueta, placeholder, ancho y obligatoriedad.
-            </div>
-          </UCard>
-        </aside>
+            </UCard>
+          </aside>
+        </template>
       </div>
     </div>
   </div>

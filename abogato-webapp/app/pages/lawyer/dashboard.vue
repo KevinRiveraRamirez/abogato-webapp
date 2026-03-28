@@ -657,17 +657,14 @@ onMounted(() => {
 
     <template>
       <div class="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-        <UCard>
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <h2 class="font-semibold text-highlighted">Foco del dia</h2>
-                <p class="mt-1 text-sm text-muted">Casos propios ordenados por urgencia real y contexto.</p>
-              </div>
-              <UBadge color="neutral" variant="outline">
-                {{ visibleName }}
-              </UBadge>
-            </div>
+        <DashboardCollapsibleCard
+          title="Foco del dia"
+          description="Casos propios ordenados por urgencia real y contexto."
+        >
+          <template #header-extra>
+            <UBadge color="neutral" variant="outline">
+              {{ visibleName }}
+            </UBadge>
           </template>
 
           <div v-if="focusTickets.length" class="grid gap-3">
@@ -716,17 +713,13 @@ onMounted(() => {
           <div v-else class="rounded-[1.5rem] border border-dashed border-default px-5 py-10 text-center text-sm text-muted">
             Cuando tomes casos o te asignen expedientes, esta vista va a priorizarlos automaticamente.
           </div>
-        </UCard>
+        </DashboardCollapsibleCard>
 
         <div class="grid gap-6">
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Alertas operativas</h2>
-                <p class="mt-1 text-sm text-muted">Atajos a lo que conviene resolver primero.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Alertas operativas"
+            description="Atajos a lo que conviene resolver primero."
+          >
             <div class="grid gap-4">
               <div
                 v-for="item in attentionItems"
@@ -750,16 +743,12 @@ onMounted(() => {
                 </div>
               </div>
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
 
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Carga por estado</h2>
-                <p class="mt-1 text-sm text-muted">Como esta distribuida tu cartera actualmente.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Carga por estado"
+            description="Como esta distribuida tu cartera actualmente."
+          >
             <div class="grid gap-4">
               <div
                 v-for="item in workloadOverview"
@@ -798,22 +787,19 @@ onMounted(() => {
                 <p class="mt-2 text-2xl font-semibold text-highlighted">{{ unreadNotificationsCount }}</p>
               </div>
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
         </div>
       </div>
 
       <div class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <UCard>
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <h2 class="font-semibold text-highlighted">Cola disponible</h2>
-                <p class="mt-1 text-sm text-muted">Tickets abiertos sin asignacion para tomar desde la bandeja legal.</p>
-              </div>
-              <UButton to="/lawyer/tickets" color="neutral" variant="outline">
-                Ver bandeja
-              </UButton>
-            </div>
+        <DashboardCollapsibleCard
+          title="Cola disponible"
+          description="Tickets abiertos sin asignacion para tomar desde la bandeja legal."
+        >
+          <template #header-extra>
+            <UButton to="/lawyer/tickets" color="neutral" variant="outline">
+              Ver bandeja
+            </UButton>
           </template>
 
           <div v-if="queuePreview.length" class="grid gap-3">
@@ -851,17 +837,13 @@ onMounted(() => {
           <div v-else class="rounded-[1.5rem] border border-dashed border-default px-5 py-10 text-center text-sm text-muted">
             No hay tickets abiertos sin asignacion en este momento.
           </div>
-        </UCard>
+        </DashboardCollapsibleCard>
 
         <div class="grid gap-6">
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Documentos por revisar</h2>
-                <p class="mt-1 text-sm text-muted">Revision documental reciente dentro de tu radio de trabajo.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Documentos por revisar"
+            description="Revision documental reciente dentro de tu radio de trabajo."
+          >
             <div v-if="documentsPreview.length" class="grid gap-3">
               <div
                 v-for="document in documentsPreview"
@@ -898,16 +880,12 @@ onMounted(() => {
             <div v-else class="rounded-2xl border border-dashed border-default px-4 py-8 text-center text-sm text-muted">
               Cuando un cliente envie o corrija documentos, apareceran aqui para tu revision.
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
 
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Actividad reciente</h2>
-                <p class="mt-1 text-sm text-muted">Notificaciones nuevas vinculadas a tu trabajo.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Actividad reciente"
+            description="Notificaciones nuevas vinculadas a tu trabajo."
+          >
             <div v-if="recentNotifications.length" class="grid gap-3">
               <div
                 v-for="notification in recentNotifications"
@@ -938,16 +916,12 @@ onMounted(() => {
             <div v-else class="rounded-2xl border border-dashed border-default px-4 py-8 text-center text-sm text-muted">
               No hay actividad reciente en notificaciones.
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
 
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Accesos rapidos</h2>
-                <p class="mt-1 text-sm text-muted">Entradas utiles para moverte dentro del flujo legal.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Accesos rapidos"
+            description="Entradas utiles para moverte dentro del flujo legal."
+          >
             <div class="grid gap-3">
               <NuxtLink
                 v-for="item in quickLinks"
@@ -966,7 +940,7 @@ onMounted(() => {
                 </div>
               </NuxtLink>
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
         </div>
       </div>
     </template>

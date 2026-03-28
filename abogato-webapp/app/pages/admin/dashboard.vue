@@ -249,14 +249,10 @@ onMounted(() => {
 
     <template v-if="dashboard">
       <div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <UCard>
-          <template #header>
-            <div>
-              <h2 class="font-semibold text-highlighted">Distribución de tickets</h2>
-              <p class="mt-1 text-sm text-muted">Cómo está repartida la carga actual del flujo legal.</p>
-            </div>
-          </template>
-
+        <DashboardCollapsibleCard
+          title="Distribución de tickets"
+          description="Cómo está repartida la carga actual del flujo legal."
+        >
           <div class="grid gap-4">
             <div
               v-for="item in dashboard.ticketsByStatus"
@@ -280,17 +276,13 @@ onMounted(() => {
               </div>
             </div>
           </div>
-        </UCard>
+        </DashboardCollapsibleCard>
 
         <div class="grid gap-6">
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Documentos</h2>
-                <p class="mt-1 text-sm text-muted">Panorama rápido de revisión documental.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Documentos"
+            description="Panorama rápido de revisión documental."
+          >
             <div class="grid gap-3">
               <div
                 v-for="item in dashboard.documentsByStatus"
@@ -301,16 +293,12 @@ onMounted(() => {
                 <span class="text-lg font-semibold text-highlighted">{{ item.value }}</span>
               </div>
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
 
-          <UCard>
-            <template #header>
-              <div>
-                <h2 class="font-semibold text-highlighted">Usuarios por rol</h2>
-                <p class="mt-1 text-sm text-muted">Composición de la base actual.</p>
-              </div>
-            </template>
-
+          <DashboardCollapsibleCard
+            title="Usuarios por rol"
+            description="Composición de la base actual."
+          >
             <div class="grid gap-3">
               <div
                 v-for="item in dashboard.usersByRole"
@@ -321,22 +309,19 @@ onMounted(() => {
                 <span class="text-lg font-semibold text-highlighted">{{ item.value }}</span>
               </div>
             </div>
-          </UCard>
+          </DashboardCollapsibleCard>
         </div>
       </div>
 
       <div class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <UCard>
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <h2 class="font-semibold text-highlighted">Tickets recientes</h2>
-                <p class="mt-1 text-sm text-muted">Últimos casos ingresados o movidos dentro del flujo.</p>
-              </div>
-              <UButton to="/admin/tickets" color="neutral" variant="outline">
-                Ver tickets
-              </UButton>
-            </div>
+        <DashboardCollapsibleCard
+          title="Tickets recientes"
+          description="Últimos casos ingresados o movidos dentro del flujo."
+        >
+          <template #header-extra>
+            <UButton to="/admin/tickets" color="neutral" variant="outline">
+              Ver tickets
+            </UButton>
           </template>
 
           <div class="grid gap-3">
@@ -373,16 +358,12 @@ onMounted(() => {
               </div>
             </UCard>
           </div>
-        </UCard>
+        </DashboardCollapsibleCard>
 
-        <UCard>
-          <template #header>
-            <div>
-              <h2 class="font-semibold text-highlighted">Actividad reciente</h2>
-              <p class="mt-1 text-sm text-muted">Notificaciones generadas más recientemente en el sistema.</p>
-            </div>
-          </template>
-
+        <DashboardCollapsibleCard
+          title="Actividad reciente"
+          description="Notificaciones generadas más recientemente en el sistema."
+        >
           <div class="grid gap-3">
             <UCard
               v-for="item in dashboard.recentNotifications"
@@ -397,7 +378,7 @@ onMounted(() => {
               </div>
             </UCard>
           </div>
-        </UCard>
+        </DashboardCollapsibleCard>
       </div>
     </template>
   </div>
