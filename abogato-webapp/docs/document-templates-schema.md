@@ -21,6 +21,8 @@ Schema actual de la tabla `public.document_templates` en Supabase.
 - El builder de admin usa `title` como nombre manual de la plantilla.
 - Las plantillas nuevas pueden guardarse con `servicio_id = null`.
 - `fields` se guarda como `jsonb` con la definicion del formulario, incluyendo tipos, placeholders, ayudas y secciones.
+- Dentro de `fields`, un campo puede marcarse como `padron_source: true` para indicar que recibe una cédula y consulta el padrón.
+- Los campos que se autocompletan desde esa cédula guardan `padron_source_key` con la clave del campo cédula y `padron_value` con el dato a copiar (`nombre_completo`, `nombre`, `apellido_1`, `apellido_2`).
 - `activo` controla si la plantilla aparece disponible en el selector de tramites.
 - El modulo de admin permite crear, editar, activar y desactivar registros existentes en `document_templates`.
 - En tickets, el selector de tramites usa `title` como etiqueta visible y solo carga plantillas activas.

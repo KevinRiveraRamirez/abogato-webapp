@@ -26,7 +26,7 @@ type Template = {
 }
 
 type TemplateRow = Database['public']['Tables']['document_templates']['Row']
-type PaletteKind = TemplateFieldType | 'section'
+type PaletteKind = TemplateFieldType | 'section' | 'person_block'
 type BuilderField = TemplateField & { id: string }
 type BuilderSection = {
   id: string
@@ -46,6 +46,12 @@ type AvailablePlaceholder = {
   label: string
   key: string
   source: string
+}
+type AvailablePlaceholderGroup = {
+  id: string
+  title: string
+  description: string
+  items: AvailablePlaceholder[]
 }
 
 const fieldTypeLabels: Record<TemplateFieldType, string> = {
@@ -78,6 +84,13 @@ const paletteItems: PaletteItem[] = [
     label: 'Sections',
     description: 'Creá un bloque para agrupar campos y ordenar el formulario.',
     icon: 'i-lucide-layout-panel-top',
+    category: 'Layout Elements',
+  },
+  {
+    kind: 'person_block',
+    label: 'Nombre | Cédula',
+    description: 'Agregá una sección de persona con cédula enlazada al padrón automáticamente.',
+    icon: 'i-lucide-id-card',
     category: 'Layout Elements',
   },
   {
@@ -167,6 +180,10 @@ function crearFormularioVacio() {
 }
 
 const form = ref(crearFormularioVacio())
+const documentContentTextarea = ref<HTMLTextAreaElement | null>(null)
+const documentContentSelectionStart = ref(0)
+const documentContentSelectionEnd = ref(0)
+const hasDocumentContentCursor = ref(false)
 
 function obtenerClavesUsadas(ignoreFieldId = '') {
   return new Set(
@@ -208,6 +225,9 @@ function crearCampo(type: TemplateFieldType): BuilderField {
     section_id: '',
     section_title: '',
     section_description: '',
+    padron_source: false,
+    padron_source_key: '',
+    padron_value: undefined,
   }
 }
 
@@ -216,6 +236,106 @@ function crearCampoDesdePlantilla(field: TemplateField): BuilderField {
     ...field,
     id: crearIdLocal('field'),
   }
+}
+
+function obtenerSiguienteIndiceBloquePersona() {
+  const usedIndices = new Set<number>()
+
+  form.value.sections
+    .flatMap(section => section.fields)
+    .forEach((field) => {
+      const match = field.key.match(/^(cedula|nombre|primer_apellido|segundo_apellido)_persona_(\d+)(?:_|$)/)
+      if (!match) return
+
+      usedIndices.add(Number(match[2]))
+    })
+
+  let nextIndex = 1
+  while (usedIndices.has(nextIndex)) {
+    nextIndex += 1
+  }
+
+  return nextIndex
+}
+
+function crearBloquePersona(index: number): BuilderSection {
+  const section = {
+    id: crearIdLocal('section'),
+    title: `Nombre | Cédula ${index}`,
+    description: 'Bloque de datos personales enlazado al padrón para autocompletar la información.',
+    fields: [] as BuilderField[],
+  }
+
+  const cedulaKey = crearClaveUnica(`cedula_persona_${index}`)
+
+  section.fields = [
+    {
+      id: crearIdLocal('field'),
+      key: cedulaKey,
+      label: 'Cédula',
+      type: 'text',
+      required: true,
+      placeholder: 'Ingresá la cédula sin espacios ni guiones',
+      help: 'Al completar una cédula válida, el sistema buscará los datos en el padrón.',
+      width: 'half',
+      section_id: section.id,
+      section_title: section.title,
+      section_description: section.description,
+      padron_source: true,
+      padron_source_key: '',
+      padron_value: undefined,
+    },
+    {
+      id: crearIdLocal('field'),
+      key: crearClaveUnica(`nombre_persona_${index}`),
+      label: 'Nombre',
+      type: 'text',
+      required: true,
+      placeholder: 'Se completa automáticamente desde el padrón',
+      help: 'Campo completado a partir de la cédula.',
+      width: 'half',
+      section_id: section.id,
+      section_title: section.title,
+      section_description: section.description,
+      padron_source: false,
+      padron_source_key: cedulaKey,
+      padron_value: 'nombre',
+    },
+    {
+      id: crearIdLocal('field'),
+      key: crearClaveUnica(`primer_apellido_persona_${index}`),
+      label: 'Primer apellido',
+      type: 'text',
+      required: true,
+      placeholder: 'Se completa automáticamente desde el padrón',
+      help: 'Campo completado a partir de la cédula.',
+      width: 'half',
+      section_id: section.id,
+      section_title: section.title,
+      section_description: section.description,
+      padron_source: false,
+      padron_source_key: cedulaKey,
+      padron_value: 'apellido_1',
+    },
+    {
+      id: crearIdLocal('field'),
+      key: crearClaveUnica(`segundo_apellido_persona_${index}`),
+      label: 'Segundo apellido',
+      type: 'text',
+      required: false,
+      placeholder: 'Se completa automáticamente desde el padrón',
+      help: 'Campo completado a partir de la cédula cuando exista en el padrón.',
+      width: 'half',
+      section_id: section.id,
+      section_title: section.title,
+      section_description: section.description,
+      padron_source: false,
+      padron_source_key: cedulaKey,
+      padron_value: 'apellido_2',
+    },
+  ]
+
+  return section
 }
 
 function crearSeccionesDesdePlantilla(fields: TemplateField[]) {
@@ -298,6 +418,9 @@ function flattenSections(sections: BuilderSection[]): TemplateField[] {
       section_id: section.id,
       section_title: section.title.trim(),
       section_description: section.description.trim(),
+      padron_source: field.padron_source ?? false,
+      padron_source_key: field.padron_source ? '' : field.padron_source_key?.trim() ?? '',
+      padron_value: field.padron_source ? undefined : field.padron_value,
     }))
   )
 }
@@ -342,14 +465,61 @@ const availablePlaceholders = computed<AvailablePlaceholder[]>(() => [
   })),
 ])
 
+const availablePlaceholderGroups = computed<AvailablePlaceholderGroup[]>(() => {
+  const groups: AvailablePlaceholderGroup[] = [{
+    id: 'system',
+    title: 'Variables del sistema',
+    description: 'Datos globales como el nombre o la dirección del abogado/notario.',
+    items: systemPlaceholders.map(item => ({
+      token: `{{${item.key}}}`,
+      label: item.label,
+      key: item.key,
+      source: 'Variables del sistema',
+    })),
+  }]
+
+  form.value.sections.forEach((section, index) => {
+    if (!section.fields.length) return
+
+    groups.push({
+      id: section.id,
+      title: section.title.trim() || `Sección ${index + 1}`,
+      description: section.description.trim(),
+      items: section.fields.map(field => ({
+        token: `{{${field.key}}}`,
+        label: field.label,
+        key: field.key,
+        source: section.title.trim() || `Sección ${index + 1}`,
+      })),
+    })
+  })
+
+  return groups
+})
+
 const availablePlaceholderKeys = computed(() => new Set(availablePlaceholders.value.map(item => item.key)))
 
 function normalizarContenidoDocumento(content: string) {
   return content.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/g, '{{$1}}')
 }
 
-function actualizarContenidoDocumento(value: string | number) {
-  form.value.content = normalizarContenidoDocumento(String(value ?? ''))
+function recordarCursorContenido() {
+  const textarea = documentContentTextarea.value
+  if (!textarea) return
+
+  hasDocumentContentCursor.value = true
+  documentContentSelectionStart.value = textarea.selectionStart ?? form.value.content.length
+  documentContentSelectionEnd.value = textarea.selectionEnd ?? documentContentSelectionStart.value
+}
+
+function actualizarContenidoDocumento(event: Event) {
+  const target = event.target as HTMLTextAreaElement | null
+  form.value.content = normalizarContenidoDocumento(target?.value ?? '')
+
+  if (!target) return
+
+  documentContentSelectionStart.value = target.selectionStart ?? form.value.content.length
+  documentContentSelectionEnd.value = target.selectionEnd ?? documentContentSelectionStart.value
 }
 
 function validarContenidoDocumento(content: string) {
@@ -389,6 +559,9 @@ function resetBuilder() {
   form.value = nextForm
   activeSectionId.value = nextForm.sections[0]?.id ?? ''
   selectedFieldId.value = ''
+  hasDocumentContentCursor.value = false
+  documentContentSelectionStart.value = 0
+  documentContentSelectionEnd.value = 0
   paletteQuery.value = ''
   draggedPaletteKind.value = null
 }
@@ -433,6 +606,9 @@ async function cargarPlantillaParaEdicion() {
     content: template.content,
     sections: crearSeccionesDesdePlantilla(template.fields),
   }
+  hasDocumentContentCursor.value = false
+  documentContentSelectionStart.value = template.content.length
+  documentContentSelectionEnd.value = template.content.length
   activeSectionId.value = form.value.sections[0]?.id ?? ''
   selectedFieldId.value = ''
   paletteQuery.value = ''
@@ -503,6 +679,31 @@ function moverSeccion(sectionId: string, direction: -1 | 1) {
   form.value.sections = next
 }
 
+async function agregarBloquePersona(afterSectionId?: string) {
+  const personIndex = obtenerSiguienteIndiceBloquePersona()
+  const section = crearBloquePersona(personIndex)
+  const nextSections = [...form.value.sections]
+  const index = afterSectionId
+    ? nextSections.findIndex(item => item.id === afterSectionId)
+    : -1
+
+  if (index >= 0) {
+    nextSections.splice(index + 1, 0, section)
+  }
+  else {
+    nextSections.push(section)
+  }
+
+  form.value.sections = nextSections
+  activeSectionId.value = section.id
+  selectedFieldId.value = section.fields[0]?.id ?? ''
+
+  await nextTick()
+  document
+    .querySelector<HTMLElement>(`[data-section-id="${section.id}"]`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+}
+
 function asegurarSeccionBase() {
   if (form.value.sections.length) return form.value.sections
 
@@ -517,6 +718,11 @@ async function agregarComponente(kind: PaletteKind, targetSectionId = activeSect
 
   if (kind === 'section') {
     await agregarSeccion()
+    return
+  }
+
+  if (kind === 'person_block') {
+    await agregarBloquePersona()
     return
   }
 
@@ -571,11 +777,27 @@ function duplicarCampo(sectionId: string, fieldId: string) {
 }
 
 function eliminarCampo(sectionId: string, fieldId: string) {
-  form.value.sections = form.value.sections.map(section => (
-    section.id === sectionId
-      ? { ...section, fields: section.fields.filter(field => field.id !== fieldId) }
-      : section
-  ))
+  const removedField = form.value.sections
+    .flatMap(section => section.fields)
+    .find(field => field.id === fieldId)
+  const removedKey = removedField?.key ?? ''
+
+  form.value.sections = form.value.sections.map(section => ({
+    ...section,
+    fields: section.fields
+      .filter(field => !(section.id === sectionId && field.id === fieldId))
+      .map((field) => {
+        if (removedKey && field.padron_source_key === removedKey) {
+          return {
+            ...field,
+            padron_source_key: '',
+            padron_value: undefined,
+          }
+        }
+
+        return field
+      }),
+  }))
 
   if (selectedFieldId.value === fieldId) {
     selectedFieldId.value = ''
@@ -605,18 +827,50 @@ function actualizarCampoSeleccionado(patch: Partial<BuilderField>) {
   const location = selectedFieldLocation.value
   if (!location) return
 
-  form.value.sections = form.value.sections.map(section => (
-    section.id === location.section.id
-      ? {
-          ...section,
-          fields: section.fields.map(field => (
-            field.id === location.field.id
-              ? { ...field, ...patch }
-              : field
-          )),
+  const previousField = location.field
+  const nextField: BuilderField = {
+    ...previousField,
+    ...patch,
+  }
+
+  nextField.padron_source = Boolean(nextField.padron_source)
+
+  if (nextField.padron_source) {
+    nextField.padron_source_key = ''
+    nextField.padron_value = undefined
+  }
+  else {
+    nextField.padron_source_key = nextField.padron_source_key?.trim() ?? ''
+    if (!nextField.padron_source_key) {
+      nextField.padron_value = undefined
+    }
+  }
+
+  form.value.sections = form.value.sections.map(section => ({
+    ...section,
+    fields: section.fields.map((field) => {
+      if (field.id === previousField.id) {
+        return nextField
+      }
+
+      if (previousField.key !== nextField.key && field.padron_source_key === previousField.key) {
+        return {
+          ...field,
+          padron_source_key: nextField.key,
         }
-      : section
-  ))
+      }
+
+      if (previousField.padron_source && !nextField.padron_source && field.padron_source_key === previousField.key) {
+        return {
+          ...field,
+          padron_source_key: '',
+          padron_value: undefined,
+        }
+      }
+
+      return field
+    }),
+  }))
 }
 
 function regenerarClaveSeleccionada() {
@@ -634,13 +888,22 @@ function actualizarAnchoSeleccionado(value: string | number) {
   })
 }
 
-function insertarPlaceholder(key: string) {
+async function insertarPlaceholder(key: string) {
   const token = `{{${key}}}`
-  const current = form.value.content.trimEnd()
+  const current = form.value.content
+  const start = hasDocumentContentCursor.value ? documentContentSelectionStart.value : current.length
+  const end = hasDocumentContentCursor.value ? documentContentSelectionEnd.value : current.length
+  const nextContent = `${current.slice(0, start)}${token}${current.slice(end)}`
+  const nextCursor = start + token.length
 
-  form.value.content = current
-    ? `${current}${current.endsWith('\n') ? '' : ' '}${token}`
-    : token
+  form.value.content = normalizarContenidoDocumento(nextContent)
+  hasDocumentContentCursor.value = true
+  documentContentSelectionStart.value = nextCursor
+  documentContentSelectionEnd.value = nextCursor
+
+  await nextTick()
+  documentContentTextarea.value?.focus()
+  documentContentTextarea.value?.setSelectionRange(nextCursor, nextCursor)
 }
 
 function obtenerKindDesdeDrag(event?: DragEvent) {
@@ -676,6 +939,9 @@ async function soltarEnSeccion(sectionId: string, event?: DragEvent) {
   if (kind === 'section') {
     await agregarSeccion(sectionId)
   }
+  else if (kind === 'person_block') {
+    await agregarBloquePersona(sectionId)
+  }
   else {
     await agregarComponente(kind, sectionId)
   }
@@ -710,6 +976,25 @@ function validarBuilder() {
       return `La clave "${field.key}" está repetida. Cada placeholder debe ser único.`
     }
     usedKeys.add(field.key)
+  }
+
+  const padronSources = new Set(
+    fields
+      .filter(field => field.padron_source)
+      .map(field => field.key)
+  )
+
+  for (const field of fields) {
+    const sourceKey = field.padron_source_key?.trim()
+    if (!sourceKey) continue
+
+    if (!padronSources.has(sourceKey)) {
+      return `El campo "${field.label}" está vinculado a una cédula que ya no existe o no está marcada para consultar el padrón.`
+    }
+
+    if (!field.padron_value) {
+      return `Elegí qué dato del padrón completa el campo "${field.label}".`
+    }
   }
 
   return ''
@@ -930,6 +1215,9 @@ onMounted(async () => {
                   <UBadge color="primary" variant="soft">
                     {{ analytics.fields }} campos
                   </UBadge>
+                  <UButton color="primary" variant="soft" @click="void agregarBloquePersona()">
+                    Agregar nombre | cédula
+                  </UButton>
                   <UButton color="neutral" variant="outline" @click="void agregarSeccion()">
                     Agregar sección
                   </UButton>
@@ -1030,6 +1318,15 @@ onMounted(async () => {
 
                       <UBadge color="neutral" variant="subtle">
                         {{ fieldTypeLabels[field.type] }}
+                      </UBadge>
+                    </div>
+
+                    <div v-if="field.padron_source || field.padron_source_key" class="mt-3 flex flex-wrap gap-2">
+                      <UBadge v-if="field.padron_source" color="success" variant="soft">
+                        Consulta padrón por cédula
+                      </UBadge>
+                      <UBadge v-if="field.padron_source_key" color="primary" variant="soft">
+                        Se completa desde otra cédula
                       </UBadge>
                     </div>
 
@@ -1145,41 +1442,77 @@ onMounted(async () => {
 
             <div class="grid gap-4">
               <p class="text-sm text-muted">
-                Cada variable muestra el nombre legible y su origen. Al hacer clic, se inserta el placeholder real dentro del documento.
+                Los placeholders se agrupan por sección del formulario para que sea más claro qué datos pertenecen a cada bloque del documento.
               </p>
 
-              <div class="grid gap-3 md:grid-cols-2">
-                <button
-                  v-for="placeholder in availablePlaceholders"
-                  :key="placeholder.token"
-                  type="button"
-                  class="rounded-2xl border border-default bg-default px-4 py-3 text-left transition hover:border-primary hover:bg-primary/5"
-                  @click="insertarPlaceholder(placeholder.key)"
-                >
-                  <p class="text-sm font-medium text-highlighted">
-                    {{ placeholder.label }} | {{ placeholder.source }}
-                  </p>
-                  <p class="mt-1 font-mono text-xs text-toned">
-                    {{ placeholder.token }}
-                  </p>
-                </button>
+              <div class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)] xl:items-start">
+                <div class="grid gap-4 rounded-2xl border border-default bg-muted/20 p-4 xl:max-h-[calc(100vh-20rem)] xl:overflow-y-auto">
+                  <div>
+                    <p class="font-medium text-highlighted">Bloques de placeholders</p>
+                    <p class="mt-1 text-sm text-muted">
+                      Hacé clic en cualquier variable para insertarla en el texto de la derecha.
+                    </p>
+                  </div>
+
+                  <div class="grid gap-4">
+                    <div
+                      v-for="group in availablePlaceholderGroups"
+                      :key="group.id"
+                      class="grid gap-3 rounded-2xl border border-default bg-default p-4"
+                    >
+                      <div>
+                        <p class="font-medium text-highlighted">{{ group.title }}</p>
+                        <p v-if="group.description" class="mt-1 text-sm text-muted">
+                          {{ group.description }}
+                        </p>
+                      </div>
+
+                      <div class="grid gap-3">
+                        <button
+                          v-for="placeholder in group.items"
+                          :key="placeholder.token"
+                          type="button"
+                          class="rounded-2xl border border-default bg-muted/20 px-4 py-3 text-left transition hover:border-primary hover:bg-primary/5"
+                          @click="insertarPlaceholder(placeholder.key)"
+                        >
+                          <p class="text-sm font-medium text-highlighted">
+                            {{ placeholder.label }}
+                          </p>
+                          <p class="mt-1 text-xs text-muted">
+                            {{ placeholder.source }}
+                          </p>
+                          <p class="mt-2 font-mono text-xs text-toned">
+                            {{ placeholder.token }}
+                          </p>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="grid gap-4">
+                  <textarea
+                    ref="documentContentTextarea"
+                    :value="form.content"
+                    rows="20"
+                    placeholder="Ejemplo: Yo {{nombre_cliente}}, cédula {{cedula_cliente}}, comparezco ante {{nombre_notario}}..."
+                    class="min-h-[520px] w-full rounded-2xl border border-default bg-default px-4 py-3 font-mono text-sm text-highlighted outline-none transition focus:border-primary"
+                    @input="actualizarContenidoDocumento"
+                    @click="recordarCursorContenido"
+                    @focus="recordarCursorContenido"
+                    @keyup="recordarCursorContenido"
+                    @select="recordarCursorContenido"
+                  ></textarea>
+
+                  <UAlert
+                    v-if="documentContentError"
+                    color="warning"
+                    variant="soft"
+                    title="Revisá el formato del documento"
+                    :description="documentContentError"
+                  />
+                </div>
               </div>
-
-              <UTextarea
-                :model-value="form.content"
-                class="font-mono"
-                :rows="14"
-                placeholder="Ejemplo: Yo {{nombre_cliente}}, cédula {{cedula_cliente}}, comparezco ante {{nombre_notario}}..."
-                @update:model-value="actualizarContenidoDocumento"
-              />
-
-              <UAlert
-                v-if="documentContentError"
-                color="warning"
-                variant="soft"
-                title="Revisá el formato del documento"
-                :description="documentContentError"
-              />
             </div>
           </UCard>
         </div>
@@ -1314,6 +1647,32 @@ onMounted(async () => {
                   @update:model-value="(value) => { actualizarCampoSeleccionado({ help: value }) }"
                 />
               </UFormField>
+
+              <div
+                v-if="selectedField.padron_source || selectedField.padron_source_key"
+                class="grid gap-4 rounded-2xl border border-default bg-muted/30 p-4"
+              >
+                <div>
+                  <p class="font-medium text-highlighted">Autocompletado con padrón</p>
+                  <p class="mt-1 text-sm text-muted">
+                    Este campo ya forma parte de un bloque guiado de nombre y cédula.
+                  </p>
+                </div>
+
+                <p
+                  v-if="selectedField.padron_source"
+                  class="rounded-xl border border-success/30 bg-success/10 px-3 py-2 text-sm text-success"
+                >
+                  Este es el campo fuente de cédula. Cuando el cliente escriba una cédula válida, el resto del bloque se completa automáticamente.
+                </p>
+
+                <p
+                  v-else
+                  class="rounded-xl border border-primary/20 bg-primary/8 px-3 py-2 text-sm text-muted"
+                >
+                  Este campo se llena desde la cédula vinculada del bloque. Si necesitás otro vínculo, agregá un nuevo bloque `Nombre | Cédula` desde la paleta.
+                </p>
+              </div>
 
               <UFormField label="Ancho">
                 <USelect

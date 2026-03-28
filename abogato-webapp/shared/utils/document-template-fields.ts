@@ -4,6 +4,9 @@ export type TemplateFieldType = typeof templateFieldTypes[number]
 export const templateFieldWidths = ['half', 'full'] as const
 export type TemplateFieldWidth = typeof templateFieldWidths[number]
 
+export const templateFieldPadronValues = ['nombre_completo', 'nombre', 'apellido_1', 'apellido_2'] as const
+export type TemplateFieldPadronValue = typeof templateFieldPadronValues[number]
+
 export type TemplateField = {
   key: string
   label: string
@@ -15,6 +18,9 @@ export type TemplateField = {
   section_id?: string
   section_title?: string
   section_description?: string
+  padron_source?: boolean
+  padron_source_key?: string
+  padron_value?: TemplateFieldPadronValue
 }
 
 export type TemplateFieldSection = {
@@ -25,6 +31,7 @@ export type TemplateFieldSection = {
 }
 
 const templateFieldTypesSet = new Set<string>(templateFieldTypes)
+const templateFieldPadronValuesSet = new Set<string>(templateFieldPadronValues)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -43,6 +50,9 @@ export function isTemplateField(value: unknown): value is TemplateField {
   if (value.section_id != null && typeof value.section_id !== 'string') return false
   if (value.section_title != null && typeof value.section_title !== 'string') return false
   if (value.section_description != null && typeof value.section_description !== 'string') return false
+  if (value.padron_source != null && typeof value.padron_source !== 'boolean') return false
+  if (value.padron_source_key != null && typeof value.padron_source_key !== 'string') return false
+  if (value.padron_value != null && !templateFieldPadronValuesSet.has(String(value.padron_value))) return false
 
   return true
 }
@@ -62,6 +72,9 @@ export function normalizeTemplateField(field: TemplateField): TemplateField {
     section_id: field.section_id?.trim() ?? '',
     section_title: field.section_title?.trim() ?? '',
     section_description: field.section_description?.trim() ?? '',
+    padron_source: field.padron_source ?? false,
+    padron_source_key: field.padron_source_key?.trim() ?? '',
+    padron_value: templateFieldPadronValuesSet.has(String(field.padron_value)) ? field.padron_value : undefined,
   }
 }
 
