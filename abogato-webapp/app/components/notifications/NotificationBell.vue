@@ -84,8 +84,9 @@ onBeforeUnmount(() => {
       <UButton
         icon="i-lucide-bell"
         color="neutral"
-        :variant="isOpen ? 'soft' : 'ghost'"
+        :variant="isOpen ? 'soft' : 'outline'"
         square
+        class="rounded-xl border-default/80 bg-default/90 shadow-sm"
         :aria-expanded="isOpen"
         :aria-label="unreadCount ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'"
         @click="togglePanel"
@@ -109,7 +110,7 @@ onBeforeUnmount(() => {
     >
       <div
         v-if="isOpen"
-        class="absolute right-0 top-[calc(100%+0.75rem)] z-50"
+        class="absolute right-0 top-[calc(100%+0.75rem)] z-[120]"
       >
         <NotificationsNotificationPanel
           :notifications="notifications"
