@@ -10,7 +10,9 @@ import {
   type TemplateFieldWidth,
 } from '~~/shared/utils/document-template-fields'
 
-definePageMeta({ layout: 'app', middleware: ['auth', 'admin'] })
+const props = defineProps<{
+  templateId?: string | null
+}>()
 
 const supabase = useSupabaseClient()
 const { cargarPerfil } = useUsuario()
@@ -21,8 +23,6 @@ type Template = {
   content: string
   fields: TemplateField[]
   servicio_id: number | null
-  activo: boolean
-  created_at: string
 }
 
 type TemplateRow = Database['public']['Tables']['document_templates']['Row']
@@ -64,7 +64,7 @@ const fieldTypePlaceholders: Record<TemplateFieldType, string> = {
   boolean: 'Elegí una opción',
 }
 
-const fieldTypeDefaults: Record<TemplateFieldType, { label: string; key: string; width: TemplateFieldWidth }> = {
+const fieldTypeDefaults: Record<TemplateFieldType, { label: string, key: string, width: TemplateFieldWidth }> = {
   text: { label: 'Campo de texto', key: 'campo_texto', width: 'half' },
   textarea: { label: 'Campo descriptivo', key: 'campo_descriptivo', width: 'full' },
   number: { label: 'Campo numérico', key: 'campo_numerico', width: 'half' },
@@ -122,18 +122,17 @@ const systemPlaceholders = [
   { key: 'direccion_notario', label: 'Dirección de la oficina del abogado o notario' },
 ]
 
-const plantillas = ref<Template[]>([])
 const loading = ref(false)
+const loadingTemplate = ref(false)
 const errorMsg = ref('')
-const successMsg = ref('')
-const mostrarFormulario = ref(false)
 const paletteQuery = ref('')
 const draggedPaletteKind = ref<PaletteKind | null>(null)
 const activeSectionId = ref('')
 const selectedFieldId = ref('')
-const listadoPlantillasRef = ref<HTMLElement | null>(null)
-const templateEnEdicionId = ref<string | null>(null)
 const templateEnEdicionServicioId = ref<number | null>(null)
+
+const templateEnEdicionId = computed(() => props.templateId ?? null)
+const isEditing = computed(() => Boolean(templateEnEdicionId.value))
 
 function crearIdLocal(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -241,8 +240,6 @@ function normalizarPlantilla(row: TemplateRow): Template {
     content: row.content,
     fields: isTemplateFieldList(row.fields) ? normalizeTemplateFields(row.fields) : [],
     servicio_id: row.servicio_id ?? null,
-    activo: row.activo ?? true,
-    created_at: row.created_at ?? new Date().toISOString(),
   }
 }
 
@@ -345,6 +342,48 @@ const availablePlaceholders = computed<AvailablePlaceholder[]>(() => [
   })),
 ])
 
+const availablePlaceholderKeys = computed(() => new Set(availablePlaceholders.value.map(item => item.key)))
+
+function normalizarContenidoDocumento(content: string) {
+  return content.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/g, '{{$1}}')
+}
+
+function actualizarContenidoDocumento(value: string | number) {
+  form.value.content = normalizarContenidoDocumento(String(value ?? ''))
+}
+
+function validarContenidoDocumento(content: string) {
+  const normalizedContent = normalizarContenidoDocumento(content)
+  const placeholders = normalizedContent.match(/\{\{[^{}]*\}\}/g) ?? []
+
+  for (const placeholder of placeholders) {
+    const key = placeholder.slice(2, -2).trim()
+
+    if (!/^[a-z0-9_]+$/.test(key)) {
+      return `El placeholder "${placeholder}" no tiene un formato válido. Usá solo variables sugeridas por el builder.`
+    }
+
+    if (!availablePlaceholderKeys.value.has(key)) {
+      return `El placeholder "${placeholder}" no existe o quedó desactualizado. Volvé a insertarlo desde la lista superior.`
+    }
+  }
+
+  const remainingContent = normalizedContent.replace(/\{\{[^{}]*\}\}/g, '')
+
+  if (remainingContent.includes('{{') || remainingContent.includes('}}')) {
+    return 'Hay un placeholder incompleto o mal cerrado en el contenido del documento.'
+  }
+
+  return ''
+}
+
+const documentContentError = computed(() => {
+  const content = form.value.content.trim()
+  if (!content) return ''
+
+  return validarContenidoDocumento(content)
+})
+
 function resetBuilder() {
   const nextForm = crearFormularioVacio()
   form.value = nextForm
@@ -352,22 +391,42 @@ function resetBuilder() {
   selectedFieldId.value = ''
   paletteQuery.value = ''
   draggedPaletteKind.value = null
-  templateEnEdicionId.value = null
-  templateEnEdicionServicioId.value = null
 }
 
-function abrirBuilder() {
-  errorMsg.value = ''
-  successMsg.value = ''
-  mostrarFormulario.value = true
-  resetBuilder()
+async function volverAlListado() {
+  await navigateTo('/admin/plantillas')
 }
 
-function editarPlantilla(template: Template) {
+async function cargarPlantillaParaEdicion() {
+  const templateId = templateEnEdicionId.value
+  if (!templateId) {
+    resetBuilder()
+    templateEnEdicionServicioId.value = null
+    return
+  }
+
+  loadingTemplate.value = true
   errorMsg.value = ''
-  successMsg.value = ''
-  mostrarFormulario.value = true
-  templateEnEdicionId.value = template.id
+
+  const { data, error } = await supabase
+    .from('document_templates')
+    .select('*')
+    .eq('id', templateId)
+    .maybeSingle()
+
+  loadingTemplate.value = false
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  if (!data) {
+    errorMsg.value = 'No se encontró la plantilla solicitada.'
+    return
+  }
+
+  const template = normalizarPlantilla(data)
   templateEnEdicionServicioId.value = template.servicio_id
   form.value = {
     title: template.title,
@@ -378,16 +437,6 @@ function editarPlantilla(template: Template) {
   selectedFieldId.value = ''
   paletteQuery.value = ''
   draggedPaletteKind.value = null
-}
-
-async function cerrarBuilder() {
-  mostrarFormulario.value = false
-  resetBuilder()
-  errorMsg.value = ''
-  successMsg.value = ''
-
-  await nextTick()
-  listadoPlantillasRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 function seleccionarSeccion(sectionId: string) {
@@ -639,6 +688,11 @@ function validarBuilder() {
     return 'Título y contenido del documento son obligatorios.'
   }
 
+  const contentError = validarContenidoDocumento(form.value.content)
+  if (contentError) {
+    return contentError
+  }
+
   const fields = flattenedFields.value
 
   if (!fields.length) {
@@ -661,16 +715,9 @@ function validarBuilder() {
   return ''
 }
 
-async function cargarPlantillas() {
-  const { data } = await supabase
-    .from('document_templates')
-    .select('*')
-    .order('created_at', { ascending: false })
-
-  plantillas.value = (data ?? []).map(normalizarPlantilla)
-}
-
 async function guardarPlantilla() {
+  form.value.content = normalizarContenidoDocumento(form.value.content)
+
   const validationError = validarBuilder()
   if (validationError) {
     errorMsg.value = validationError
@@ -679,7 +726,6 @@ async function guardarPlantilla() {
 
   loading.value = true
   errorMsg.value = ''
-  successMsg.value = ''
 
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -690,11 +736,11 @@ async function guardarPlantilla() {
     fields: flattenedFields.value,
   }
 
-  const { error } = templateEnEdicionId.value
+  const { error } = isEditing.value
     ? await supabase
         .from('document_templates')
         .update(payload)
-        .eq('id', templateEnEdicionId.value)
+        .eq('id', templateEnEdicionId.value!)
     : await supabase
         .from('document_templates')
         .insert([{
@@ -709,57 +755,24 @@ async function guardarPlantilla() {
     return
   }
 
-  successMsg.value = templateEnEdicionId.value
-    ? 'Plantilla actualizada correctamente.'
-    : 'Plantilla creada correctamente.'
-  mostrarFormulario.value = false
-  resetBuilder()
-  await cargarPlantillas()
-  await nextTick()
-  listadoPlantillasRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
-async function toggleActivo(template: Template) {
-  const accion = template.activo ? 'desactivar' : 'activar'
-  if (!confirm(`¿Querés ${accion} la plantilla "${template.title}"?`)) return
-
-  const { error } = await supabase
-    .from('document_templates')
-    .update({ activo: !template.activo })
-    .eq('id', template.id)
-
-  if (error) {
-    errorMsg.value = error.message
-    return
-  }
-
-  await cargarPlantillas()
-  successMsg.value = template.activo
-    ? 'Plantilla desactivada correctamente.'
-    : 'Plantilla activada correctamente.'
+  await navigateTo({
+    path: '/admin/plantillas',
+    query: { status: isEditing.value ? 'updated' : 'created' },
+  })
 }
 
 onMounted(async () => {
   await cargarPerfil()
-  await cargarPlantillas()
-  activeSectionId.value = form.value.sections[0]?.id ?? ''
+  resetBuilder()
+
+  if (isEditing.value) {
+    await cargarPlantillaParaEdicion()
+  }
 })
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-[1560px]">
-    <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold text-highlighted">Plantillas de documentos</h1>
-        <p class="mt-1 text-sm text-muted">
-          Diseñá formularios visuales para el admin y guardalos directamente en `document_templates`.
-        </p>
-      </div>
-      <UButton @click="mostrarFormulario ? void cerrarBuilder() : abrirBuilder()">
-        {{ mostrarFormulario ? 'Cerrar builder' : 'Nueva plantilla' }}
-      </UButton>
-    </div>
-
+  <div class="flex h-full min-h-0 w-full flex-col">
     <UAlert
       v-if="errorMsg"
       color="error"
@@ -769,20 +782,22 @@ onMounted(async () => {
       class="mb-4"
     />
 
-    <UAlert
-      v-if="successMsg"
-      color="success"
-      variant="soft"
-      title="Operación exitosa"
-      :description="successMsg"
-      class="mb-4"
-    />
+    <div
+      v-if="loadingTemplate"
+      class="flex min-h-0 flex-1 items-center justify-center rounded-[32px] border border-default bg-default p-8 shadow-sm"
+    >
+      <div class="grid gap-4">
+        <USkeleton class="h-8 w-64" />
+        <USkeleton class="h-5 w-full max-w-2xl" />
+        <USkeleton class="h-40 w-full rounded-3xl" />
+      </div>
+    </div>
 
     <div
-      v-if="mostrarFormulario"
-      class="mb-8 overflow-hidden rounded-[32px] border border-default bg-default shadow-sm"
+      v-else
+      class="flex min-h-0 flex-1 flex-col"
     >
-      <div class="border-b border-default px-5 py-5 lg:px-8">
+      <div class="sticky top-0 z-20 rounded-[34px] border border-white/45 bg-default/64 px-5 py-5 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-3xl backdrop-brightness-105 backdrop-saturate-150 lg:px-8 xl:shrink-0">
         <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
           <div class="flex items-start gap-4">
             <UButton
@@ -790,15 +805,15 @@ onMounted(async () => {
               variant="ghost"
               icon="i-lucide-arrow-left"
               square
-              @click="void cerrarBuilder()"
+              @click="void volverAlListado()"
             />
             <div>
               <h2 class="text-2xl font-semibold text-highlighted">
-                {{ templateEnEdicionId ? 'Editar plantilla' : 'Form Builder' }}
+                {{ isEditing ? 'Editar plantilla' : 'Form Builder' }}
               </h2>
               <p class="mt-1 text-sm text-muted">
                 {{
-                  templateEnEdicionId
+                  isEditing
                     ? 'Actualizá la estructura del formulario y el contenido antes de guardar los cambios.'
                     : 'Armá el formulario visual y luego definí el texto base que se insertará en Supabase.'
                 }}
@@ -806,17 +821,21 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center gap-4 2xl:justify-end">
+          <div class="flex flex-wrap items-center gap-3 2xl:justify-end">
             <div class="text-left 2xl:text-right">
               <p class="text-sm text-muted">Guardado en base de datos al finalizar</p>
               <p class="text-xs text-toned">{{ analytics.fields }} campos listos para insertar</p>
             </div>
 
+            <UButton color="neutral" variant="outline" @click="void volverAlListado()">
+              Cancelar
+            </UButton>
+
             <UButton :loading="loading" @click="guardarPlantilla">
               {{
                 loading
                   ? 'Guardando...'
-                  : templateEnEdicionId
+                  : isEditing
                     ? 'Guardar cambios'
                     : 'Guardar plantilla'
               }}
@@ -825,10 +844,10 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="grid gap-6 p-5 lg:p-8 xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-        <aside class="grid gap-4 self-start">
-          <UCard>
-            <div class="grid gap-4">
+      <div class="grid flex-1 gap-5 pt-5 xl:min-h-0 xl:grid-cols-[240px_minmax(0,1fr)] xl:overflow-y-auto 2xl:grid-cols-[260px_minmax(0,1fr)_320px]">
+        <aside class="grid gap-4 self-start xl:sticky xl:top-5">
+          <UCard class="xl:max-h-[calc(100vh-11rem)] xl:overflow-hidden">
+            <div class="grid gap-4 xl:max-h-[calc(100vh-13.5rem)] xl:overflow-y-auto xl:pr-1">
               <UInput
                 v-model="paletteQuery"
                 icon="i-lucide-search"
@@ -872,7 +891,7 @@ onMounted(async () => {
           </UCard>
         </aside>
 
-        <div class="grid min-w-0 gap-6">
+        <div class="grid min-w-0 gap-5">
           <UCard>
             <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
               <UFormField label="Título de la plantilla" required>
@@ -1147,10 +1166,19 @@ onMounted(async () => {
               </div>
 
               <UTextarea
-                v-model="form.content"
+                :model-value="form.content"
                 class="font-mono"
                 :rows="14"
                 placeholder="Ejemplo: Yo {{nombre_cliente}}, cédula {{cedula_cliente}}, comparezco ante {{nombre_notario}}..."
+                @update:model-value="actualizarContenidoDocumento"
+              />
+
+              <UAlert
+                v-if="documentContentError"
+                color="warning"
+                variant="soft"
+                title="Revisá el formato del documento"
+                :description="documentContentError"
               />
             </div>
           </UCard>
@@ -1313,62 +1341,6 @@ onMounted(async () => {
             </div>
           </UCard>
         </aside>
-      </div>
-    </div>
-
-    <div ref="listadoPlantillasRef">
-      <UCard v-if="plantillas.length === 0">
-        <p class="text-sm text-muted">No hay plantillas creadas aún.</p>
-      </UCard>
-
-      <div v-else class="grid gap-4 lg:grid-cols-2">
-        <UCard
-          v-for="template in plantillas"
-          :key="template.id"
-        >
-          <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 flex-1">
-              <p class="font-medium text-highlighted">{{ template.title }}</p>
-              <p class="mt-1 text-sm text-muted">
-                {{ template.servicio_id == null ? 'Visible en el selector de trámites' : 'Plantilla heredada con servicio vinculado' }}
-              </p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <UBadge
-                  :color="template.activo ? 'success' : 'neutral'"
-                  :variant="template.activo ? 'soft' : 'outline'"
-                >
-                  {{ template.activo ? 'Activa' : 'Inactiva' }}
-                </UBadge>
-                <UBadge color="neutral" variant="subtle">
-                  {{ groupTemplateFields(template.fields).length }} secciones
-                </UBadge>
-                <UBadge color="primary" variant="soft">
-                  {{ template.fields.length }} campos
-                </UBadge>
-              </div>
-              <p class="mt-3 text-xs text-toned">{{ new Date(template.created_at).toLocaleDateString('es-CR') }}</p>
-            </div>
-
-            <div class="flex flex-wrap justify-end gap-2">
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="outline"
-                @click="editarPlantilla(template)"
-              >
-                Editar
-              </UButton>
-              <UButton
-                size="sm"
-                :color="template.activo ? 'warning' : 'success'"
-                :variant="template.activo ? 'outline' : 'soft'"
-                @click="toggleActivo(template)"
-              >
-                {{ template.activo ? 'Desactivar' : 'Activar' }}
-              </UButton>
-            </div>
-          </div>
-        </UCard>
       </div>
     </div>
   </div>

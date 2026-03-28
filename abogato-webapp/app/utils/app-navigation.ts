@@ -70,6 +70,7 @@ const adminSections: NavigationSection[] = [
     label: 'Administracion',
     items: [
       { label: 'Tickets', icon: 'i-lucide-ticket', to: '/admin/tickets' },
+      { label: 'Plantillas', icon: 'i-lucide-file-text', to: '/admin/plantillas' },
       { label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/usuarios' },
     ],
   },

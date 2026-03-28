@@ -3,6 +3,9 @@ import AppSidebar from '~/components/layout/AppSidebar.vue'
 
 const { cargarPerfil } = useUsuario()
 const { toggleMobile } = useAppShell()
+const route = useRoute()
+
+const isFullBleedBuilderPage = computed(() => route.path.startsWith('/admin/plantillas/'))
 
 onMounted(() => {
   cargarPerfil()
@@ -25,9 +28,13 @@ onMounted(() => {
       <AppSidebar />
 
       <main class="min-w-0 flex-1 px-3 pb-3 pt-16 lg:pt-3">
-        <UContainer class="py-6 sm:py-8">
+        <UContainer v-if="!isFullBleedBuilderPage" class="py-6 sm:py-8">
           <slot />
         </UContainer>
+
+        <div v-else class="h-full py-3">
+          <slot />
+        </div>
       </main>
     </div>
   </div>
