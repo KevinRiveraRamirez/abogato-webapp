@@ -48,7 +48,7 @@ import type { NavigationMenuItem } from "#ui/types";
 
 const supabase = useSupabaseClient();
 const user = useSupabaseUser();
-const { profile, cargarPerfil } = useUsuario()
+const { profile, cargarPerfil, limpiarPerfil } = useUsuario()
 const loading = ref(false);
 const route = useRoute();
 
@@ -62,6 +62,7 @@ const panelPath = computed(() => {
 async function cerrarSesion() {
   loading.value = true;
   await supabase.auth.signOut();
+  limpiarPerfil()
   loading.value = false;
   await navigateTo("/login", { replace: true });
 }
@@ -85,6 +86,6 @@ watch(user, async (currentUser) => {
     return
   }
 
-  profile.value = null
+  limpiarPerfil()
 })
 </script>

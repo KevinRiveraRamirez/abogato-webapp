@@ -15,6 +15,9 @@ export default defineAppConfig({
         color: 'primary',
       },
     },
+    skeleton: {
+      base: 'animate-pulse rounded-[1rem] bg-elevated/80 ring-1 ring-default/60',
+    },
     card: {
       slots: {
         root: 'rounded-2xl border border-default bg-default/90 shadow-sm backdrop-blur-sm',

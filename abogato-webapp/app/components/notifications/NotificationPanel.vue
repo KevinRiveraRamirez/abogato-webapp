@@ -61,7 +61,10 @@ const emptyFilterMessage = computed(() => {
 </script>
 
 <template>
+  <SkeletonNotificationPanel v-if="loading && !notifications.length && !error" />
+
   <UCard
+    v-else
     class="flex w-[clamp(20rem,30vw,28rem)] max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-1.5rem)] flex-col rounded-[2rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] shadow-[0_24px_70px_-36px_rgba(15,23,42,0.35)] sm:max-w-[calc(100vw-2rem)] sm:max-h-[calc(100vh-2rem)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))]"
     :ui="{
       header: 'shrink-0 px-4 pb-4 pt-4 sm:px-5 sm:pt-5',
@@ -119,11 +122,7 @@ const emptyFilterMessage = computed(() => {
       />
     </div>
 
-    <div v-if="loading && !notifications.length" class="flex min-h-[12rem] flex-1 items-center justify-center py-8 text-center sm:py-12">
-      <p class="text-sm text-muted">Cargando notificaciones...</p>
-    </div>
-
-    <div v-else-if="!notifications.length" class="flex min-h-[12rem] flex-1 flex-col items-center justify-center py-8 text-center sm:py-12">
+    <div v-if="!notifications.length" class="flex min-h-[12rem] flex-1 flex-col items-center justify-center py-8 text-center sm:py-12">
       <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-elevated text-toned">
         <UIcon name="i-lucide-bell-ring" class="h-6 w-6" />
       </div>

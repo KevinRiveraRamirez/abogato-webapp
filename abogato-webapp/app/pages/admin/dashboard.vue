@@ -2,6 +2,7 @@
 definePageMeta({ layout: 'app', middleware: ['auth', 'admin'] })
 
 const { adminFetch } = useAdminApi()
+const { finish: finishSessionLoading } = useSessionLoading()
 
 type DashboardMetric = {
   key: string
@@ -54,6 +55,7 @@ type DashboardResponse = {
 const loading = ref(false)
 const errorMsg = ref('')
 const dashboard = ref<DashboardResponse | null>(null)
+const isInitialLoading = computed(() => loading.value && !dashboard.value)
 
 const etiquetaEstadoTicket: Record<string, string> = {
   open: 'Pendiente',
@@ -173,6 +175,7 @@ async function cargarDashboard() {
     errorMsg.value = obtenerMensajeError(error)
   } finally {
     loading.value = false
+    finishSessionLoading()
   }
 }
 
@@ -182,7 +185,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-7xl space-y-8">
+  <SkeletonDashboardPage v-if="isInitialLoading" />
+
+  <div v-else class="mx-auto w-full max-w-7xl space-y-8">
     <section class="relative overflow-hidden rounded-[2rem] border border-primary/10 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.14),_transparent_36%),linear-gradient(135deg,rgba(255,255,255,0.92),rgba(248,250,252,0.94))] p-8 shadow-[0_32px_80px_-44px_rgba(15,23,42,0.25)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.22),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.18),_transparent_36%),linear-gradient(135deg,rgba(15,23,42,0.92),rgba(2,6,23,0.96))]">
       <div class="flex flex-wrap items-start justify-between gap-6">
         <div class="max-w-3xl">
@@ -242,11 +247,7 @@ onMounted(() => {
       </UCard>
     </div>
 
-    <div v-if="loading && !dashboard" class="py-12 text-center text-sm text-muted">
-      Cargando métricas del sistema...
-    </div>
-
-    <template v-else-if="dashboard">
+    <template v-if="dashboard">
       <div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <UCard>
           <template #header>

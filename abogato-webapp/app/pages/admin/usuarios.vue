@@ -391,9 +391,7 @@ onMounted(() => {
         </div>
       </template>
 
-      <div v-if="loading" class="py-10 text-center text-sm text-muted">
-        Cargando usuarios...
-      </div>
+      <SkeletonListCards v-if="loading && !usuarios.length" :items="4" />
 
       <div v-else-if="!usuariosFiltrados.length" class="py-10 text-center">
         <p class="font-medium text-highlighted">No hay usuarios para este filtro.</p>

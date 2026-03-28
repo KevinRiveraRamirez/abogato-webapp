@@ -1,5 +1,6 @@
 <template>
   <UApp>
+    <AuthSessionLoadingScreen />
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>

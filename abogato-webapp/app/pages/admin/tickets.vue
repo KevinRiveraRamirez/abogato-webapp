@@ -347,9 +347,7 @@ onMounted(() => {
         </div>
       </template>
 
-      <div v-if="loading" class="py-10 text-center text-sm text-muted">
-        Cargando tickets...
-      </div>
+      <SkeletonListCards v-if="loading && !tickets.length" :items="4" />
 
       <div v-else-if="!ticketsFiltrados.length" class="py-10 text-center">
         <p class="font-medium text-highlighted">No hay tickets para este filtro.</p>

@@ -23,6 +23,7 @@ const sections = computed(() => getNavigationSections(profile.value?.role))
 const dashboardPath = computed(() => getDashboardPathForRole(profile.value?.role))
 const roleLabel = computed(() => getRoleLabel(profile.value?.role))
 const friendlyName = computed(() => getFriendlyFirstName(profile.value))
+const isAdmin = computed(() => profile.value?.role === 'admin')
 
 watch(
   () => route.fullPath,

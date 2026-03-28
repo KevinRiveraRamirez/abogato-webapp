@@ -380,130 +380,130 @@ function getInitials(value: string) {
     </div>
 
     <div class="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <UCard class="relative overflow-hidden border-primary/10 bg-default/90 shadow-[0_30px_60px_-32px_rgba(15,23,42,0.18)] dark:bg-elevated/80 dark:shadow-[0_30px_60px_-32px_rgba(2,6,23,0.65)]">
-        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgb(16_185_129_/_0.14),_transparent_42%),radial-gradient(circle_at_bottom_right,_rgb(59_130_246_/_0.12),_transparent_38%)] dark:bg-[radial-gradient(circle_at_top_left,_rgb(16_185_129_/_0.18),_transparent_42%),radial-gradient(circle_at_bottom_right,_rgb(59_130_246_/_0.18),_transparent_38%)]" />
+        <UCard class="relative overflow-hidden border-primary/10 bg-default/90 shadow-[0_30px_60px_-32px_rgba(15,23,42,0.18)] dark:bg-elevated/80 dark:shadow-[0_30px_60px_-32px_rgba(2,6,23,0.65)]">
+          <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgb(16_185_129_/_0.14),_transparent_42%),radial-gradient(circle_at_bottom_right,_rgb(59_130_246_/_0.12),_transparent_38%)] dark:bg-[radial-gradient(circle_at_top_left,_rgb(16_185_129_/_0.18),_transparent_42%),radial-gradient(circle_at_bottom_right,_rgb(59_130_246_/_0.18),_transparent_38%)]" />
 
-        <div class="relative flex h-full flex-col gap-6">
-          <div class="flex items-start gap-4">
-            <div class="flex size-20 shrink-0 items-center justify-center rounded-[2rem] border border-default/80 bg-elevated/90 text-2xl font-semibold text-primary shadow-lg shadow-primary/10 backdrop-blur-sm dark:bg-default/90 dark:shadow-black/20">
-              {{ profileInitials }}
-            </div>
-
-            <div class="min-w-0">
-              <UBadge color="primary" variant="subtle">
-                {{ roleLabel }}
-              </UBadge>
-              <h2 class="mt-3 text-2xl font-semibold leading-tight text-highlighted">
-                {{ profileName }}
-              </h2>
-              <p class="mt-2 break-words text-sm text-muted">
-                {{ authEmail || 'Sin correo de acceso visible' }}
-              </p>
-            </div>
-          </div>
-
-          <p class="text-sm leading-6 text-toned">
-            {{ roleDescription }}
-          </p>
-
-          <div class="rounded-[1.75rem] border border-default/70 bg-elevated/80 p-5 shadow-sm backdrop-blur-sm dark:bg-default/70">
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">
-                  Perfil completado
-                </p>
-                <p class="mt-2 text-3xl font-semibold text-highlighted">
-                  {{ completionPercentage }}%
-                </p>
+          <div class="relative flex h-full flex-col gap-6">
+            <div class="flex items-start gap-4">
+              <div class="flex size-20 shrink-0 items-center justify-center rounded-[2rem] border border-default/80 bg-elevated/90 text-2xl font-semibold text-primary shadow-lg shadow-primary/10 backdrop-blur-sm dark:bg-default/90 dark:shadow-black/20">
+                {{ profileInitials }}
               </div>
 
-              <div class="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                {{ completionLabel }}
+              <div class="min-w-0">
+                <UBadge color="primary" variant="subtle">
+                  {{ roleLabel }}
+                </UBadge>
+                <h2 class="mt-3 text-2xl font-semibold leading-tight text-highlighted">
+                  {{ profileName }}
+                </h2>
+                <p class="mt-2 break-words text-sm text-muted">
+                  {{ authEmail || 'Sin correo de acceso visible' }}
+                </p>
               </div>
             </div>
 
-            <div class="mt-4 h-2 overflow-hidden rounded-full bg-primary/10">
-              <div
-                class="h-full rounded-full bg-primary transition-all duration-300"
-                :style="{ width: `${completionPercentage}%` }"
-              />
-            </div>
-
-            <p class="mt-3 text-sm leading-6 text-muted">
-              {{ completionHelper }}
+            <p class="text-sm leading-6 text-toned">
+              {{ roleDescription }}
             </p>
-          </div>
 
-          <div class="flex flex-wrap items-center gap-3">
-            <UButton
-              to="/account/security"
-              color="neutral"
-              variant="outline"
-              leading-icon="i-lucide-lock-keyhole"
-            >
-              Cambiar contraseña
-            </UButton>
-
-            <div class="inline-flex items-center gap-2 rounded-full border border-default/80 bg-elevated/80 px-3 py-2 text-xs text-muted shadow-sm backdrop-blur-sm dark:bg-default/80">
-              <UIcon name="i-lucide-save" class="size-4 text-primary" />
-              Los cambios se guardan abajo
-            </div>
-          </div>
-        </div>
-      </UCard>
-
-      <UCard class="border-primary/10 bg-default/90 shadow-[0_30px_60px_-32px_rgba(15,23,42,0.16)] dark:bg-elevated/80 dark:shadow-[0_30px_60px_-32px_rgba(2,6,23,0.55)]">
-        <div class="space-y-6">
-          <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p class="text-sm font-medium uppercase tracking-[0.18em] text-primary/80">
-                Ficha visible
-              </p>
-              <h2 class="mt-2 text-xl font-semibold text-highlighted">
-                Resumen del perfil
-              </h2>
-              <p class="mt-1 text-sm leading-6 text-muted">
-                Un resumen visual de los datos que hoy sí existen en tu cuenta.
-              </p>
-            </div>
-
-            <UButton
-              to="/account/security"
-              color="neutral"
-              variant="outline"
-              trailing-icon="i-lucide-arrow-right"
-            >
-              Ir a seguridad
-            </UButton>
-          </div>
-
-          <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <div
-              v-for="item in profileHighlights"
-              :key="item.label"
-              class="rounded-[1.6rem] border border-default/80 bg-elevated/70 p-4 dark:bg-elevated/40"
-            >
-              <div class="flex items-start gap-3">
-                <div class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <UIcon :name="item.icon" class="size-5" />
+            <div class="rounded-[1.75rem] border border-default/70 bg-elevated/80 p-5 shadow-sm backdrop-blur-sm dark:bg-default/70">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">
+                    Perfil completado
+                  </p>
+                  <p class="mt-2 text-3xl font-semibold text-highlighted">
+                    {{ completionPercentage }}%
+                  </p>
                 </div>
 
-                <div class="min-w-0">
-                  <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">
-                    {{ item.label }}
-                  </p>
-                  <p class="mt-2 break-words text-base font-semibold leading-6 text-highlighted">
-                    {{ item.value }}
-                  </p>
-                  <p class="mt-1 text-sm leading-6 text-muted">
-                    {{ item.hint }}
-                  </p>
+                <div class="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                  {{ completionLabel }}
+                </div>
+              </div>
+
+              <div class="mt-4 h-2 overflow-hidden rounded-full bg-primary/10">
+                <div
+                  class="h-full rounded-full bg-primary transition-all duration-300"
+                  :style="{ width: `${completionPercentage}%` }"
+                />
+              </div>
+
+              <p class="mt-3 text-sm leading-6 text-muted">
+                {{ completionHelper }}
+              </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <UButton
+                to="/account/security"
+                color="neutral"
+                variant="outline"
+                leading-icon="i-lucide-lock-keyhole"
+              >
+                Cambiar contraseña
+              </UButton>
+
+              <div class="inline-flex items-center gap-2 rounded-full border border-default/80 bg-elevated/80 px-3 py-2 text-xs text-muted shadow-sm backdrop-blur-sm dark:bg-default/80">
+                <UIcon name="i-lucide-save" class="size-4 text-primary" />
+                Los cambios se guardan abajo
+              </div>
+            </div>
+          </div>
+        </UCard>
+
+        <UCard class="border-primary/10 bg-default/90 shadow-[0_30px_60px_-32px_rgba(15,23,42,0.16)] dark:bg-elevated/80 dark:shadow-[0_30px_60px_-32px_rgba(2,6,23,0.55)]">
+          <div class="space-y-6">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p class="text-sm font-medium uppercase tracking-[0.18em] text-primary/80">
+                  Ficha visible
+                </p>
+                <h2 class="mt-2 text-xl font-semibold text-highlighted">
+                  Resumen del perfil
+                </h2>
+                <p class="mt-1 text-sm leading-6 text-muted">
+                  Un resumen visual de los datos que hoy sí existen en tu cuenta.
+                </p>
+              </div>
+
+              <UButton
+                to="/account/security"
+                color="neutral"
+                variant="outline"
+                trailing-icon="i-lucide-arrow-right"
+              >
+                Ir a seguridad
+              </UButton>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div
+                v-for="item in profileHighlights"
+                :key="item.label"
+                class="rounded-[1.6rem] border border-default/80 bg-elevated/70 p-4 dark:bg-elevated/40"
+              >
+                <div class="flex items-start gap-3">
+                  <div class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <UIcon :name="item.icon" class="size-5" />
+                  </div>
+
+                  <div class="min-w-0">
+                    <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">
+                      {{ item.label }}
+                    </p>
+                    <p class="mt-2 break-words text-base font-semibold leading-6 text-highlighted">
+                      {{ item.value }}
+                    </p>
+                    <p class="mt-1 text-sm leading-6 text-muted">
+                      {{ item.hint }}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </UCard>
+        </UCard>
     </div>
 
     <div class="grid gap-4 md:grid-cols-3">

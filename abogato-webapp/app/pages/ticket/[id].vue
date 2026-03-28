@@ -63,6 +63,7 @@ const nuevoComentario = ref('')
 const comentarioInterno = ref(false)
 const loadingComentario = ref(false)
 
+const pageLoading = ref(true)
 const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
@@ -132,13 +133,11 @@ const puedeAdjuntar = computed(() => !esAdmin.value)
 const puedeComentar = computed(() => !esAdmin.value)
 
 async function cargarTicket() {
-  loading.value = true
   errorMsg.value = ''
 
   const { data: { user: authUser } } = await supabase.auth.getUser()
   if (!authUser) {
     errorMsg.value = 'Sesión no válida.'
-    loading.value = false
     return
   }
 
@@ -150,7 +149,6 @@ async function cargarTicket() {
 
   if (error || !data) {
     errorMsg.value = 'Ticket no encontrado.'
-    loading.value = false
     return
   }
 
@@ -161,7 +159,6 @@ async function cargarTicket() {
 
   if (!tieneAcceso) {
     errorMsg.value = 'No tenés acceso a este ticket.'
-    loading.value = false
     return
   }
 
@@ -171,7 +168,6 @@ async function cargarTicket() {
   await cargarAbogadoAsignado(t.assigned_to)
 
   await Promise.all([cargarHistorial(), cargarAdjuntos(), cargarComentarios()])
-  loading.value = false
 }
 
 async function cargarAbogadoAsignado(userId: string | null) {
@@ -425,6 +421,16 @@ async function cargarDocumentos() {
     .filter((documento): documento is Documento => documento !== null)
 }
 
+async function cargarDetalleInicial() {
+  pageLoading.value = true
+
+  try {
+    await Promise.all([cargarTicket(), cargarDocumentos()])
+  } finally {
+    pageLoading.value = false
+  }
+}
+
 function descargarDocumento(doc: Documento) {
   const template = doc.document_templates
   if (!template?.content) return
@@ -445,13 +451,13 @@ function descargarDocumento(doc: Documento) {
 }
 onMounted(async () => {
   await cargarPerfil()
-  await Promise.all([cargarTicket(), cargarDocumentos()])
+  await cargarDetalleInicial()
 })
 
 watch(user, async (newUser) => {
   if (newUser) {
     await cargarPerfil()
-    await Promise.all([cargarTicket(), cargarDocumentos()])
+    await cargarDetalleInicial()
   }
 })
 </script>
@@ -486,9 +492,7 @@ watch(user, async (newUser) => {
       class="mb-4"
     />
 
-    <UCard v-if="loading">
-      <p class="text-sm text-muted">Cargando...</p>
-    </UCard>
+    <SkeletonTicketDetail v-if="pageLoading" />
 
     <div v-else-if="ticket" class="grid gap-6">
       <UCard>

@@ -172,9 +172,7 @@ watch(user, () => {
         </form>
       </UCard>
 
-      <UCard v-if="loading && !instruments.length">
-        <p class="text-sm text-muted">Cargando...</p>
-      </UCard>
+      <SkeletonListCards v-if="loading && !instruments.length" :items="3" :actions="1" :meta-lines="1" />
 
       <div v-if="instruments.length" class="grid gap-3">
         <UCard v-for="inst in instruments" :key="inst.id">

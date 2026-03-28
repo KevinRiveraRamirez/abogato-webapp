@@ -29,6 +29,7 @@ definePageMeta({ layout: 'app', middleware: ['auth', 'lawyer'] })
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
 const { profile, cargarPerfil } = useUsuario()
+const { finish: finishSessionLoading } = useSessionLoading()
 
 type TicketRow = Database['public']['Tables']['tickets']['Row']
 type NotificationRow = Database['public']['Tables']['notifications']['Row']
@@ -85,6 +86,9 @@ const documents = ref<DocumentSummary[]>([])
 const notifications = ref<NotificationSummary[]>([])
 const clientsById = ref<Record<string, ClientSummary>>({})
 const unreadNotificationsCount = ref(0)
+const isInitialLoading = computed(
+  () => loading.value && !tickets.value.length && !documents.value.length && !notifications.value.length
+)
 
 const visibleName = computed(() => getProfileDisplayName(profile.value))
 const friendlyName = computed(() => getFriendlyFirstName(profile.value))
@@ -568,6 +572,7 @@ async function cargarDashboard() {
     errorMsg.value = getErrorMessage(error)
   } finally {
     loading.value = false
+    finishSessionLoading()
   }
 }
 
@@ -577,7 +582,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-7xl space-y-8">
+  <SkeletonDashboardPage v-if="isInitialLoading" />
+
+  <div v-else class="mx-auto w-full max-w-7xl space-y-8">
     <section class="relative overflow-hidden rounded-[2rem] border border-primary/10 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.16),_transparent_36%),linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] p-8 shadow-[0_32px_80px_-44px_rgba(15,23,42,0.25)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.22),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.2),_transparent_36%),linear-gradient(135deg,rgba(15,23,42,0.92),rgba(2,6,23,0.96))]">
       <div class="flex flex-wrap items-start justify-between gap-6">
         <div class="max-w-3xl">
@@ -648,11 +655,7 @@ onMounted(() => {
       </UCard>
     </div>
 
-    <div v-if="loading && !tickets.length && !documents.length" class="py-12 text-center text-sm text-muted">
-      Cargando tu panorama operativo...
-    </div>
-
-    <template v-else>
+    <template>
       <div class="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
         <UCard>
           <template #header>

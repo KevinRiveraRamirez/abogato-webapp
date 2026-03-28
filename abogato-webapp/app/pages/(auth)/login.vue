@@ -4,6 +4,7 @@ definePageMeta({ layout: "login-layout" });
 
 const supabase = useSupabaseClient();
 const route = useRoute();
+const { start: startSessionLoading, finish: finishSessionLoading } = useSessionLoading()
 
 const email = ref("");
 const password = ref("");
@@ -16,6 +17,8 @@ const emailRecuperacion = ref("");
 const mensajeRecuperacion = ref("");
 
 onMounted(() => {
+  finishSessionLoading()
+
   if (route.query.inactive === '1') {
     errorMsg.value = 'Tu cuenta está desactivada. Contactá al administrador para reactivarla.'
   }
@@ -23,6 +26,7 @@ onMounted(() => {
 
 async function signIn() {
   errorMsg.value = "";
+  let sessionTransitionStarted = false
 
   if (!email.value.trim()) { errorMsg.value = "El correo es obligatorio."; return; }
   if (!password.value) { errorMsg.value = "La contraseña es obligatoria."; return; }
@@ -41,6 +45,12 @@ async function signIn() {
 
     const userId = data.user?.id;
     if (!userId) { errorMsg.value = "No se pudo obtener el usuario."; return; }
+
+    startSessionLoading({
+      title: 'Estamos preparando tu sesión',
+      description: 'Validamos tu perfil y cargamos el panel inicial según tu rol dentro de la plataforma.',
+    })
+    sessionTransitionStarted = true
 
     let profile: { role: 'cliente' | 'abogado' | 'admin', is_active: boolean } | null = null
 
@@ -71,6 +81,8 @@ async function signIn() {
 
     if (profile?.is_active === false) {
       await supabase.auth.signOut()
+      finishSessionLoading()
+      sessionTransitionStarted = false
       errorMsg.value = 'Tu cuenta está desactivada. Contactá al administrador para reactivarla.'
       return
     }
@@ -88,6 +100,12 @@ async function signIn() {
     }
 
     await navigateTo("/client/dashboard", { replace: true });
+  } catch (error) {
+    if (sessionTransitionStarted) {
+      finishSessionLoading()
+    }
+
+    errorMsg.value = error instanceof Error ? error.message : 'No se pudo iniciar la sesión.'
   } finally {
     loading.value = false;
   }

@@ -190,9 +190,7 @@ onMounted(async () => {
       class="mb-4"
     />
 
-    <UCard v-if="loading">
-      <p class="text-sm text-muted">Cargando tickets...</p>
-    </UCard>
+    <SkeletonListCards v-if="loading && !tickets.length" :items="3" />
 
     <UCard v-else-if="!tickets.length">
       <p class="text-sm text-muted">No hay tickets de vehículo disponibles para iniciar un traspaso.</p>

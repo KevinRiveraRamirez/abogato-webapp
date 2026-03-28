@@ -418,8 +418,22 @@ async function guardarDocumento() {
         </div>
       </template>
 
-      <div v-if="loadingConsulta" class="text-sm text-muted">
-        Cargando...
+      <div v-if="loadingConsulta" class="grid gap-3">
+        <div
+          v-for="item in 3"
+          :key="item"
+          class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="space-y-2">
+              <USkeleton class="h-4 w-36" />
+              <USkeleton class="h-3 w-24" />
+            </div>
+            <USkeleton class="h-6 w-20 rounded-full" />
+          </div>
+          <USkeleton class="mt-4 h-4 w-full" />
+          <USkeleton class="mt-2 h-4 w-[78%]" />
+        </div>
       </div>
 
       <UAlert

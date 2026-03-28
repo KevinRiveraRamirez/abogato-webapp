@@ -13,7 +13,7 @@ type Profile = {
 
 export function useUsuario() {
   const supabase = useSupabaseClient()
-  const profile = ref<Profile | null>(null)
+  const profile = useState<Profile | null>('usuario:profile', () => null)
 
   async function cargarPerfil() {
     const { data: { user }, error } = await supabase.auth.getUser()
@@ -32,5 +32,9 @@ export function useUsuario() {
     profile.value = (data as Profile) ?? null
   }
 
-  return { profile, cargarPerfil }
+  function limpiarPerfil() {
+    profile.value = null
+  }
+
+  return { profile, cargarPerfil, limpiarPerfil }
 }
