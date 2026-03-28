@@ -51,6 +51,16 @@ watch(isOpen, async (open) => {
   })
 })
 
+watch(
+  [() => notifications.value.length, loading, lastError],
+  async () => {
+    if (!isOpen.value) return
+
+    await nextTick()
+    updatePanelPosition()
+  }
+)
+
 async function togglePanel() {
   isOpen.value = !isOpen.value
 

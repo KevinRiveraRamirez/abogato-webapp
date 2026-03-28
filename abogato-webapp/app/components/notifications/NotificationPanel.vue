@@ -62,11 +62,11 @@ const emptyFilterMessage = computed(() => {
 
 <template>
   <UCard
-    class="w-[25rem] max-w-[calc(100vw-1rem)] rounded-[2rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] shadow-[0_24px_70px_-36px_rgba(15,23,42,0.35)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))]"
+    class="flex w-[clamp(20rem,30vw,28rem)] max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-1.5rem)] flex-col rounded-[2rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] shadow-[0_24px_70px_-36px_rgba(15,23,42,0.35)] sm:max-w-[calc(100vw-2rem)] sm:max-h-[calc(100vh-2rem)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))]"
     :ui="{
-      header: 'px-5 pb-4 pt-5',
-      body: 'px-5 pb-0 pt-0',
-      footer: 'px-5 pb-5 pt-4'
+      header: 'shrink-0 px-4 pb-4 pt-4 sm:px-5 sm:pt-5',
+      body: 'flex min-h-0 flex-1 flex-col px-4 pb-0 pt-0 sm:px-5',
+      footer: 'shrink-0 px-4 pb-4 pt-4 sm:px-5 sm:pb-5'
     }"
   >
     <template #header>
@@ -95,7 +95,7 @@ const emptyFilterMessage = computed(() => {
             v-for="filter in filters"
             :key="filter.key"
             type="button"
-            class="flex items-center justify-center gap-2 rounded-[1rem] px-3 py-2 text-sm font-medium transition"
+            class="flex items-center justify-center gap-1.5 rounded-[1rem] px-2.5 py-2 text-xs font-medium transition sm:gap-2 sm:px-3 sm:text-sm"
             :class="activeFilter === filter.key
               ? 'bg-default text-highlighted shadow-sm ring-1 ring-default'
               : 'text-muted hover:text-highlighted'"
@@ -119,11 +119,11 @@ const emptyFilterMessage = computed(() => {
       />
     </div>
 
-    <div v-if="loading && !notifications.length" class="py-12 text-center">
+    <div v-if="loading && !notifications.length" class="flex min-h-[12rem] flex-1 items-center justify-center py-8 text-center sm:py-12">
       <p class="text-sm text-muted">Cargando notificaciones...</p>
     </div>
 
-    <div v-else-if="!notifications.length" class="py-12 text-center">
+    <div v-else-if="!notifications.length" class="flex min-h-[12rem] flex-1 flex-col items-center justify-center py-8 text-center sm:py-12">
       <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-elevated text-toned">
         <UIcon name="i-lucide-bell-ring" class="h-6 w-6" />
       </div>
@@ -131,7 +131,7 @@ const emptyFilterMessage = computed(() => {
       <p class="mt-1 text-sm text-muted">Cuando ocurra algo importante en tus casos, lo vas a ver acá.</p>
     </div>
 
-    <div v-else-if="!filteredNotifications.length" class="py-12 text-center">
+    <div v-else-if="!filteredNotifications.length" class="flex min-h-[12rem] flex-1 flex-col items-center justify-center py-8 text-center sm:py-12">
       <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-elevated text-toned">
         <UIcon name="i-lucide-inbox" class="h-6 w-6" />
       </div>
@@ -139,7 +139,7 @@ const emptyFilterMessage = computed(() => {
       <p class="mt-1 text-sm text-muted">{{ emptyFilterMessage }}</p>
     </div>
 
-    <div v-else class="max-h-[30rem] space-y-3 overflow-y-auto pb-1 pr-1">
+    <div v-else class="scrollbar-none min-h-0 flex-1 space-y-3 overflow-y-auto pb-1 pr-1">
       <NotificationsNotificationItem
         v-for="notification in filteredNotifications"
         :key="notification.id"
@@ -149,17 +149,17 @@ const emptyFilterMessage = computed(() => {
     </div>
 
     <template #footer>
-      <div class="flex items-center justify-between gap-3 border-t border-default/70 pt-4">
+      <div class="flex flex-col gap-3 border-t border-default/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="button"
-          class="text-sm font-medium text-highlighted underline decoration-default underline-offset-4 transition hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          class="text-left text-sm font-medium text-highlighted underline decoration-default underline-offset-4 transition hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="!notifications.length || !unreadCount"
           @click="emit('markAll')"
         >
           Marcar todas como leidas
         </button>
 
-        <UButton color="neutral" variant="outline" to="/dashboard">
+        <UButton color="neutral" variant="outline" to="/dashboard" class="justify-center">
           Ir al panel
         </UButton>
       </div>
