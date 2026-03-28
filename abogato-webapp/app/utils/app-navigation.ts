@@ -1,26 +1,85 @@
 import type { NavigationMenuItem } from '#ui/types'
 
 export type AppRole = 'cliente' | 'abogado' | 'admin'
+export type NavigationSection = {
+  id: string
+  label: string
+  items: NavigationMenuItem[]
+}
 
-const clientItems: NavigationMenuItem[] = [
-  { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/client/dashboard' },
-  { label: 'Mis tickets', icon: 'i-lucide-ticket', to: '/tickets' },
-  { label: 'Traspaso de carro', icon: 'i-lucide-car-front', to: '/traspaso-carro' },
-  { label: 'Mi perfil', icon: 'i-lucide-user-round', to: '/account/profile' },
+const clientSections: NavigationSection[] = [
+  {
+    id: 'overview',
+    label: 'General',
+    items: [
+      { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/client/dashboard' },
+    ],
+  },
+  {
+    id: 'matters',
+    label: 'Gestiones',
+    items: [
+      { label: 'Mis tickets', icon: 'i-lucide-ticket', to: '/tickets' },
+      { label: 'Traspaso de carro', icon: 'i-lucide-car-front', to: '/traspaso-carro' },
+    ],
+  },
+  {
+    id: 'account',
+    label: 'Cuenta',
+    items: [
+      { label: 'Mi perfil', icon: 'i-lucide-user-round', to: '/account/profile' },
+    ],
+  },
 ]
 
-const lawyerItems: NavigationMenuItem[] = [
-  { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/lawyer/dashboard' },
-  { label: 'Mis casos', icon: 'i-lucide-scale', to: '/lawyer/tickets' },
-  { label: 'Traspaso de carro', icon: 'i-lucide-car-front', to: '/traspaso-carro' },
-  { label: 'Mi perfil', icon: 'i-lucide-user-round', to: '/account/profile' },
+const lawyerSections: NavigationSection[] = [
+  {
+    id: 'overview',
+    label: 'General',
+    items: [
+      { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/lawyer/dashboard' },
+    ],
+  },
+  {
+    id: 'matters',
+    label: 'Casos',
+    items: [
+      { label: 'Mis casos', icon: 'i-lucide-scale', to: '/lawyer/tickets' },
+      { label: 'Traspaso de carro', icon: 'i-lucide-car-front', to: '/traspaso-carro' },
+    ],
+  },
+  {
+    id: 'account',
+    label: 'Cuenta',
+    items: [
+      { label: 'Mi perfil', icon: 'i-lucide-user-round', to: '/account/profile' },
+    ],
+  },
 ]
 
-const adminItems: NavigationMenuItem[] = [
-  { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/admin/dashboard' },
-  { label: 'Tickets', icon: 'i-lucide-ticket', to: '/admin/tickets' },
-  { label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/usuarios' },
-  { label: 'Mi perfil', icon: 'i-lucide-user-round', to: '/account/profile' },
+const adminSections: NavigationSection[] = [
+  {
+    id: 'overview',
+    label: 'General',
+    items: [
+      { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/admin/dashboard' },
+    ],
+  },
+  {
+    id: 'management',
+    label: 'Administracion',
+    items: [
+      { label: 'Tickets', icon: 'i-lucide-ticket', to: '/admin/tickets' },
+      { label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/usuarios' },
+    ],
+  },
+  {
+    id: 'account',
+    label: 'Cuenta',
+    items: [
+      { label: 'Mi perfil', icon: 'i-lucide-user-round', to: '/account/profile' },
+    ],
+  },
 ]
 
 export function normalizeAppRole(role: string | null | undefined): AppRole {
@@ -45,11 +104,15 @@ export function getRoleLabel(role: string | null | undefined) {
 }
 
 export function getNavigationItems(role: string | null | undefined): NavigationMenuItem[] {
+  return getNavigationSections(role).flatMap(section => section.items)
+}
+
+export function getNavigationSections(role: string | null | undefined): NavigationSection[] {
   const normalizedRole = normalizeAppRole(role)
 
-  if (normalizedRole === 'admin') return adminItems
-  if (normalizedRole === 'abogado') return lawyerItems
-  return clientItems
+  if (normalizedRole === 'admin') return adminSections
+  if (normalizedRole === 'abogado') return lawyerSections
+  return clientSections
 }
 
 export function getNavigationTitle(path: string, role: string | null | undefined) {
