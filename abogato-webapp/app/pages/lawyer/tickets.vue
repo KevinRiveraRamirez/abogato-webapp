@@ -2,6 +2,13 @@
 import { h, resolveComponent } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '#ui/types'
 import type { Database } from '~/types/database.types'
+import {
+  getReopenedTicketIds,
+  getTicketDisplayStatus,
+  ticketDisplayStatusColors,
+  ticketDisplayStatusLabels,
+  type TicketDisplayStatus,
+} from '~/utils/dashboard'
 import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
 
 definePageMeta({ layout: 'app', middleware: ['auth', 'lawyer'] })
@@ -22,6 +29,7 @@ type Ticket = {
   assigned_to: string | null
   created_at: string
   reopen_requested: boolean
+  wasReopened: boolean
 }
 
 type Documento = {
@@ -76,14 +84,6 @@ const etiquetaEstado: Record<string, string> = {
   resolved: 'Resuelto',
   closed: 'Cerrado',
   cancelled: 'Cancelado'
-}
-
-const colorEstado: Record<string, 'warning' | 'info' | 'success' | 'neutral' | 'error'> = {
-  open: 'warning',
-  in_progress: 'info',
-  resolved: 'success',
-  closed: 'neutral',
-  cancelled: 'error'
 }
 
 const etiquetaPrioridad: Record<string, string> = {
@@ -153,6 +153,7 @@ function normalizarTicket(row: TicketRow): Ticket {
     assigned_to: row.assigned_to,
     created_at: row.created_at,
     reopen_requested: row.reopen_requested,
+    wasReopened: false,
   }
 }
 
@@ -189,7 +190,7 @@ const ticketsFiltrados = computed(() => {
       ticket.title,
       ticket.description ?? '',
       obtenerNombreResponsable(ticket),
-      etiquetaEstado[ticket.status],
+      obtenerEtiquetaEstadoVisible(ticket),
       etiquetaPrioridad[ticket.priority],
     ].some(value => String(value).toLowerCase().includes(termino))
   })
@@ -223,7 +224,30 @@ async function cargarTickets() {
 
   loading.value = false
   if (error) { errorMsg.value = error.message; return }
-  tickets.value = (data ?? []).map((row) => normalizarTicket(row as TicketRow))
+
+  const ticketsNormalizados = (data ?? []).map((row) => normalizarTicket(row as TicketRow))
+  let reopenedTicketIds = new Set<string>()
+
+  if (ticketsNormalizados.length) {
+    const { data: reopenHistory, error: reopenHistoryError } = await supabase
+      .from('ticket_historial')
+      .select('ticket_id, old_status, new_status')
+      .in('ticket_id', ticketsNormalizados.map(ticket => ticket.id))
+      .eq('new_status', 'open')
+      .in('old_status', ['resolved', 'closed', 'cancelled'])
+
+    if (reopenHistoryError) {
+      errorMsg.value = reopenHistoryError.message
+      return
+    }
+
+    reopenedTicketIds = getReopenedTicketIds(reopenHistory ?? [])
+  }
+
+  tickets.value = ticketsNormalizados.map(ticket => ({
+    ...ticket,
+    wasReopened: reopenedTicketIds.has(ticket.id),
+  }))
 
   if (ticketExpandido.value && !tickets.value.some(ticket => ticket.id === ticketExpandido.value)) {
     ticketExpandido.value = null
@@ -382,6 +406,26 @@ function obtenerNombreResponsable(ticket: Ticket) {
   return perfilesAbogados.value[ticket.assigned_to]?.display_name ?? 'Asignado'
 }
 
+function obtenerEstadoVisible(ticket: Ticket): TicketDisplayStatus {
+  return getTicketDisplayStatus(ticket)
+}
+
+function obtenerEtiquetaEstadoVisible(ticket: Ticket) {
+  return ticketDisplayStatusLabels[obtenerEstadoVisible(ticket)]
+}
+
+function obtenerColorEstadoVisible(ticket: Ticket) {
+  return ticketDisplayStatusColors[obtenerEstadoVisible(ticket)]
+}
+
+function obtenerEtiquetaAccion(ticket: Ticket) {
+  if (ticket.status === 'open') {
+    return ticket.assigned_to ? 'Iniciar revision' : 'Tomar caso'
+  }
+
+  return etiquetaAccion[ticket.status] ?? 'Cambiar estado'
+}
+
 function obtenerMenuEstado(ticket: Ticket): DropdownMenuItem[][] {
   const items: DropdownMenuItem[][] = []
 
@@ -404,7 +448,7 @@ function obtenerMenuEstado(ticket: Ticket): DropdownMenuItem[][] {
   if (siguienteEstado[ticket.status]) {
     items.push([
       {
-        label: etiquetaAccion[ticket.status] ?? 'Cambiar estado',
+        label: obtenerEtiquetaAccion(ticket),
         icon: 'i-lucide-arrow-right-circle',
         onSelect: () => avanzarEstado(ticket),
       },
@@ -414,7 +458,7 @@ function obtenerMenuEstado(ticket: Ticket): DropdownMenuItem[][] {
   if (!items.length) {
     items.push([
       {
-        label: etiquetaEstado[ticket.status] ?? ticket.status,
+        label: obtenerEtiquetaEstadoVisible(ticket),
         icon: 'i-lucide-check',
         disabled: true,
       },
@@ -457,7 +501,7 @@ function obtenerMenuAcciones(ticket: Ticket): DropdownMenuItem[][] {
   if (siguienteEstado[ticket.status]) {
     items.push([
       {
-        label: etiquetaAccion[ticket.status] ?? 'Cambiar estado',
+        label: obtenerEtiquetaAccion(ticket),
         icon: 'i-lucide-arrow-right-circle',
         onSelect: () => avanzarEstado(ticket),
       },
@@ -536,10 +580,10 @@ const columns = computed<TableColumn<Ticket>[]>(() => [
     }, {
       default: () => h(UButton, {
         size: 'sm',
-        color: colorEstado[row.original.status],
+        color: obtenerColorEstadoVisible(row.original),
         variant: 'soft',
         trailingIcon: 'i-lucide-chevron-down',
-      }, () => etiquetaEstado[row.original.status]),
+      }, () => obtenerEtiquetaEstadoVisible(row.original)),
     }),
     meta: {
       class: {
@@ -763,8 +807,8 @@ onMounted(async () => {
         >
           <div>
             <p class="font-medium text-highlighted">{{ t.title }}</p>
-            <UBadge :color="colorEstado[t.status]" variant="subtle" class="mt-2">
-              {{ etiquetaEstado[t.status] }}
+            <UBadge :color="obtenerColorEstadoVisible(t)" variant="subtle" class="mt-2">
+              {{ obtenerEtiquetaEstadoVisible(t) }}
             </UBadge>
           </div>
           <div class="flex flex-wrap gap-2">

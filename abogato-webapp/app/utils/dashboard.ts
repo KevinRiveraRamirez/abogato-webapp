@@ -1,10 +1,13 @@
 import type { Database } from '~/types/database.types'
 
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled'
+export type TicketDisplayStatus = TicketStatus | 'reopened'
 export type TicketPriority = 'low' | 'normal' | 'high'
 export type DocumentStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
+export type TicketStatusColor = 'primary' | 'warning' | 'info' | 'success' | 'neutral' | 'error'
 
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
+type TicketHistoryRow = Database['public']['Tables']['ticket_historial']['Row']
 
 export type DashboardProfile = Pick<
   ProfileRow,
@@ -26,12 +29,22 @@ export const ticketStatusLabels: Record<TicketStatus, string> = {
   cancelled: 'Cancelado',
 }
 
-export const ticketStatusColors: Record<TicketStatus, 'warning' | 'info' | 'success' | 'neutral' | 'error'> = {
+export const ticketDisplayStatusLabels: Record<TicketDisplayStatus, string> = {
+  ...ticketStatusLabels,
+  reopened: 'Reabierto',
+}
+
+export const ticketStatusColors: Record<TicketStatus, TicketStatusColor> = {
   open: 'warning',
   in_progress: 'info',
   resolved: 'success',
   closed: 'neutral',
   cancelled: 'error',
+}
+
+export const ticketDisplayStatusColors: Record<TicketDisplayStatus, TicketStatusColor> = {
+  ...ticketStatusColors,
+  reopened: 'primary',
 }
 
 export const ticketPriorityLabels: Record<TicketPriority, string> = {
@@ -64,6 +77,34 @@ export function normalizeTicketStatus(value: string | null | undefined): TicketS
   return ['open', 'in_progress', 'resolved', 'closed', 'cancelled'].includes(String(value))
     ? value as TicketStatus
     : 'open'
+}
+
+export function isReopenedHistoryEntry(
+  entry: Pick<TicketHistoryRow, 'old_status' | 'new_status'>
+) {
+  return entry.new_status === 'open'
+    && ['resolved', 'closed', 'cancelled'].includes(String(entry.old_status))
+}
+
+export function getReopenedTicketIds(
+  entries: Array<Pick<TicketHistoryRow, 'ticket_id' | 'old_status' | 'new_status'>>
+) {
+  const reopenedTicketIds = new Set<string>()
+
+  for (const entry of entries) {
+    if (!entry.ticket_id || !isReopenedHistoryEntry(entry)) continue
+    reopenedTicketIds.add(entry.ticket_id)
+  }
+
+  return reopenedTicketIds
+}
+
+export function getTicketDisplayStatus(ticket: { status: TicketStatus, wasReopened?: boolean | null }): TicketDisplayStatus {
+  if (ticket.status === 'open' && ticket.wasReopened) {
+    return 'reopened'
+  }
+
+  return ticket.status
 }
 
 export function normalizeTicketPriority(value: string | null | undefined): TicketPriority {

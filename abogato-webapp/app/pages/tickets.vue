@@ -2,6 +2,13 @@
 import { h, resolveComponent } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '#ui/types'
 import type { Database, Json } from '~/types/database.types'
+import {
+  getReopenedTicketIds,
+  getTicketDisplayStatus,
+  ticketDisplayStatusColors,
+  ticketDisplayStatusLabels,
+  type TicketDisplayStatus,
+} from '~/utils/dashboard'
 
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
@@ -41,6 +48,7 @@ type Ticket = {
   created_by: string
   assigned_to: string | null
   created_at: string
+  wasReopened: boolean
 }
 
 type DocumentoResumen = {
@@ -94,6 +102,7 @@ function normalizarTicket(row: TicketRow): Ticket {
     created_by: row.created_by,
     assigned_to: row.assigned_to,
     created_at: row.created_at,
+    wasReopened: false,
   }
 }
 
@@ -503,14 +512,6 @@ const etiquetaPrioridad: Record<string, string> = {
   high: 'Alta'
 }
 
-const colorEstado: Record<string, 'warning' | 'info' | 'success' | 'neutral' | 'error'> = {
-  open: 'warning',
-  in_progress: 'info',
-  resolved: 'success',
-  closed: 'neutral',
-  cancelled: 'error'
-}
-
 const colorPrioridad: Record<Ticket['priority'], 'neutral' | 'warning' | 'error'> = {
   low: 'neutral',
   normal: 'warning',
@@ -532,12 +533,24 @@ const ticketsFiltrados = computed(() => {
       ticket.id,
       ticket.title,
       ticket.description ?? '',
-      etiquetaEstado[ticket.status],
+      obtenerEtiquetaEstadoVisible(ticket),
       etiquetaPrioridad[ticket.priority],
       estadoDocumentoPorTicket.value[ticket.id] === 'rejected' ? 'documento rechazado' : '',
     ].some((value) => String(value).toLowerCase().includes(termino))
   })
 })
+
+function obtenerEstadoVisible(ticket: Ticket): TicketDisplayStatus {
+  return getTicketDisplayStatus(ticket)
+}
+
+function obtenerEtiquetaEstadoVisible(ticket: Ticket) {
+  return ticketDisplayStatusLabels[obtenerEstadoVisible(ticket)]
+}
+
+function obtenerColorEstadoVisible(ticket: Ticket) {
+  return ticketDisplayStatusColors[obtenerEstadoVisible(ticket)]
+}
 
 function formatearFecha(fecha: string) {
   return new Date(fecha).toLocaleDateString('es-CR', {
@@ -622,9 +635,9 @@ const columns = computed<TableColumn<Ticket>[]>(() => [
     header: 'Estado',
     cell: ({ row }) => h('div', { class: 'flex flex-wrap items-center gap-2' }, [
       h(UBadge, {
-        color: colorEstado[row.original.status],
+        color: obtenerColorEstadoVisible(row.original),
         variant: 'subtle',
-      }, () => etiquetaEstado[row.original.status]),
+      }, () => obtenerEtiquetaEstadoVisible(row.original)),
       estadoDocumentoPorTicket.value[row.original.id] === 'rejected'
         ? h(UBadge, {
             color: 'error',
@@ -728,7 +741,25 @@ async function cargarTickets() {
   loading.value = false
 
   if (error) { errorMsg.value = error.message; return }
-  tickets.value = (data ?? []).map((row) => normalizarTicket(row as TicketRow))
+  const ticketsNormalizados = (data ?? []).map((row) => normalizarTicket(row as TicketRow))
+  let reopenedTicketIds = new Set<string>()
+
+  if (ticketsNormalizados.length) {
+    const { data: reopenHistory, error: reopenHistoryError } = await supabase
+      .from('ticket_historial')
+      .select('ticket_id, old_status, new_status')
+      .in('ticket_id', ticketsNormalizados.map(ticket => ticket.id))
+      .eq('new_status', 'open')
+      .in('old_status', ['resolved', 'closed', 'cancelled'])
+
+    if (reopenHistoryError) { errorMsg.value = reopenHistoryError.message; return }
+    reopenedTicketIds = getReopenedTicketIds(reopenHistory ?? [])
+  }
+
+  tickets.value = ticketsNormalizados.map(ticket => ({
+    ...ticket,
+    wasReopened: reopenedTicketIds.has(ticket.id),
+  }))
   await cargarEstadosDocumento(tickets.value.map(ticket => ticket.id))
 }
 

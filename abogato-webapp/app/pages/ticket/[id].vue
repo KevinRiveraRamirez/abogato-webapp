@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import type { Database } from '~/types/database.types'
+import {
+  getTicketDisplayStatus,
+  isReopenedHistoryEntry,
+  ticketDisplayStatusColors,
+  ticketDisplayStatusLabels,
+  type TicketDisplayStatus,
+} from '~/utils/dashboard'
 import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
 
 definePageMeta({ layout: 'app', middleware: 'auth' })
@@ -72,14 +79,6 @@ const etiquetaEstado: Record<string, string> = {
   cancelled: 'Cancelado'
 }
 
-const colorEstado: Record<string, 'warning' | 'info' | 'success' | 'neutral' | 'error'> = {
-  open: 'warning',
-  in_progress: 'info',
-  resolved: 'success',
-  closed: 'neutral',
-  cancelled: 'error'
-}
-
 const etiquetaPrioridad: Record<string, string> = {
   low: 'Baja',
   normal: 'Normal',
@@ -109,6 +108,15 @@ const etiquetaEstadoDocumento: Record<string, string> = {
 const esCliente = computed(() => profile.value?.role === 'cliente')
 const esAdmin = computed(() => profile.value?.role === 'admin')
 const esAbogado = computed(() => profile.value?.role === 'abogado')
+const visibleTicketStatus = computed<TicketDisplayStatus>(() => {
+  if (!ticket.value) return 'open'
+
+  return getTicketDisplayStatus({
+    status: ticket.value.status,
+    wasReopened: ticket.value.status === 'open'
+      && historial.value.some(entry => isReopenedHistoryEntry(entry)),
+  })
+})
 
 const puedeEditar = computed(() =>
   esCliente.value && ticket.value?.status === 'open'
@@ -488,8 +496,8 @@ watch(user, async (newUser) => {
           <div>
             <h1 class="text-2xl font-semibold text-highlighted">{{ ticket.title }}</h1>
             <div class="mt-2 flex flex-wrap items-center gap-2">
-              <UBadge :color="colorEstado[ticket.status]" variant="subtle">
-                {{ etiquetaEstado[ticket.status] }}
+              <UBadge :color="ticketDisplayStatusColors[visibleTicketStatus]" variant="subtle">
+                {{ ticketDisplayStatusLabels[visibleTicketStatus] }}
               </UBadge>
               <UBadge :color="colorPrioridad[ticket.priority]" variant="outline">
                 Prioridad: {{ etiquetaPrioridad[ticket.priority] }}

@@ -7,15 +7,19 @@ import {
   formatShortDate,
   getFriendlyFirstName,
   getProfileDisplayName,
+  getReopenedTicketIds,
+  getTicketDisplayStatus,
   normalizeDocumentStatus,
   normalizeTicketPriority,
   normalizeTicketStatus,
   percentage,
+  ticketDisplayStatusColors,
+  ticketDisplayStatusLabels,
   ticketPriorityColors,
   ticketPriorityLabels,
-  ticketStatusColors,
   ticketStatusLabels,
   type DocumentStatus,
+  type TicketDisplayStatus,
   type TicketPriority,
   type TicketStatus,
 } from '~/utils/dashboard'
@@ -46,6 +50,7 @@ type TicketSummary = {
   created_at: string
   updated_at: string
   reopen_requested: boolean
+  wasReopened: boolean
 }
 
 type DocumentSummary = {
@@ -226,6 +231,10 @@ const firstRejectedDocument = computed(() =>
 const firstUnreadNotification = computed(() =>
   notifications.value.find(notification => !notification.read_at)
 )
+
+function getVisibleTicketStatus(ticket: TicketSummary): TicketDisplayStatus {
+  return getTicketDisplayStatus(ticket)
+}
 
 const actionItems = computed(() => {
   const items: Array<{
@@ -432,6 +441,7 @@ async function cargarDashboard() {
         created_at: ticket.created_at,
         updated_at: ticket.updated_at,
         reopen_requested: ticket.reopen_requested,
+        wasReopened: false,
       }
     })
 
@@ -447,13 +457,29 @@ async function cargarDashboard() {
     const lawyerIds = [...new Set(tickets.value.map(ticket => ticket.assigned_to).filter(Boolean))] as string[]
 
     if (ticketIds.length) {
-      const documentsResult = await supabase
-        .from('documents')
-        .select('id, status, created_at, ticket_id, rejection_reason, document_templates(title)')
-        .in('ticket_id', ticketIds)
-        .order('created_at', { ascending: false })
+      const [documentsResult, reopenHistoryResult] = await Promise.all([
+        supabase
+          .from('documents')
+          .select('id, status, created_at, ticket_id, rejection_reason, document_templates(title)')
+          .in('ticket_id', ticketIds)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('ticket_historial')
+          .select('ticket_id, old_status, new_status')
+          .in('ticket_id', ticketIds)
+          .eq('new_status', 'open')
+          .in('old_status', ['resolved', 'closed', 'cancelled']),
+      ])
 
       if (documentsResult.error) throw documentsResult.error
+      if (reopenHistoryResult.error) throw reopenHistoryResult.error
+
+      const reopenedTicketIds = getReopenedTicketIds(reopenHistoryResult.data ?? [])
+
+      tickets.value = tickets.value.map(ticket => ({
+        ...ticket,
+        wasReopened: reopenedTicketIds.has(ticket.id),
+      }))
 
       documents.value = (documentsResult.data ?? []).flatMap((row) => {
         const document = row as DashboardDocumentRow
@@ -690,8 +716,8 @@ onMounted(() => {
               <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
-                    <UBadge :color="ticketStatusColors[ticket.status]" variant="subtle">
-                      {{ ticketStatusLabels[ticket.status] }}
+                    <UBadge :color="ticketDisplayStatusColors[getVisibleTicketStatus(ticket)]" variant="subtle">
+                      {{ ticketDisplayStatusLabels[getVisibleTicketStatus(ticket)] }}
                     </UBadge>
                     <UBadge :color="ticketPriorityColors[ticket.priority]" variant="outline">
                       {{ ticketPriorityLabels[ticket.priority] }}
