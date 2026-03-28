@@ -1,69 +1,664 @@
 <script setup lang="ts">
-import type { Database, Json } from '~/types/database.types'
+import { nextTick } from 'vue'
+import type { Database } from '~/types/database.types'
+import {
+  groupTemplateFields,
+  isTemplateFieldList,
+  normalizeTemplateFields,
+  type TemplateField,
+  type TemplateFieldType,
+  type TemplateFieldWidth,
+} from '~~/shared/utils/document-template-fields'
 
 definePageMeta({ layout: 'app', middleware: ['auth', 'admin'] })
 
 const supabase = useSupabaseClient()
-const { profile, cargarPerfil } = useUsuario()
+const { cargarPerfil } = useUsuario()
 
-type Servicio = { id: number; nombre: string }
-type Field = { key: string; label: string; type: 'text' | 'date' | 'number' }
 type Template = {
   id: string
   title: string
   content: string
-  fields: Field[]
-  servicio_id: number
+  fields: TemplateField[]
+  servicio_id: number | null
   activo: boolean
   created_at: string
 }
 
 type TemplateRow = Database['public']['Tables']['document_templates']['Row']
-
-function esListaDeCampos(value: Json): value is Field[] {
-  return Array.isArray(value) && value.every((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
-
-    const field = item as Record<string, unknown>
-    return typeof field.key === 'string'
-      && typeof field.label === 'string'
-      && ['text', 'date', 'number'].includes(String(field.type))
-  })
+type PaletteKind = TemplateFieldType | 'section'
+type BuilderField = TemplateField & { id: string }
+type BuilderSection = {
+  id: string
+  title: string
+  description: string
+  fields: BuilderField[]
+}
+type PaletteItem = {
+  kind: PaletteKind
+  label: string
+  description: string
+  icon: string
+  category: string
+}
+type AvailablePlaceholder = {
+  token: string
+  label: string
+  key: string
+  source: string
 }
 
-function normalizarPlantilla(row: TemplateRow): Template | null {
-  if (row.servicio_id == null) return null
-
-  return {
-    id: row.id,
-    title: row.title,
-    content: row.content,
-    fields: esListaDeCampos(row.fields) ? row.fields : [],
-    servicio_id: row.servicio_id,
-    activo: row.activo ?? true,
-    created_at: row.created_at ?? new Date().toISOString(),
-  }
+const fieldTypeLabels: Record<TemplateFieldType, string> = {
+  text: 'Texto corto',
+  textarea: 'Texto largo',
+  number: 'Número',
+  date: 'Fecha',
+  boolean: 'Sí / No',
 }
 
-const servicios = ref<Servicio[]>([])
+const fieldTypePlaceholders: Record<TemplateFieldType, string> = {
+  text: 'Escribí el dato que necesitás solicitar',
+  textarea: 'Agregá una respuesta más detallada',
+  number: 'Ingresá un valor numérico',
+  date: 'Seleccioná una fecha',
+  boolean: 'Elegí una opción',
+}
+
+const fieldTypeDefaults: Record<TemplateFieldType, { label: string; key: string; width: TemplateFieldWidth }> = {
+  text: { label: 'Campo de texto', key: 'campo_texto', width: 'half' },
+  textarea: { label: 'Campo descriptivo', key: 'campo_descriptivo', width: 'full' },
+  number: { label: 'Campo numérico', key: 'campo_numerico', width: 'half' },
+  date: { label: 'Fecha', key: 'fecha', width: 'half' },
+  boolean: { label: 'Confirmación', key: 'confirmacion', width: 'half' },
+}
+
+const paletteItems: PaletteItem[] = [
+  {
+    kind: 'section',
+    label: 'Sections',
+    description: 'Creá un bloque para agrupar campos y ordenar el formulario.',
+    icon: 'i-lucide-layout-panel-top',
+    category: 'Layout Elements',
+  },
+  {
+    kind: 'text',
+    label: 'Single line',
+    description: 'Ideal para nombres, identificaciones o datos breves.',
+    icon: 'i-lucide-type',
+    category: 'Text Elements',
+  },
+  {
+    kind: 'textarea',
+    label: 'Multiline',
+    description: 'Para descripciones amplias, notas o instrucciones.',
+    icon: 'i-lucide-align-left',
+    category: 'Text Elements',
+  },
+  {
+    kind: 'number',
+    label: 'Number',
+    description: 'Monto, edad, cantidad o cualquier valor numérico.',
+    icon: 'i-lucide-hash',
+    category: 'Text Elements',
+  },
+  {
+    kind: 'date',
+    label: 'Date',
+    description: 'Solicitá fechas puntuales con un input nativo.',
+    icon: 'i-lucide-calendar-days',
+    category: 'Date Elements',
+  },
+  {
+    kind: 'boolean',
+    label: 'Yes / No',
+    description: 'Mostrá una decisión binaria con opciones claras.',
+    icon: 'i-lucide-circle-dot',
+    category: 'Multi Elements',
+  },
+]
+
+const systemPlaceholders = [
+  { key: 'nombre_notario', label: 'Nombre del abogado o notario asignado' },
+  { key: 'direccion_notario', label: 'Dirección de la oficina del abogado o notario' },
+]
+
 const plantillas = ref<Template[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
 const mostrarFormulario = ref(false)
+const paletteQuery = ref('')
+const draggedPaletteKind = ref<PaletteKind | null>(null)
+const activeSectionId = ref('')
+const selectedFieldId = ref('')
+const listadoPlantillasRef = ref<HTMLElement | null>(null)
+const templateEnEdicionId = ref<string | null>(null)
+const templateEnEdicionServicioId = ref<number | null>(null)
 
-const form = ref({
-  title: '',
-  content: '',
-  servicio_id: '',
-  fields: [] as Field[]
+function crearIdLocal(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function normalizarTextoPlano(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function crearSeccion(index: number): BuilderSection {
+  return {
+    id: crearIdLocal('section'),
+    title: `Sección ${index}`,
+    description: '',
+    fields: [],
+  }
+}
+
+function crearFormularioVacio() {
+  const primeraSeccion = crearSeccion(1)
+
+  return {
+    title: '',
+    content: '',
+    sections: [primeraSeccion] as BuilderSection[],
+  }
+}
+
+const form = ref(crearFormularioVacio())
+
+function obtenerClavesUsadas(ignoreFieldId = '') {
+  return new Set(
+    form.value.sections.flatMap(section =>
+      section.fields
+        .filter(field => field.id !== ignoreFieldId)
+        .map(field => field.key.trim())
+        .filter(Boolean)
+    )
+  )
+}
+
+function crearClaveUnica(base: string, ignoreFieldId = '') {
+  const normalized = normalizarTextoPlano(base) || 'campo'
+  const used = obtenerClavesUsadas(ignoreFieldId)
+
+  if (!used.has(normalized)) return normalized
+
+  let counter = 2
+  while (used.has(`${normalized}_${counter}`)) {
+    counter += 1
+  }
+
+  return `${normalized}_${counter}`
+}
+
+function crearCampo(type: TemplateFieldType): BuilderField {
+  const defaults = fieldTypeDefaults[type]
+
+  return {
+    id: crearIdLocal('field'),
+    key: crearClaveUnica(defaults.key),
+    label: defaults.label,
+    type,
+    required: true,
+    placeholder: fieldTypePlaceholders[type],
+    help: '',
+    width: defaults.width,
+    section_id: '',
+    section_title: '',
+    section_description: '',
+  }
+}
+
+function crearCampoDesdePlantilla(field: TemplateField): BuilderField {
+  return {
+    ...field,
+    id: crearIdLocal('field'),
+  }
+}
+
+function crearSeccionesDesdePlantilla(fields: TemplateField[]) {
+  const sections = groupTemplateFields(fields)
+
+  if (!sections.length) {
+    return [crearSeccion(1)]
+  }
+
+  return sections.map((section, index) => ({
+    id: section.id === 'default' ? crearIdLocal(`section-${index + 1}`) : section.id,
+    title: section.title || `Sección ${index + 1}`,
+    description: section.description || '',
+    fields: section.fields.map(crearCampoDesdePlantilla),
+  }))
+}
+
+function normalizarPlantilla(row: TemplateRow): Template {
+  return {
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    fields: isTemplateFieldList(row.fields) ? normalizeTemplateFields(row.fields) : [],
+    servicio_id: row.servicio_id ?? null,
+    activo: row.activo ?? true,
+    created_at: row.created_at ?? new Date().toISOString(),
+  }
+}
+
+const activeSection = computed(() =>
+  form.value.sections.find(section => section.id === activeSectionId.value) ?? form.value.sections[0] ?? null
+)
+
+const selectedFieldLocation = computed(() => {
+  for (const section of form.value.sections) {
+    const index = section.fields.findIndex(field => field.id === selectedFieldId.value)
+    if (index >= 0) {
+      return {
+        section,
+        index,
+        field: section.fields[index],
+      }
+    }
+  }
+
+  return null
 })
 
-const nuevoField = ref({ key: '', label: '', type: 'text' as 'text' | 'date' | 'number' })
+const selectedField = computed(() => selectedFieldLocation.value?.field ?? null)
 
-async function cargarServicios() {
-  const { data } = await supabase.from('servicios').select('id, nombre').eq('activo', true)
-  servicios.value = data ?? []
+const filteredPaletteItems = computed(() => {
+  const query = paletteQuery.value.trim().toLowerCase()
+  if (!query) return paletteItems
+
+  return paletteItems.filter(item =>
+    [item.label, item.description, item.category].some(value => value.toLowerCase().includes(query))
+  )
+})
+
+const paletteGroups = computed(() => {
+  const groups = new Map<string, PaletteItem[]>()
+
+  filteredPaletteItems.value.forEach((item) => {
+    const current = groups.get(item.category) ?? []
+    current.push(item)
+    groups.set(item.category, current)
+  })
+
+  return Array.from(groups.entries()).map(([title, items]) => ({ title, items }))
+})
+
+function flattenSections(sections: BuilderSection[]): TemplateField[] {
+  return sections.flatMap(section =>
+    section.fields.map(field => ({
+      key: field.key.trim(),
+      label: field.label.trim(),
+      type: field.type,
+      required: field.required ?? true,
+      placeholder: field.placeholder?.trim() ?? '',
+      help: field.help?.trim() ?? '',
+      width: field.width === 'full' ? 'full' : 'half',
+      section_id: section.id,
+      section_title: section.title.trim(),
+      section_description: section.description.trim(),
+    }))
+  )
+}
+
+const flattenedFields = computed(() => flattenSections(form.value.sections))
+
+const analytics = computed(() => {
+  const fields = flattenedFields.value
+  const byType = fields.reduce<Record<TemplateFieldType, number>>((acc, field) => {
+    acc[field.type] += 1
+    return acc
+  }, {
+    text: 0,
+    textarea: 0,
+    number: 0,
+    date: 0,
+    boolean: 0,
+  })
+
+  return {
+    sections: form.value.sections.length,
+    fields: fields.length,
+    required: fields.filter(field => field.required ?? true).length,
+    fullWidth: fields.filter(field => field.width === 'full').length,
+    placeholders: fields.length + systemPlaceholders.length,
+    byType,
+  }
+})
+
+const availablePlaceholders = computed<AvailablePlaceholder[]>(() => [
+  ...systemPlaceholders.map(item => ({
+    token: `{{${item.key}}}`,
+    label: item.label,
+    key: item.key,
+    source: 'Variables del sistema',
+  })),
+  ...flattenedFields.value.map(field => ({
+    token: `{{${field.key}}}`,
+    label: field.label,
+    key: field.key,
+    source: field.section_title?.trim() || 'Formulario general',
+  })),
+])
+
+function resetBuilder() {
+  const nextForm = crearFormularioVacio()
+  form.value = nextForm
+  activeSectionId.value = nextForm.sections[0]?.id ?? ''
+  selectedFieldId.value = ''
+  paletteQuery.value = ''
+  draggedPaletteKind.value = null
+  templateEnEdicionId.value = null
+  templateEnEdicionServicioId.value = null
+}
+
+function abrirBuilder() {
+  errorMsg.value = ''
+  successMsg.value = ''
+  mostrarFormulario.value = true
+  resetBuilder()
+}
+
+function editarPlantilla(template: Template) {
+  errorMsg.value = ''
+  successMsg.value = ''
+  mostrarFormulario.value = true
+  templateEnEdicionId.value = template.id
+  templateEnEdicionServicioId.value = template.servicio_id
+  form.value = {
+    title: template.title,
+    content: template.content,
+    sections: crearSeccionesDesdePlantilla(template.fields),
+  }
+  activeSectionId.value = form.value.sections[0]?.id ?? ''
+  selectedFieldId.value = ''
+  paletteQuery.value = ''
+  draggedPaletteKind.value = null
+}
+
+async function cerrarBuilder() {
+  mostrarFormulario.value = false
+  resetBuilder()
+  errorMsg.value = ''
+  successMsg.value = ''
+
+  await nextTick()
+  listadoPlantillasRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function seleccionarSeccion(sectionId: string) {
+  activeSectionId.value = sectionId
+  selectedFieldId.value = ''
+}
+
+function seleccionarCampo(sectionId: string, fieldId: string) {
+  activeSectionId.value = sectionId
+  selectedFieldId.value = fieldId
+}
+
+async function agregarSeccion(afterSectionId?: string) {
+  const section = crearSeccion(form.value.sections.length + 1)
+  const nextSections = [...form.value.sections]
+  const index = afterSectionId
+    ? nextSections.findIndex(item => item.id === afterSectionId)
+    : -1
+
+  if (index >= 0) {
+    nextSections.splice(index + 1, 0, section)
+  }
+  else {
+    nextSections.push(section)
+  }
+
+  form.value.sections = nextSections
+  activeSectionId.value = section.id
+  selectedFieldId.value = ''
+
+  await nextTick()
+  document
+    .querySelector<HTMLElement>(`[data-section-id="${section.id}"]`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+}
+
+function eliminarSeccion(sectionId: string) {
+  if (form.value.sections.length === 1) return
+
+  const section = form.value.sections.find(item => item.id === sectionId)
+  if (!section) return
+
+  if (section.fields.length && !confirm('Esta sección tiene campos. ¿Querés eliminarla igual?')) {
+    return
+  }
+
+  form.value.sections = form.value.sections.filter(item => item.id !== sectionId)
+
+  if (activeSectionId.value === sectionId) {
+    activeSectionId.value = form.value.sections[0]?.id ?? ''
+    selectedFieldId.value = ''
+  }
+}
+
+function moverSeccion(sectionId: string, direction: -1 | 1) {
+  const index = form.value.sections.findIndex(section => section.id === sectionId)
+  const targetIndex = index + direction
+
+  if (index < 0 || targetIndex < 0 || targetIndex >= form.value.sections.length) return
+
+  const next = [...form.value.sections]
+  const [moved] = next.splice(index, 1)
+  next.splice(targetIndex, 0, moved)
+  form.value.sections = next
+}
+
+function asegurarSeccionBase() {
+  if (form.value.sections.length) return form.value.sections
+
+  const section = crearSeccion(1)
+  form.value.sections = [section]
+  activeSectionId.value = section.id
+  return form.value.sections
+}
+
+async function agregarComponente(kind: PaletteKind, targetSectionId = activeSectionId.value || form.value.sections[0]?.id) {
+  errorMsg.value = ''
+
+  if (kind === 'section') {
+    await agregarSeccion()
+    return
+  }
+
+  const sections = asegurarSeccionBase()
+  const resolvedSectionId = sections.some(item => item.id === targetSectionId)
+    ? targetSectionId
+    : sections[0]?.id
+
+  if (!resolvedSectionId) return
+
+  const field = crearCampo(kind)
+  form.value.sections = sections.map(section => (
+    section.id === resolvedSectionId
+      ? { ...section, fields: [...section.fields, field] }
+      : section
+  ))
+
+  activeSectionId.value = resolvedSectionId
+  selectedFieldId.value = field.id
+}
+
+function duplicarCampo(sectionId: string, fieldId: string) {
+  const section = form.value.sections.find(item => item.id === sectionId)
+  if (!section) return
+
+  const index = section.fields.findIndex(field => field.id === fieldId)
+  if (index < 0) return
+
+  const source = section.fields[index]
+  const duplicate: BuilderField = {
+    ...source,
+    id: crearIdLocal('field'),
+    key: crearClaveUnica(`${source.key}_copia`, source.id),
+    label: `${source.label} copia`,
+  }
+
+  form.value.sections = form.value.sections.map(item => (
+    item.id === sectionId
+      ? {
+          ...item,
+          fields: [
+            ...item.fields.slice(0, index + 1),
+            duplicate,
+            ...item.fields.slice(index + 1),
+          ],
+        }
+      : item
+  ))
+
+  selectedFieldId.value = duplicate.id
+  activeSectionId.value = sectionId
+}
+
+function eliminarCampo(sectionId: string, fieldId: string) {
+  form.value.sections = form.value.sections.map(section => (
+    section.id === sectionId
+      ? { ...section, fields: section.fields.filter(field => field.id !== fieldId) }
+      : section
+  ))
+
+  if (selectedFieldId.value === fieldId) {
+    selectedFieldId.value = ''
+  }
+}
+
+function moverCampo(sectionId: string, fieldId: string, direction: -1 | 1) {
+  const section = form.value.sections.find(item => item.id === sectionId)
+  if (!section) return
+
+  const index = section.fields.findIndex(field => field.id === fieldId)
+  const targetIndex = index + direction
+
+  if (index < 0 || targetIndex < 0 || targetIndex >= section.fields.length) return
+
+  const nextFields = [...section.fields]
+  const [moved] = nextFields.splice(index, 1)
+  nextFields.splice(targetIndex, 0, moved)
+  form.value.sections = form.value.sections.map(item => (
+    item.id === sectionId
+      ? { ...item, fields: nextFields }
+      : item
+  ))
+}
+
+function actualizarCampoSeleccionado(patch: Partial<BuilderField>) {
+  const location = selectedFieldLocation.value
+  if (!location) return
+
+  form.value.sections = form.value.sections.map(section => (
+    section.id === location.section.id
+      ? {
+          ...section,
+          fields: section.fields.map(field => (
+            field.id === location.field.id
+              ? { ...field, ...patch }
+              : field
+          )),
+        }
+      : section
+  ))
+}
+
+function regenerarClaveSeleccionada() {
+  const location = selectedFieldLocation.value
+  if (!location) return
+
+  actualizarCampoSeleccionado({
+    key: crearClaveUnica(location.field.label || location.field.key || 'campo', location.field.id),
+  })
+}
+
+function actualizarAnchoSeleccionado(value: string | number) {
+  actualizarCampoSeleccionado({
+    width: value === 'full' ? 'full' : 'half',
+  })
+}
+
+function insertarPlaceholder(key: string) {
+  const token = `{{${key}}}`
+  const current = form.value.content.trimEnd()
+
+  form.value.content = current
+    ? `${current}${current.endsWith('\n') ? '' : ' '}${token}`
+    : token
+}
+
+function obtenerKindDesdeDrag(event?: DragEvent) {
+  const fromTransfer = event?.dataTransfer?.getData('application/x-template-kind')
+  if (fromTransfer) return fromTransfer as PaletteKind
+  return draggedPaletteKind.value
+}
+
+function iniciarDrag(kind: PaletteKind, event?: DragEvent) {
+  draggedPaletteKind.value = kind
+  event?.dataTransfer?.setData('application/x-template-kind', kind)
+  if (event?.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'copy'
+  }
+}
+
+function finalizarDrag() {
+  draggedPaletteKind.value = null
+}
+
+async function soltarEnCanvas(event?: DragEvent) {
+  const kind = obtenerKindDesdeDrag(event)
+  if (!kind) return
+
+  await agregarComponente(kind)
+  draggedPaletteKind.value = null
+}
+
+async function soltarEnSeccion(sectionId: string, event?: DragEvent) {
+  const kind = obtenerKindDesdeDrag(event)
+  if (!kind) return
+
+  if (kind === 'section') {
+    await agregarSeccion(sectionId)
+  }
+  else {
+    await agregarComponente(kind, sectionId)
+  }
+
+  draggedPaletteKind.value = null
+}
+
+function validarBuilder() {
+  if (!form.value.title.trim() || !form.value.content.trim()) {
+    return 'Título y contenido del documento son obligatorios.'
+  }
+
+  const fields = flattenedFields.value
+
+  if (!fields.length) {
+    return 'Agregá al menos un campo al formulario antes de guardar.'
+  }
+
+  const missingField = fields.find(field => !field.label || !field.key)
+  if (missingField) {
+    return 'Todos los campos deben tener etiqueta y clave.'
+  }
+
+  const usedKeys = new Set<string>()
+  for (const field of fields) {
+    if (usedKeys.has(field.key)) {
+      return `La clave "${field.key}" está repetida. Cada placeholder debe ser único.`
+    }
+    usedKeys.add(field.key)
+  }
+
+  return ''
 }
 
 async function cargarPlantillas() {
@@ -72,76 +667,96 @@ async function cargarPlantillas() {
     .select('*')
     .order('created_at', { ascending: false })
 
-  plantillas.value = (data ?? [])
-    .map(normalizarPlantilla)
-    .filter((template): template is Template => template !== null)
-}
-
-function agregarField() {
-  const { key, label, type } = nuevoField.value
-  if (!key.trim() || !label.trim()) return
-  form.value.fields.push({ key: key.trim(), label: label.trim(), type })
-  nuevoField.value = { key: '', label: '', type: 'text' }
-}
-
-function eliminarField(index: number) {
-  form.value.fields.splice(index, 1)
+  plantillas.value = (data ?? []).map(normalizarPlantilla)
 }
 
 async function guardarPlantilla() {
-  if (!form.value.title.trim() || !form.value.content.trim() || !form.value.servicio_id) {
-    errorMsg.value = 'Título, contenido y servicio son obligatorios.'
+  const validationError = validarBuilder()
+  if (validationError) {
+    errorMsg.value = validationError
     return
   }
 
   loading.value = true
   errorMsg.value = ''
+  successMsg.value = ''
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { error } = await supabase.from('document_templates').insert([{
+  const payload = {
     title: form.value.title.trim(),
     content: form.value.content.trim(),
-    servicio_id: Number(form.value.servicio_id),
-    fields: form.value.fields,
-    created_by: user?.id
-  }])
+    servicio_id: templateEnEdicionServicioId.value,
+    fields: flattenedFields.value,
+  }
+
+  const { error } = templateEnEdicionId.value
+    ? await supabase
+        .from('document_templates')
+        .update(payload)
+        .eq('id', templateEnEdicionId.value)
+    : await supabase
+        .from('document_templates')
+        .insert([{
+          ...payload,
+          created_by: user?.id,
+        }])
 
   loading.value = false
 
-  if (error) { errorMsg.value = error.message; return }
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
 
-  successMsg.value = 'Plantilla creada correctamente.'
-  form.value = { title: '', content: '', servicio_id: '', fields: [] }
+  successMsg.value = templateEnEdicionId.value
+    ? 'Plantilla actualizada correctamente.'
+    : 'Plantilla creada correctamente.'
   mostrarFormulario.value = false
+  resetBuilder()
   await cargarPlantillas()
+  await nextTick()
+  listadoPlantillasRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-async function toggleActivo(p: Template) {
-  await supabase
+async function toggleActivo(template: Template) {
+  const accion = template.activo ? 'desactivar' : 'activar'
+  if (!confirm(`¿Querés ${accion} la plantilla "${template.title}"?`)) return
+
+  const { error } = await supabase
     .from('document_templates')
-    .update({ activo: !p.activo })
-    .eq('id', p.id)
+    .update({ activo: !template.activo })
+    .eq('id', template.id)
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
   await cargarPlantillas()
+  successMsg.value = template.activo
+    ? 'Plantilla desactivada correctamente.'
+    : 'Plantilla activada correctamente.'
 }
 
 onMounted(async () => {
   await cargarPerfil()
-  await Promise.all([cargarServicios(), cargarPlantillas()])
+  await cargarPlantillas()
+  activeSectionId.value = form.value.sections[0]?.id ?? ''
 })
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
-    <div class="mb-6 flex items-center justify-between gap-4">
+  <div class="mx-auto w-full max-w-[1560px]">
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold text-highlighted">Plantillas de documentos</h1>
         <p class="mt-1 text-sm text-muted">
-          Centralizá las plantillas legales y los campos dinámicos de cada trámite.
+          Diseñá formularios visuales para el admin y guardalos directamente en `document_templates`.
         </p>
       </div>
-      <UButton @click="mostrarFormulario = !mostrarFormulario">
-        {{ mostrarFormulario ? 'Cancelar' : 'Nueva plantilla' }}
+      <UButton @click="mostrarFormulario ? void cerrarBuilder() : abrirBuilder()">
+        {{ mostrarFormulario ? 'Cerrar builder' : 'Nueva plantilla' }}
       </UButton>
     </div>
 
@@ -149,152 +764,612 @@ onMounted(async () => {
       v-if="errorMsg"
       color="error"
       variant="soft"
-      title="No se pudo guardar"
+      title="No se pudo completar la acción"
       :description="errorMsg"
       class="mb-4"
     />
+
     <UAlert
       v-if="successMsg"
       color="success"
       variant="soft"
-      title="Plantilla creada"
+      title="Operación exitosa"
       :description="successMsg"
       class="mb-4"
     />
 
-    <UCard v-if="mostrarFormulario" class="mb-6">
-      <template #header>
-        <div>
-          <h2 class="text-lg font-semibold text-highlighted">Nueva plantilla</h2>
-          <p class="mt-1 text-sm text-muted">
-            Definí el documento base y los campos que la app le pedirá al cliente.
-          </p>
-        </div>
-      </template>
-
-      <div class="grid gap-4">
-        <UFormField label="Título" required>
-          <UInput
-            v-model="form.title"
-            placeholder="Ej: Contrato de divorcio por mutuo acuerdo"
-          />
-        </UFormField>
-
-        <UFormField label="Servicio" required>
-          <USelect
-            v-model="form.servicio_id"
-            value-key="value"
-            :items="[
-              { label: 'Seleccionar servicio', value: '' },
-              ...servicios.map((s) => ({ label: s.nombre, value: String(s.id) }))
-            ]"
-          />
-        </UFormField>
-
-        <UFormField
-          label="Contenido del documento"
-          required
-          help="Usá {{nombre_campo}} para variables del formulario y {{nombre_notario}} / {{direccion_notario}} para datos del abogado asignado."
-        >
-          <UTextarea
-            v-model="form.content"
-            class="font-mono"
-            :rows="10"
-            placeholder="Yo {{nombre_cliente}}, con cédula {{cedula}}, declaro..."
-          />
-        </UFormField>
-
-        <div class="grid gap-3">
-          <div class="flex items-center justify-between">
-            <h3 class="font-medium text-highlighted">Campos del formulario</h3>
-            <UBadge color="neutral" variant="subtle">
-              {{ form.fields.length }} configurados
-            </UBadge>
-          </div>
-
-          <div v-if="form.fields.length" class="grid gap-2">
-            <UCard
-              v-for="(f, i) in form.fields"
-              :key="i"
-              :ui="{ body: 'flex flex-wrap items-center justify-between gap-3 px-4 py-3' }"
-            >
-              <div class="text-sm">
-                <strong>{{ f.label }}</strong>
-                <span class="text-muted"> · {{ f.key }} · {{ f.type }}</span>
-              </div>
-              <UButton size="sm" color="error" variant="ghost" @click="eliminarField(i)">
-                Eliminar
-              </UButton>
-            </UCard>
-          </div>
-
-          <div class="grid gap-3 rounded-2xl border border-dashed border-default p-4">
-            <div class="grid gap-3 md:grid-cols-3">
-              <UFormField label="Clave">
-                <UInput v-model="nuevoField.key" placeholder="nombre_cliente" />
-              </UFormField>
-              <UFormField label="Etiqueta">
-                <UInput v-model="nuevoField.label" placeholder="Nombre completo" />
-              </UFormField>
-              <UFormField label="Tipo">
-                <USelect
-                  v-model="nuevoField.type"
-                  value-key="value"
-                  :items="[
-                    { label: 'Texto', value: 'text' },
-                    { label: 'Fecha', value: 'date' },
-                    { label: 'Número', value: 'number' }
-                  ]"
-                />
-              </UFormField>
-            </div>
+    <div
+      v-if="mostrarFormulario"
+      class="mb-8 overflow-hidden rounded-[32px] border border-default bg-default shadow-sm"
+    >
+      <div class="border-b border-default px-5 py-5 lg:px-8">
+        <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+          <div class="flex items-start gap-4">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-arrow-left"
+              square
+              @click="void cerrarBuilder()"
+            />
             <div>
-              <UButton color="neutral" variant="outline" @click="agregarField">
-                Agregar campo
-              </UButton>
+              <h2 class="text-2xl font-semibold text-highlighted">
+                {{ templateEnEdicionId ? 'Editar plantilla' : 'Form Builder' }}
+              </h2>
+              <p class="mt-1 text-sm text-muted">
+                {{
+                  templateEnEdicionId
+                    ? 'Actualizá la estructura del formulario y el contenido antes de guardar los cambios.'
+                    : 'Armá el formulario visual y luego definí el texto base que se insertará en Supabase.'
+                }}
+              </p>
             </div>
           </div>
-        </div>
 
-        <div class="flex gap-3">
-          <UButton :loading="loading" @click="guardarPlantilla">
-            Guardar plantilla
-          </UButton>
-          <UButton color="neutral" variant="ghost" @click="mostrarFormulario = false">
-            Cancelar
-          </UButton>
+          <div class="flex flex-wrap items-center gap-4 2xl:justify-end">
+            <div class="text-left 2xl:text-right">
+              <p class="text-sm text-muted">Guardado en base de datos al finalizar</p>
+              <p class="text-xs text-toned">{{ analytics.fields }} campos listos para insertar</p>
+            </div>
+
+            <UButton :loading="loading" @click="guardarPlantilla">
+              {{
+                loading
+                  ? 'Guardando...'
+                  : templateEnEdicionId
+                    ? 'Guardar cambios'
+                    : 'Guardar plantilla'
+              }}
+            </UButton>
+          </div>
         </div>
       </div>
-    </UCard>
 
-    <UCard v-if="plantillas.length === 0">
-      <p class="text-sm text-muted">No hay plantillas creadas aún.</p>
-    </UCard>
+      <div class="grid gap-6 p-5 lg:p-8 xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+        <aside class="grid gap-4 self-start">
+          <UCard>
+            <div class="grid gap-4">
+              <UInput
+                v-model="paletteQuery"
+                icon="i-lucide-search"
+                placeholder="Buscar componentes"
+              />
 
-    <div v-else class="grid gap-3">
-      <UCard
-        v-for="p in plantillas"
-        :key="p.id"
-      >
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p class="font-medium text-highlighted">{{ p.title }}</p>
-            <p class="mt-1 text-sm text-muted">
-              {{ servicios.find(s => s.id === p.servicio_id)?.nombre ?? 'Servicio desconocido' }}
-              · {{ p.fields.length }} campos
-            </p>
-            <p class="mt-1 text-xs text-toned">{{ new Date(p.created_at).toLocaleDateString('es-CR') }}</p>
-          </div>
-          <UButton
-            size="sm"
-            :color="p.activo ? 'success' : 'neutral'"
-            :variant="p.activo ? 'soft' : 'outline'"
-            @click="toggleActivo(p)"
-          >
-            {{ p.activo ? 'Activa' : 'Inactiva' }}
-          </UButton>
+              <div class="grid gap-5">
+                <div
+                  v-for="group in paletteGroups"
+                  :key="group.title"
+                  class="grid gap-3"
+                >
+                  <p class="text-sm font-medium text-muted">{{ group.title }}</p>
+
+                  <div class="grid gap-3">
+                    <button
+                      v-for="item in group.items"
+                      :key="item.label"
+                      type="button"
+                      draggable="true"
+                      class="rounded-2xl border border-default bg-default px-4 py-3 text-left transition hover:border-primary hover:bg-primary/5"
+                      @click.prevent="void agregarComponente(item.kind)"
+                      @dragstart="(event) => iniciarDrag(item.kind, event)"
+                      @dragend="finalizarDrag"
+                    >
+                      <div class="flex items-start gap-3">
+                        <div class="rounded-xl bg-primary/10 p-2 text-primary">
+                          <UIcon :name="item.icon" class="size-5" />
+                        </div>
+
+                        <div class="min-w-0">
+                          <p class="font-medium text-highlighted">{{ item.label }}</p>
+                          <p class="mt-1 text-sm text-muted">{{ item.description }}</p>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </UCard>
+        </aside>
+
+        <div class="grid min-w-0 gap-6">
+          <UCard>
+            <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <UFormField label="Título de la plantilla" required>
+                <UInput
+                  v-model="form.title"
+                  placeholder="Ej: Poder generalísimo sin límite de suma"
+                />
+              </UFormField>
+
+              <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                <p class="text-xs uppercase tracking-wide text-toned">Nombre en trámites</p>
+                <p class="mt-2 font-medium text-highlighted">
+                  {{ form.title.trim() || 'Escribí un título para definir el nombre visible.' }}
+                </p>
+                <p class="mt-2 text-sm text-muted">
+                  Este título se guarda como `title` y es el nombre que después aparece en la selección de trámites.
+                </p>
+              </div>
+            </div>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 class="text-lg font-semibold text-highlighted">Canvas del formulario</h3>
+                  <p class="mt-1 text-sm text-muted">
+                    Arrastrá componentes desde la izquierda o hacé clic para agregarlos a la sección activa.
+                  </p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <UBadge color="neutral" variant="subtle">
+                    {{ analytics.sections }} secciones
+                  </UBadge>
+                  <UBadge color="primary" variant="soft">
+                    {{ analytics.fields }} campos
+                  </UBadge>
+                  <UButton color="neutral" variant="outline" @click="void agregarSeccion()">
+                    Agregar sección
+                  </UButton>
+                </div>
+              </div>
+            </template>
+
+            <div class="grid gap-5" @dragover.prevent @drop.prevent="(event) => void soltarEnCanvas(event)">
+              <div
+                class="rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-4 py-4 text-sm text-primary"
+                @dragover.prevent
+                @drop.prevent="(event) => void soltarEnCanvas(event)"
+              >
+                Soltá elementos aquí para agregarlos al canvas. Los elementos de layout crean nuevas secciones.
+              </div>
+
+              <article
+                v-for="(section, sectionIndex) in form.sections"
+                :key="section.id"
+                :data-section-id="section.id"
+                class="rounded-[28px] border p-5 transition"
+                :class="activeSectionId === section.id ? 'border-primary bg-primary/5' : 'border-default bg-default'"
+                @click="seleccionarSeccion(section.id)"
+                @dragover.prevent
+                @drop.prevent="(event) => void soltarEnSeccion(section.id, event)"
+              >
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                  <div class="min-w-0 flex-1 grid gap-3">
+                    <UInput
+                      :model-value="section.title"
+                      placeholder="Título de la sección"
+                      @update:model-value="(value) => { section.title = value }"
+                    />
+                    <UTextarea
+                      :model-value="section.description"
+                      :rows="2"
+                      placeholder="Descripción opcional para orientar al cliente"
+                      @update:model-value="(value) => { section.description = value }"
+                    />
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <UButton
+                      size="sm"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-arrow-up"
+                      square
+                      :disabled="sectionIndex === 0"
+                      @click.stop="moverSeccion(section.id, -1)"
+                    />
+                    <UButton
+                      size="sm"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-arrow-down"
+                      square
+                      :disabled="sectionIndex === form.sections.length - 1"
+                      @click.stop="moverSeccion(section.id, 1)"
+                    />
+                    <UButton
+                      size="sm"
+                      color="error"
+                      variant="ghost"
+                      icon="i-lucide-trash-2"
+                      square
+                      :disabled="form.sections.length === 1"
+                      @click.stop="eliminarSeccion(section.id)"
+                    />
+                  </div>
+                </div>
+
+                <div v-if="section.fields.length" class="mt-5 grid gap-4 md:grid-cols-2">
+                  <article
+                    v-for="(field, fieldIndex) in section.fields"
+                    :key="field.id"
+                    role="button"
+                    tabindex="0"
+                    class="rounded-2xl border px-4 py-4 text-left transition"
+                    :class="[
+                      field.width === 'full' ? 'md:col-span-2' : '',
+                      selectedFieldId === field.id
+                        ? 'border-primary bg-default shadow-sm'
+                        : 'border-default bg-muted/30 hover:border-primary/60 hover:bg-default'
+                    ]"
+                    @click.stop="seleccionarCampo(section.id, field.id)"
+                    @keydown.enter.prevent="seleccionarCampo(section.id, field.id)"
+                    @keydown.space.prevent="seleccionarCampo(section.id, field.id)"
+                  >
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p class="font-medium text-highlighted">
+                          {{ field.label || 'Campo sin título' }}
+                          <span v-if="field.required" class="text-error">*</span>
+                        </p>
+                        <p class="mt-1 text-xs text-toned">{{ field.key || 'clave_pendiente' }}</p>
+                      </div>
+
+                      <UBadge color="neutral" variant="subtle">
+                        {{ fieldTypeLabels[field.type] }}
+                      </UBadge>
+                    </div>
+
+                    <div class="mt-4">
+                      <input
+                        v-if="field.type === 'text' || field.type === 'number' || field.type === 'date'"
+                        :type="field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'"
+                        :placeholder="field.placeholder || field.label"
+                        disabled
+                        class="w-full rounded-xl border border-default bg-default px-4 py-3 text-sm text-muted"
+                      >
+
+                      <textarea
+                        v-else-if="field.type === 'textarea'"
+                        :placeholder="field.placeholder || field.label"
+                        disabled
+                        rows="4"
+                        class="w-full rounded-xl border border-default bg-default px-4 py-3 text-sm text-muted"
+                      />
+
+                      <div v-else class="flex items-center gap-6 rounded-xl border border-default bg-default px-4 py-3 text-sm text-highlighted">
+                        <label class="flex items-center gap-2">
+                          <input type="radio" disabled>
+                          <span>Sí</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                          <input type="radio" disabled>
+                          <span>No</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <p v-if="field.help" class="mt-3 text-xs text-muted">
+                      {{ field.help }}
+                    </p>
+
+                    <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+                      <span class="text-xs text-toned">
+                        {{ field.width === 'full' ? 'Ancho completo' : 'Media columna' }}
+                      </span>
+
+                      <div class="flex items-center gap-1">
+                        <UButton
+                          size="xs"
+                          color="neutral"
+                          variant="ghost"
+                          icon="i-lucide-arrow-up"
+                          square
+                          :disabled="fieldIndex === 0"
+                          @click.stop="moverCampo(section.id, field.id, -1)"
+                        />
+                        <UButton
+                          size="xs"
+                          color="neutral"
+                          variant="ghost"
+                          icon="i-lucide-arrow-down"
+                          square
+                          :disabled="fieldIndex === section.fields.length - 1"
+                          @click.stop="moverCampo(section.id, field.id, 1)"
+                        />
+                        <UButton
+                          size="xs"
+                          color="neutral"
+                          variant="ghost"
+                          icon="i-lucide-copy"
+                          square
+                          @click.stop="duplicarCampo(section.id, field.id)"
+                        />
+                        <UButton
+                          size="xs"
+                          color="error"
+                          variant="ghost"
+                          icon="i-lucide-trash-2"
+                          square
+                          @click.stop="eliminarCampo(section.id, field.id)"
+                        />
+                      </div>
+                    </div>
+                  </article>
+                </div>
+
+                <div
+                  class="mt-5 rounded-2xl border border-dashed border-primary/50 bg-primary/5 px-4 py-5 text-sm text-primary"
+                  @dragover.prevent
+                  @drop.prevent="(event) => void soltarEnSeccion(section.id, event)"
+                >
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="font-medium">Soltá un componente acá</p>
+                      <p class="mt-1 text-primary/80">
+                        También podés usar la paleta para agregar campos a esta sección.
+                      </p>
+                    </div>
+
+                    <UButton color="primary" variant="soft" @click.stop="seleccionarSeccion(section.id)">
+                      Sección activa
+                    </UButton>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <div>
+                <h3 class="text-lg font-semibold text-highlighted">Contenido del documento</h3>
+                <p class="mt-1 text-sm text-muted">
+                  Este texto se guarda en `content`. Los placeholders del formulario y del notario se reemplazan al generar el documento.
+                </p>
+              </div>
+            </template>
+
+            <div class="grid gap-4">
+              <p class="text-sm text-muted">
+                Cada variable muestra el nombre legible y su origen. Al hacer clic, se inserta el placeholder real dentro del documento.
+              </p>
+
+              <div class="grid gap-3 md:grid-cols-2">
+                <button
+                  v-for="placeholder in availablePlaceholders"
+                  :key="placeholder.token"
+                  type="button"
+                  class="rounded-2xl border border-default bg-default px-4 py-3 text-left transition hover:border-primary hover:bg-primary/5"
+                  @click="insertarPlaceholder(placeholder.key)"
+                >
+                  <p class="text-sm font-medium text-highlighted">
+                    {{ placeholder.label }} | {{ placeholder.source }}
+                  </p>
+                  <p class="mt-1 font-mono text-xs text-toned">
+                    {{ placeholder.token }}
+                  </p>
+                </button>
+              </div>
+
+              <UTextarea
+                v-model="form.content"
+                class="font-mono"
+                :rows="14"
+                placeholder="Ejemplo: Yo {{nombre_cliente}}, cédula {{cedula_cliente}}, comparezco ante {{nombre_notario}}..."
+              />
+            </div>
+          </UCard>
         </div>
+
+        <aside class="grid gap-4 self-start xl:col-span-2 2xl:col-span-1">
+          <UCard>
+            <template #header>
+              <div>
+                <h3 class="text-lg font-semibold text-highlighted">Analytics</h3>
+                <p class="mt-1 text-sm text-muted">Resumen rápido del builder antes de guardar.</p>
+              </div>
+            </template>
+
+            <div class="grid gap-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                  <p class="text-xs uppercase tracking-wide text-toned">Secciones</p>
+                  <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.sections }}</p>
+                </div>
+                <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                  <p class="text-xs uppercase tracking-wide text-toned">Campos</p>
+                  <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.fields }}</p>
+                </div>
+                <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                  <p class="text-xs uppercase tracking-wide text-toned">Obligatorios</p>
+                  <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.required }}</p>
+                </div>
+                <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                  <p class="text-xs uppercase tracking-wide text-toned">Placeholders</p>
+                  <p class="mt-2 text-2xl font-semibold text-highlighted">{{ analytics.placeholders }}</p>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-default p-4">
+                <p class="text-sm font-medium text-highlighted">Distribución por tipo</p>
+                <div class="mt-3 grid gap-2 text-sm text-muted">
+                  <div class="flex items-center justify-between">
+                    <span>Texto corto</span>
+                    <span>{{ analytics.byType.text }}</span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span>Texto largo</span>
+                    <span>{{ analytics.byType.textarea }}</span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span>Número</span>
+                    <span>{{ analytics.byType.number }}</span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span>Fecha</span>
+                    <span>{{ analytics.byType.date }}</span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span>Sí / No</span>
+                    <span>{{ analytics.byType.boolean }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </UCard>
+
+          <UCard v-if="activeSection">
+            <template #header>
+              <div>
+                <h3 class="text-lg font-semibold text-highlighted">Sección activa</h3>
+                <p class="mt-1 text-sm text-muted">Los componentes nuevos se agregan acá.</p>
+              </div>
+            </template>
+
+            <div class="grid gap-3 text-sm">
+              <div class="rounded-2xl border border-default bg-muted/30 p-4">
+                <p class="font-medium text-highlighted">{{ activeSection.title || 'Sección sin título' }}</p>
+                <p class="mt-2 text-muted">
+                  {{ activeSection.description || 'Sin descripción configurada.' }}
+                </p>
+              </div>
+              <p class="text-muted">
+                {{ activeSection.fields.length }} campo(s) dentro de esta sección.
+              </p>
+            </div>
+          </UCard>
+
+          <UCard v-if="selectedField">
+            <template #header>
+              <div>
+                <h3 class="text-lg font-semibold text-highlighted">Editor del campo</h3>
+                <p class="mt-1 text-sm text-muted">Ajustá el campo seleccionado en el canvas.</p>
+              </div>
+            </template>
+
+            <div class="grid gap-4">
+              <UFormField label="Etiqueta" required>
+                <UInput
+                  :model-value="selectedField.label"
+                  placeholder="Nombre visible del campo"
+                  @update:model-value="(value) => { actualizarCampoSeleccionado({ label: value }) }"
+                />
+              </UFormField>
+
+              <div class="grid gap-2">
+                <UFormField label="Clave del placeholder" required>
+                  <UInput
+                    :model-value="selectedField.key"
+                    placeholder="nombre_cliente"
+                    @update:model-value="(value) => { actualizarCampoSeleccionado({ key: normalizarTextoPlano(String(value ?? '')) }) }"
+                  />
+                </UFormField>
+                <div class="flex justify-end">
+                  <UButton color="neutral" variant="ghost" size="sm" @click="regenerarClaveSeleccionada">
+                    Autogenerar clave
+                  </UButton>
+                </div>
+              </div>
+
+              <UFormField label="Tipo">
+                <UInput :model-value="fieldTypeLabels[selectedField.type]" disabled />
+              </UFormField>
+
+              <UFormField label="Placeholder">
+                <UInput
+                  :model-value="selectedField.placeholder"
+                  placeholder="Texto guía dentro del input"
+                  @update:model-value="(value) => { actualizarCampoSeleccionado({ placeholder: value }) }"
+                />
+              </UFormField>
+
+              <UFormField label="Ayuda adicional">
+                <UTextarea
+                  :model-value="selectedField.help"
+                  :rows="3"
+                  placeholder="Mensaje complementario para orientar al cliente"
+                  @update:model-value="(value) => { actualizarCampoSeleccionado({ help: value }) }"
+                />
+              </UFormField>
+
+              <UFormField label="Ancho">
+                <USelect
+                  :model-value="selectedField.width ?? 'half'"
+                  value-key="value"
+                  :items="[
+                    { label: 'Media columna', value: 'half' },
+                    { label: 'Ancho completo', value: 'full' }
+                  ]"
+                  @update:model-value="actualizarAnchoSeleccionado"
+                />
+              </UFormField>
+
+              <UCheckbox
+                :model-value="selectedField.required ?? true"
+                label="Campo obligatorio"
+                @update:model-value="(value) => { actualizarCampoSeleccionado({ required: Boolean(value) }) }"
+              />
+            </div>
+          </UCard>
+
+          <UCard v-else>
+            <div class="rounded-2xl border border-dashed border-default px-4 py-5 text-sm text-muted">
+              Seleccioná un campo del canvas para editar etiqueta, placeholder, ancho y obligatoriedad.
+            </div>
+          </UCard>
+        </aside>
+      </div>
+    </div>
+
+    <div ref="listadoPlantillasRef">
+      <UCard v-if="plantillas.length === 0">
+        <p class="text-sm text-muted">No hay plantillas creadas aún.</p>
       </UCard>
+
+      <div v-else class="grid gap-4 lg:grid-cols-2">
+        <UCard
+          v-for="template in plantillas"
+          :key="template.id"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <p class="font-medium text-highlighted">{{ template.title }}</p>
+              <p class="mt-1 text-sm text-muted">
+                {{ template.servicio_id == null ? 'Visible en el selector de trámites' : 'Plantilla heredada con servicio vinculado' }}
+              </p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <UBadge
+                  :color="template.activo ? 'success' : 'neutral'"
+                  :variant="template.activo ? 'soft' : 'outline'"
+                >
+                  {{ template.activo ? 'Activa' : 'Inactiva' }}
+                </UBadge>
+                <UBadge color="neutral" variant="subtle">
+                  {{ groupTemplateFields(template.fields).length }} secciones
+                </UBadge>
+                <UBadge color="primary" variant="soft">
+                  {{ template.fields.length }} campos
+                </UBadge>
+              </div>
+              <p class="mt-3 text-xs text-toned">{{ new Date(template.created_at).toLocaleDateString('es-CR') }}</p>
+            </div>
+
+            <div class="flex flex-wrap justify-end gap-2">
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                @click="editarPlantilla(template)"
+              >
+                Editar
+              </UButton>
+              <UButton
+                size="sm"
+                :color="template.activo ? 'warning' : 'success'"
+                :variant="template.activo ? 'outline' : 'soft'"
+                @click="toggleActivo(template)"
+              >
+                {{ template.activo ? 'Desactivar' : 'Activar' }}
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </div>
     </div>
   </div>
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { h, resolveComponent } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '#ui/types'
-import type { Database, Json } from '~/types/database.types'
+import type { Database } from '~/types/database.types'
 import {
   getReopenedTicketIds,
   getTicketDisplayStatus,
@@ -9,23 +9,19 @@ import {
   ticketDisplayStatusLabels,
   type TicketDisplayStatus,
 } from '~/utils/dashboard'
+import {
+  groupTemplateFields,
+  isTemplateFieldList,
+  normalizeTemplateFields,
+  type TemplateField,
+} from '~~/shared/utils/document-template-fields'
 
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
 const supabase = useSupabaseClient()
 const { profile, cargarPerfil } = useUsuario()
 
-type Servicio = {
-  id: number
-  nombre: string
-}
-
-type Field = {
-  key: string
-  label: string
-  type: 'text' | 'date' | 'number'
-}
-
+type Field = TemplateField
 type FieldValue = string | number | undefined
 type TicketRow = Database['public']['Tables']['tickets']['Row']
 type TemplateRow = Database['public']['Tables']['document_templates']['Row']
@@ -35,7 +31,7 @@ type Template = {
   id: string
   title: string
   fields: Field[]
-  servicio_id: number
+  servicio_id: number | null
   activo: boolean
 }
 
@@ -57,17 +53,6 @@ type DocumentoResumen = {
   created_at: string
 }
 
-function esListaDeCampos(value: Json): value is Field[] {
-  return Array.isArray(value) && value.every((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
-
-    const field = item as Record<string, unknown>
-    return typeof field.key === 'string'
-      && typeof field.label === 'string'
-      && ['text', 'date', 'number'].includes(String(field.type))
-  })
-}
-
 function normalizarEstadoTicket(value: string): Ticket['status'] {
   return ['open', 'in_progress', 'resolved', 'closed', 'cancelled'].includes(value)
     ? value as Ticket['status']
@@ -80,14 +65,12 @@ function normalizarPrioridad(value: string): Ticket['priority'] {
     : 'normal'
 }
 
-function normalizarPlantilla(row: Pick<TemplateRow, 'id' | 'title' | 'fields' | 'servicio_id' | 'activo'>): Template | null {
-  if (row.servicio_id == null) return null
-
+function normalizarPlantilla(row: Pick<TemplateRow, 'id' | 'title' | 'fields' | 'servicio_id' | 'activo'>): Template {
   return {
     id: row.id,
     title: row.title,
-    fields: esListaDeCampos(row.fields) ? row.fields : [],
-    servicio_id: row.servicio_id,
+    fields: isTemplateFieldList(row.fields) ? normalizeTemplateFields(row.fields) : [],
+    servicio_id: row.servicio_id ?? null,
     activo: row.activo ?? true,
   }
 }
@@ -107,7 +90,6 @@ function normalizarTicket(row: TicketRow): Ticket {
 }
 
 const tickets = ref<Ticket[]>([])
-const servicios = ref<Servicio[]>([])
 const plantillas = ref<Template[]>([])
 const estadoDocumentoPorTicket = ref<Record<string, string>>({})
 
@@ -163,6 +145,18 @@ function textoDeCampo(value: FieldValue) {
 
 function campoEstaVacio(value: FieldValue) {
   return textoDeCampo(value).trim() === ''
+}
+
+function placeholderDeCampo(field: Field) {
+  return field.placeholder?.trim() || `Ingresá ${field.label.toLowerCase()}`
+}
+
+function ayudaDeCampo(field: Field) {
+  const ayuda = field.help?.trim()
+  const padron = esCampoCedula(field) ? padronMensajes.value[field.key] : ''
+  const mensajes = [ayuda, padron].filter(Boolean)
+
+  return mensajes.length ? mensajes.join(' · ') : undefined
 }
 
 function esCampoCedula(field: Field) {
@@ -235,26 +229,29 @@ function prioridadTokenPersona(token: string) {
   return 3
 }
 
-const camposOrdenados = computed(() => {
+function ordenarCamposParaVista(fields: Field[]) {
   const ordenados: Field[] = []
   const usados = new Set<string>()
 
-  const indicesCedulaOrdenados = [...indicesCedula.value].sort((a, b) => {
-    const campoA = camposFormulario.value[a]
-    const campoB = camposFormulario.value[b]
-    const prioridadA = campoA ? prioridadTokenPersona(obtenerTokenPersona(campoA)) : 99
-    const prioridadB = campoB ? prioridadTokenPersona(obtenerTokenPersona(campoB)) : 99
+  const indicesCedulaOrdenados = fields
+    .map((field, index) => (esCampoCedula(field) ? index : -1))
+    .filter(index => index >= 0)
+    .sort((a, b) => {
+      const campoA = fields[a]
+      const campoB = fields[b]
+      const prioridadA = campoA ? prioridadTokenPersona(obtenerTokenPersona(campoA)) : 99
+      const prioridadB = campoB ? prioridadTokenPersona(obtenerTokenPersona(campoB)) : 99
 
-    if (prioridadA !== prioridadB) return prioridadA - prioridadB
-    return a - b
-  })
+      if (prioridadA !== prioridadB) return prioridadA - prioridadB
+      return a - b
+    })
 
   indicesCedulaOrdenados.forEach((cedulaIndex) => {
-    const cedula = camposFormulario.value[cedulaIndex]
+    const cedula = fields[cedulaIndex]
     if (!cedula) return
 
     const token = obtenerTokenPersona(cedula)
-    const relacionados = camposFormulario.value.filter((field) =>
+    const relacionados = fields.filter((field) =>
       field.key !== cedula.key &&
       !esCampoCedula(field) &&
       obtenerTokenPersona(field) === token
@@ -276,14 +273,14 @@ const camposOrdenados = computed(() => {
     })
   })
 
-  camposFormulario.value.forEach((field) => {
+  fields.forEach((field) => {
     if (!usados.has(field.key)) {
       ordenados.push(field)
     }
   })
 
   return ordenados
-})
+}
 
 function obtenerGrupoPosicionalDeCedula(cedulaKey: string) {
   const cedulaIndex = camposFormulario.value.findIndex((field) => field.key === cedulaKey)
@@ -375,7 +372,7 @@ const plantillaSeleccionada = computed(() =>
 
 const opcionesTramite = computed(() =>
   plantillas.value.map((p) => ({
-    label: `${servicios.value.find((s) => s.id === p.servicio_id)?.nombre ?? 'Trámite'} - ${p.title}`,
+    label: p.title,
     value: p.id,
   }))
 )
@@ -387,12 +384,16 @@ const opcionesPrioridad = [
 ] as Array<{ label: string, value: Ticket['priority'] }>
 
 const camposFormulario = computed(() => plantillaSeleccionada.value?.fields ?? [])
+const seccionesFormulario = computed(() =>
+  groupTemplateFields(camposFormulario.value).map(section => ({
+    ...section,
+    fields: ordenarCamposParaVista(section.fields),
+  }))
+)
 
 const resumenTramiteSeleccionado = computed(() => {
   if (!plantillaSeleccionada.value) return ''
-
-  const servicio = servicios.value.find(s => s.id === plantillaSeleccionada.value?.servicio_id)
-  return servicio ? `${servicio.nombre} · ${plantillaSeleccionada.value.title}` : plantillaSeleccionada.value.title
+  return plantillaSeleccionada.value.title
 })
 
 watch(tramiteSeleccionadoId, (templateId) => {
@@ -675,16 +676,6 @@ const columns = computed<TableColumn<Ticket>[]>(() => [
   },
 ])
 
-async function cargarServicios() {
-  const { data } = await supabase
-    .from('servicios')
-    .select('id, nombre')
-    .eq('activo', true)
-    .order('nombre')
-
-  servicios.value = data ?? []
-}
-
 async function cargarPlantillas() {
   const { data } = await supabase
     .from('document_templates')
@@ -694,7 +685,6 @@ async function cargarPlantillas() {
 
   plantillas.value = (data ?? [])
     .map((row) => normalizarPlantilla(row as Pick<TemplateRow, 'id' | 'title' | 'fields' | 'servicio_id' | 'activo'>))
-    .filter((template): template is Template => template !== null)
 }
 
 async function cargarEstadosDocumento(ticketIds: string[]) {
@@ -769,7 +759,9 @@ async function crearTicket() {
     return
   }
 
-  const camposVacios = camposFormulario.value.filter(field => campoEstaVacio(fieldValues.value[field.key]))
+  const camposVacios = camposFormulario.value.filter(field =>
+    (field.required ?? true) && campoEstaVacio(fieldValues.value[field.key])
+  )
   if (camposVacios.length) {
     errorMsg.value = 'Completá todos los campos obligatorios del trámite.'
     return
@@ -889,7 +881,7 @@ async function cancelarTicket(id: string) {
 
 onMounted(async () => {
   await cargarPerfil()
-  await Promise.all([cargarServicios(), cargarPlantillas(), cargarTickets()])
+  await Promise.all([cargarPlantillas(), cargarTickets()])
 })
 </script>
 
@@ -965,21 +957,68 @@ onMounted(async () => {
           :description="resumenTramiteSeleccionado"
         />
 
-        <div v-if="camposFormulario.length" class="grid gap-4 md:grid-cols-2">
-          <UFormField
-            v-for="field in camposOrdenados"
-            :key="field.key"
-            :label="field.label"
-            required
-            :help="esCampoCedula(field) ? padronMensajes[field.key] : undefined"
+        <div v-if="seccionesFormulario.length" class="grid gap-5">
+          <UCard
+            v-for="section in seccionesFormulario"
+            :key="section.id"
           >
-            <UInput
-              :model-value="fieldValues[field.key] ?? ''"
-              :type="field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'"
-              :placeholder="`Ingresá ${field.label.toLowerCase()}`"
-              @update:model-value="(value) => { fieldValues[field.key] = value }"
-            />
-          </UFormField>
+            <template v-if="section.title || section.description || seccionesFormulario.length > 1" #header>
+              <div>
+                <h3 class="font-semibold text-highlighted">
+                  {{ section.title || 'Datos del trámite' }}
+                </h3>
+                <p v-if="section.description" class="mt-1 text-sm text-muted">
+                  {{ section.description }}
+                </p>
+              </div>
+            </template>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <UFormField
+                v-for="field in section.fields"
+                :key="field.key"
+                :label="field.label"
+                :required="field.required ?? true"
+                :help="ayudaDeCampo(field)"
+                :class="field.width === 'full' ? 'md:col-span-2' : ''"
+              >
+                <UTextarea
+                  v-if="field.type === 'textarea'"
+                  :model-value="fieldValues[field.key] ?? ''"
+                  :rows="4"
+                  :placeholder="placeholderDeCampo(field)"
+                  @update:model-value="(value) => { fieldValues[field.key] = value }"
+                />
+
+                <div v-else-if="field.type === 'boolean'" class="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    class="rounded-full border px-4 py-2 text-sm transition"
+                    :class="fieldValues[field.key] === 'Sí' ? 'border-primary bg-primary/10 text-primary' : 'border-default bg-default text-highlighted hover:border-primary/50'"
+                    @click="fieldValues[field.key] = 'Sí'"
+                  >
+                    Sí
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-full border px-4 py-2 text-sm transition"
+                    :class="fieldValues[field.key] === 'No' ? 'border-primary bg-primary/10 text-primary' : 'border-default bg-default text-highlighted hover:border-primary/50'"
+                    @click="fieldValues[field.key] = 'No'"
+                  >
+                    No
+                  </button>
+                </div>
+
+                <UInput
+                  v-else
+                  :model-value="fieldValues[field.key] ?? ''"
+                  :type="field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'"
+                  :placeholder="placeholderDeCampo(field)"
+                  @update:model-value="(value) => { fieldValues[field.key] = value }"
+                />
+              </UFormField>
+            </div>
+          </UCard>
         </div>
 
         <UAlert
