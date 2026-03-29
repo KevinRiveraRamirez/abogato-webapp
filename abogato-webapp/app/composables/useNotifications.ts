@@ -1,7 +1,12 @@
-import type { NotificationPayload, NotificationRecord } from '~~/shared/types/notification'
+import type { NotificationPayload, NotificationRecord, NotificationType } from '~~/shared/types/notification'
+import {
+  getNotificationGroup,
+  type NotificationCenterTab,
+} from '~~/shared/notifications/catalog'
 
-const NOTIFICATIONS_PAGE_SIZE = 25
+const NOTIFICATION_CENTER_PER_PAGE = 10
 let refreshPromise: Promise<void> | null = null
+let refreshQueued = false
 
 function normalizeNotificationPayload(value: unknown): NotificationPayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -36,19 +41,50 @@ function sortNotifications(list: NotificationRecord[]) {
 export function useNotifications() {
   const supabase = useSupabaseClient()
   const user = useSupabaseUser()
+  const {
+    enabledTypes,
+  } = useNotificationCenterSettings()
 
   const notifications = useState<NotificationRecord[]>('notifications:list', () => [])
   const unreadCount = useState<number>('notifications:unread-count', () => 0)
+  const totalCount = useState<number>('notifications:total-count', () => 0)
   const loading = useState<boolean>('notifications:loading', () => false)
+  const page = useState<number>('notifications:page', () => 1)
+  const perPage = computed(() => NOTIFICATION_CENTER_PER_PAGE)
+  const activeTab = useState<NotificationCenterTab>('notifications:active-tab', () => 'all')
   const initializedForUserId = useState<string | null>('notifications:initialized-user-id', () => null)
   const lastError = useState<string | null>('notifications:last-error', () => null)
 
   function reset() {
     notifications.value = []
     unreadCount.value = 0
+    totalCount.value = 0
     loading.value = false
     initializedForUserId.value = null
     lastError.value = null
+  }
+
+  function clampPage(value: number) {
+    return Math.max(1, Math.trunc(value) || 1)
+  }
+
+  function getActiveQueryTypes() {
+    if (activeTab.value === 'all') {
+      return enabledTypes.value
+    }
+
+    return enabledTypes.value.filter(type => getNotificationGroup(type) === activeTab.value)
+  }
+
+  function setPage(nextPage: number) {
+    page.value = clampPage(nextPage)
+  }
+
+  function setActiveTab(nextTab: NotificationCenterTab) {
+    if (activeTab.value === nextTab) return
+
+    activeTab.value = nextTab
+    page.value = 1
   }
 
   async function resolveCurrentUserId() {
@@ -68,7 +104,14 @@ export function useNotifications() {
 
   async function refresh() {
     if (refreshPromise) {
+      refreshQueued = true
       await refreshPromise
+
+      if (refreshQueued) {
+        refreshQueued = false
+        await refresh()
+      }
+
       return
     }
 
@@ -84,32 +127,62 @@ export function useNotifications() {
       lastError.value = null
 
       try {
-        const notificationsResult = await supabase
-          .from('notifications')
-          .select('id, recipient_user_id, actor_user_id, type, title, body, link_path, ticket_id, entity_type, entity_id, payload, read_at, created_at')
-          .eq('recipient_user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(NOTIFICATIONS_PAGE_SIZE)
+        const queryTypes = getActiveQueryTypes()
+        const unreadQueryTypes = enabledTypes.value
 
-        if (notificationsResult.error) {
-          lastError.value = notificationsResult.error.message
-          return
+        if (!queryTypes.length) {
+          notifications.value = []
+          totalCount.value = 0
+        } else {
+          const currentPage = clampPage(page.value)
+          const currentPerPage = Math.max(1, perPage.value)
+          const from = (currentPage - 1) * currentPerPage
+          const to = from + currentPerPage - 1
+
+          const notificationsResult = await supabase
+            .from('notifications')
+            .select('id, recipient_user_id, actor_user_id, type, title, body, link_path, ticket_id, entity_type, entity_id, payload, read_at, created_at', { count: 'exact' })
+            .eq('recipient_user_id', userId)
+            .in('type', queryTypes)
+            .order('created_at', { ascending: false })
+            .range(from, to)
+
+          if (notificationsResult.error) {
+            lastError.value = notificationsResult.error.message
+            return
+          }
+
+          notifications.value = (notificationsResult.data ?? []).map(row =>
+            normalizeNotification(row as Partial<NotificationRecord>)
+          )
+          totalCount.value = notificationsResult.count ?? notifications.value.length
+
+          const totalPages = Math.max(1, Math.ceil(totalCount.value / currentPerPage))
+
+          if (page.value > totalPages) {
+            page.value = totalPages
+            refreshQueued = true
+          }
         }
 
-        notifications.value = (notificationsResult.data ?? []).map(row =>
-          normalizeNotification(row as Partial<NotificationRecord>)
-        )
-        unreadCount.value = notifications.value.filter(notification => !notification.read_at).length
         initializedForUserId.value = userId
+
+        if (!unreadQueryTypes.length) {
+          unreadCount.value = 0
+          return
+        }
 
         const unreadResult = await supabase
           .from('notifications')
           .select('id', { count: 'exact', head: true })
           .eq('recipient_user_id', userId)
+          .in('type', unreadQueryTypes)
           .is('read_at', null)
 
         if (!unreadResult.error && typeof unreadResult.count === 'number') {
           unreadCount.value = unreadResult.count
+        } else {
+          unreadCount.value = notifications.value.filter(notification => !notification.read_at).length
         }
       } finally {
         loading.value = false
@@ -120,6 +193,11 @@ export function useNotifications() {
       await refreshPromise
     } finally {
       refreshPromise = null
+    }
+
+    if (refreshQueued) {
+      refreshQueued = false
+      await refresh()
     }
   }
 
@@ -181,8 +259,26 @@ export function useNotifications() {
 
   function upsertFromRealtime(row: Partial<NotificationRecord>) {
     const notification = normalizeNotification(row)
+    const visibleTypes = getActiveQueryTypes()
+    const notificationType = notification.type as NotificationType
+    const isEnabledType = enabledTypes.value.includes(notificationType)
+    const isVisibleOnCurrentTab = visibleTypes.includes(notificationType)
 
     if (!notification.id || !notification.recipient_user_id) return
+    if (!isEnabledType) return
+
+    if (!isVisibleOnCurrentTab) {
+      if (!notification.read_at) {
+        unreadCount.value += 1
+      }
+      return
+    }
+
+    if (page.value !== 1) {
+      refreshQueued = true
+      void refresh()
+      return
+    }
 
     const existing = notifications.value.find(item => item.id === notification.id)
 
@@ -196,7 +292,7 @@ export function useNotifications() {
             ? { ...item, ...notification }
             : item
         )
-      ).slice(0, NOTIFICATIONS_PAGE_SIZE)
+      ).slice(0, perPage.value)
 
       if (wasUnread && !isUnread) {
         unreadCount.value = Math.max(0, unreadCount.value - 1)
@@ -210,7 +306,8 @@ export function useNotifications() {
     notifications.value = sortNotifications([
       notification,
       ...notifications.value,
-    ]).slice(0, NOTIFICATIONS_PAGE_SIZE)
+    ]).slice(0, perPage.value)
+    totalCount.value += 1
 
     if (!notification.read_at) {
       unreadCount.value += 1
@@ -222,6 +319,10 @@ export function useNotifications() {
   return {
     notifications,
     unreadCount,
+    totalCount,
+    page,
+    activeTab,
+    perPage,
     loading,
     lastError,
     refresh,
@@ -230,5 +331,7 @@ export function useNotifications() {
     markAllAsRead,
     upsertFromRealtime,
     reset,
+    setPage,
+    setActiveTab,
   }
 }

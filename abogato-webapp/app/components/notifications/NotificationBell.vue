@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import NotificationsNotificationPanel from '~/components/notifications/NotificationPanel.vue'
 import { nextTick } from 'vue'
-import type { NotificationRecord } from '~~/shared/types/notification'
+import type { NotificationRecord, NotificationType } from '~~/shared/types/notification'
+import type { NotificationCenterTab } from '~~/shared/notifications/catalog'
 
 const props = withDefaults(defineProps<{
   panelPlacement?: 'bottom-end' | 'bottom-start' | 'top-start' | 'right-end'
@@ -13,13 +14,28 @@ const route = useRoute()
 const {
   notifications,
   unreadCount,
+  totalCount,
+  page,
+  activeTab,
+  perPage,
   loading,
   lastError,
   ensureLoaded,
   refresh,
   markAsRead,
   markAllAsRead,
+  setPage,
+  setActiveTab,
 } = useNotifications()
+const {
+  enabledTypes,
+  hasCustomSettings,
+  isHydrated,
+  reset: resetSettings,
+  toggleType,
+  toggleVisibleTab,
+  visibleTabs,
+} = useNotificationCenterSettings()
 
 const root = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
@@ -58,12 +74,32 @@ watch(isOpen, async (open) => {
 })
 
 watch(
-  [() => notifications.value.length, loading, lastError],
+  [() => notifications.value.length, loading, lastError, totalCount],
   async () => {
     if (!isOpen.value) return
 
     await nextTick()
     updatePanelPosition()
+  }
+)
+
+watch(
+  () => visibleTabs.value.join('|'),
+  async () => {
+    if (visibleTabs.value.includes(activeTab.value)) return
+
+    setActiveTab(visibleTabs.value[0] ?? 'all')
+    await refresh()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => isHydrated.value,
+  async (hydrated, wasHydrated) => {
+    if (!hydrated || wasHydrated === hydrated) return
+    setPage(1)
+    await refresh()
   }
 )
 
@@ -86,6 +122,39 @@ async function handleSelect(notification: NotificationRecord) {
 
 async function handleMarkAll() {
   await markAllAsRead()
+}
+
+async function handlePageChange(nextPage: number) {
+  setPage(nextPage)
+  await refresh()
+}
+
+async function handleTabChange(nextTab: NotificationCenterTab) {
+  setActiveTab(nextTab)
+  await refresh()
+}
+
+async function handleToggleType(type: NotificationType) {
+  toggleType(type)
+  setPage(1)
+  await refresh()
+}
+
+async function handleToggleVisibleTab(tab: NotificationCenterTab) {
+  const currentTab = activeTab.value
+  toggleVisibleTab(tab)
+
+  if (!visibleTabs.value.includes(currentTab)) {
+    setActiveTab(visibleTabs.value[0] ?? 'all')
+    await refresh()
+  }
+}
+
+async function handleResetSettings() {
+  resetSettings()
+  setActiveTab('all')
+  setPage(1)
+  await refresh()
 }
 
 function handleClickOutside(event: MouseEvent) {
@@ -162,11 +231,23 @@ onBeforeUnmount(() => {
           <NotificationsNotificationPanel
             :notifications="notifications"
             :unread-count="unreadCount"
+            :total-count="totalCount"
+            :page="page"
+            :per-page="perPage"
+            :active-tab="activeTab"
+            :visible-tabs="visibleTabs"
+            :enabled-types="enabledTypes"
+            :has-custom-settings="hasCustomSettings"
             :loading="loading"
             :error="lastError"
             @drag-start="startDragging"
             @select="handleSelect"
             @mark-all="handleMarkAll"
+            @update:page="handlePageChange"
+            @update:active-tab="handleTabChange"
+            @toggle:type="handleToggleType"
+            @toggle:visible-tab="handleToggleVisibleTab"
+            @reset-settings="handleResetSettings"
             @refresh="refresh"
           />
         </div>
