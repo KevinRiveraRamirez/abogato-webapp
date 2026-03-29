@@ -28,14 +28,19 @@ const {
   setActiveTab,
 } = useNotifications()
 const {
-  enabledTypes,
-  hasCustomSettings,
+  hasCustomSettings: hasCustomTabSettings,
   isHydrated,
-  reset: resetSettings,
-  toggleType,
+  reset: resetTabSettings,
   toggleVisibleTab,
   visibleTabs,
 } = useNotificationCenterSettings()
+const {
+  enabledTypes,
+  ensureLoaded: ensureNotificationPreferencesLoaded,
+  hasCustomPreferences,
+  reset: resetNotificationPreferences,
+  setTypeEnabled,
+} = useNotificationPreferences()
 
 const root = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
@@ -54,6 +59,9 @@ const unreadBadge = computed(() => {
   if (unreadCount.value > 99) return '99+'
   return String(unreadCount.value)
 })
+const hasCustomSettings = computed(() =>
+  hasCustomTabSettings.value || hasCustomPreferences.value
+)
 
 watch(
   () => route.fullPath,
@@ -107,6 +115,7 @@ async function togglePanel() {
   isOpen.value = !isOpen.value
 
   if (isOpen.value) {
+    await ensureNotificationPreferencesLoaded()
     await refresh()
   }
 }
@@ -135,7 +144,12 @@ async function handleTabChange(nextTab: NotificationCenterTab) {
 }
 
 async function handleToggleType(type: NotificationType) {
-  toggleType(type)
+  const updated = await setTypeEnabled(type, !enabledTypes.value.includes(type))
+
+  if (!updated) {
+    return
+  }
+
   setPage(1)
   await refresh()
 }
@@ -151,7 +165,8 @@ async function handleToggleVisibleTab(tab: NotificationCenterTab) {
 }
 
 async function handleResetSettings() {
-  resetSettings()
+  resetTabSettings()
+  await resetNotificationPreferences()
   setActiveTab('all')
   setPage(1)
   await refresh()

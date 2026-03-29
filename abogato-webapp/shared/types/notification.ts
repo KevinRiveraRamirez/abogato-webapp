@@ -21,6 +21,7 @@ export interface NotificationRecord {
 export type NotificationType =
   | 'ticket_created'
   | 'ticket_assigned_lawyer'
+  | 'ticket_unassigned_lawyer'
   | 'ticket_comment_from_client'
   | 'ticket_comment_from_staff'
   | 'ticket_reopen_requested'

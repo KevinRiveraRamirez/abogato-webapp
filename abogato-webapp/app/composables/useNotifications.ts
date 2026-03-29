@@ -43,7 +43,8 @@ export function useNotifications() {
   const user = useSupabaseUser()
   const {
     enabledTypes,
-  } = useNotificationCenterSettings()
+    ensureLoaded: ensurePreferenceTypesLoaded,
+  } = useNotificationPreferences()
 
   const notifications = useState<NotificationRecord[]>('notifications:list', () => [])
   const unreadCount = useState<number>('notifications:unread-count', () => 0)
@@ -116,6 +117,8 @@ export function useNotifications() {
     }
 
     refreshPromise = (async () => {
+      await ensurePreferenceTypesLoaded()
+
       const userId = await resolveCurrentUserId()
 
       if (!userId) {
@@ -202,6 +205,8 @@ export function useNotifications() {
   }
 
   async function ensureLoaded() {
+    await ensurePreferenceTypesLoaded()
+
     const userId = await resolveCurrentUserId()
 
     if (!userId) {

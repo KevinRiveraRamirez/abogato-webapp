@@ -195,6 +195,27 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          notification_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          notification_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          notification_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       padron_distritos: {
         Row: {
           canton: string
@@ -689,6 +710,32 @@ export type Database = {
           },
         ]
       }
+      ticket_notification_mutes: {
+        Row: {
+          created_at: string
+          ticket_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          ticket_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          ticket_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_notification_mutes_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tickets: {
         Row: {
           assigned_to: string | null
@@ -821,6 +868,14 @@ export type Database = {
           p_type: string
         }
         Returns: string
+      }
+      notification_ticket_is_muted: {
+        Args: { p_ticket_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      notification_type_enabled: {
+        Args: { p_type: string; p_user_id: string }
+        Returns: boolean
       }
       notification_notify_admins: {
         Args: {

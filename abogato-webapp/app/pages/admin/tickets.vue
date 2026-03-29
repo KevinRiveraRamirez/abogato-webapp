@@ -23,14 +23,25 @@ type TicketProfile = {
   contact_email: string | null
 }
 
+type LawyerProfile = {
+  user_id: string
+  display_name: string | null
+  contact_email: string | null
+}
+
+const SIN_ABOGADO_VALUE = '__unassigned__'
+
 const tickets = ref<Ticket[]>([])
+const abogados = ref<LawyerProfile[]>([])
 const loading = ref(false)
 const actionLoadingId = ref<string | null>(null)
+const asignacionLoadingId = ref<string | null>(null)
 const errorMsg = ref('')
 const successMsg = ref('')
 const busqueda = ref('')
 const filtrosEstadoSeleccionados = ref<Array<'requieren_accion' | TicketStatus>>([])
 const perfiles = ref<Record<string, TicketProfile>>({})
+const asignacionSeleccionada = ref<Record<string, string>>({})
 const ticketExpandido = ref<string | null>(null)
 const paginaActual = ref(1)
 const cantidadPorPagina = ref(10)
@@ -131,6 +142,31 @@ const filtrosAplicadosCount = computed(() =>
   filtrosEstadoSeleccionados.value.length
 )
 
+const opcionesAbogados = computed(() => {
+  const opciones = new Map<string, string>()
+
+  abogados.value.forEach((abogado) => {
+    opciones.set(
+      abogado.user_id,
+      abogado.display_name || abogado.contact_email || 'Abogado'
+    )
+  })
+
+  tickets.value.forEach((ticket) => {
+    if (ticket.assigned_to && !opciones.has(ticket.assigned_to)) {
+      opciones.set(ticket.assigned_to, obtenerNombre(ticket.assigned_to))
+    }
+  })
+
+  return [
+    { label: 'Sin asignar', value: SIN_ABOGADO_VALUE },
+    ...Array.from(opciones.entries()).map(([value, label]) => ({
+      label,
+      value,
+    })),
+  ]
+})
+
 function obtenerNombre(userId: string | null) {
   if (!userId) return 'Sin asignar'
 
@@ -144,6 +180,35 @@ function formatearFecha(fecha: string) {
     month: 'short',
     year: 'numeric',
   })
+}
+
+function normalizarValorAsignacion(userId: string | null | undefined) {
+  return userId ?? SIN_ABOGADO_VALUE
+}
+
+function obtenerAssignedToDesdeValor(value: string) {
+  return value === SIN_ABOGADO_VALUE ? null : value
+}
+
+function sincronizarAsignaciones(ticketRows: Ticket[]) {
+  asignacionSeleccionada.value = Object.fromEntries(
+    ticketRows.map(ticket => [ticket.id, normalizarValorAsignacion(ticket.assigned_to)])
+  )
+}
+
+function obtenerValorAsignacion(ticket: Ticket) {
+  return asignacionSeleccionada.value[ticket.id] ?? normalizarValorAsignacion(ticket.assigned_to)
+}
+
+function actualizarSeleccionAsignacion(ticketId: string, value: string) {
+  asignacionSeleccionada.value = {
+    ...asignacionSeleccionada.value,
+    [ticketId]: value,
+  }
+}
+
+function hayCambioAsignacion(ticket: Ticket) {
+  return obtenerAssignedToDesdeValor(obtenerValorAsignacion(ticket)) !== ticket.assigned_to
 }
 
 function actualizarFilaExpandida(ticketId: string, open: boolean) {
@@ -198,6 +263,26 @@ async function cargarPerfilesRelacionados(ticketRows: Ticket[]) {
   )
 }
 
+async function cargarAbogados() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id, display_name, contact_email')
+    .eq('role', 'abogado')
+    .eq('is_active', true)
+    .order('display_name', { ascending: true })
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  abogados.value = (data ?? []) as LawyerProfile[]
+}
+
+async function cargarBandeja() {
+  await Promise.all([cargarTickets(), cargarAbogados()])
+}
+
 async function cargarTickets() {
   loading.value = true
   errorMsg.value = ''
@@ -216,6 +301,7 @@ async function cargarTickets() {
 
   tickets.value = (data ?? []) as Ticket[]
   await cargarPerfilesRelacionados(tickets.value)
+  sincronizarAsignaciones(tickets.value)
 }
 
 async function registrarHistorial(ticket: Ticket, nextStatus: TicketStatus, notes: string) {
@@ -304,6 +390,35 @@ async function reabrirTicket(ticket: Ticket) {
   await cargarTickets()
 }
 
+async function guardarAsignacion(ticket: Ticket) {
+  const assignedTo = obtenerAssignedToDesdeValor(obtenerValorAsignacion(ticket))
+
+  if (assignedTo === ticket.assigned_to) {
+    return
+  }
+
+  asignacionLoadingId.value = ticket.id
+  errorMsg.value = ''
+  successMsg.value = ''
+
+  const { error } = await supabase
+    .from('tickets')
+    .update({ assigned_to: assignedTo })
+    .eq('id', ticket.id)
+
+  asignacionLoadingId.value = null
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  successMsg.value = assignedTo
+    ? 'La asignación del ticket se actualizó correctamente.'
+    : 'El ticket quedó sin responsable asignado.'
+  await cargarTickets()
+}
+
 watch([busqueda, filtrosEstadoSeleccionados, cantidadPorPagina], () => {
   paginaActual.value = 1
   ticketExpandido.value = null
@@ -321,7 +436,7 @@ watch(ticketsPaginados, (lista) => {
 })
 
 onMounted(() => {
-  cargarTickets()
+  void cargarBandeja()
 })
 </script>
 
@@ -333,7 +448,7 @@ onMounted(() => {
       description="Esta vista de administración está enfocada en supervisar el flujo general: ver el detalle del caso y decidir si un ticket debe cerrarse o reabrirse."
     >
       <template #actions>
-        <UButton color="neutral" variant="outline" :loading="loading" @click="cargarTickets">
+        <UButton color="neutral" variant="outline" :loading="loading" @click="cargarBandeja">
           Actualizar
         </UButton>
       </template>
@@ -558,7 +673,7 @@ onMounted(() => {
                         <div>
                           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Acciones rápidas</p>
                           <p class="mt-2 text-sm text-muted">
-                            Revisá el detalle completo y decidí si el caso debe mantenerse cerrado o volver a abrirse.
+                            Revisá el detalle completo, reasigná responsable y decidí si el caso debe mantenerse cerrado o volver a abrirse.
                           </p>
                         </div>
 
@@ -569,6 +684,27 @@ onMounted(() => {
                           :to="`/ticket/${ticket.id}`"
                         >
                           Ver detalle
+                        </UButton>
+
+                        <UFormField label="Responsable">
+                          <USelect
+                            :model-value="obtenerValorAsignacion(ticket)"
+                            value-key="value"
+                            :items="opcionesAbogados"
+                            :disabled="asignacionLoadingId === ticket.id"
+                            @update:model-value="(value) => actualizarSeleccionAsignacion(ticket.id, value as string)"
+                          />
+                        </UFormField>
+
+                        <UButton
+                          color="primary"
+                          variant="soft"
+                          class="justify-center"
+                          :loading="asignacionLoadingId === ticket.id"
+                          :disabled="asignacionLoadingId === ticket.id || !hayCambioAsignacion(ticket)"
+                          @click="guardarAsignacion(ticket)"
+                        >
+                          Guardar asignación
                         </UButton>
 
                         <UButton
@@ -594,6 +730,10 @@ onMounted(() => {
                         >
                           {{ ticket.reopen_requested ? 'Mantener cerrado' : 'Cerrar ticket' }}
                         </UButton>
+
+                        <p class="text-xs text-muted">
+                          Solo se notifica a las personas involucradas cuando cambia la asignación.
+                        </p>
                       </div>
                     </div>
                   </div>

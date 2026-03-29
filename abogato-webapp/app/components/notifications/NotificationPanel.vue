@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import NotificationsNotificationItem from '~/components/notifications/NotificationItem.vue'
 import {
+  buildNotificationPreview,
   getNotificationGroup,
   notificationTabOptions,
   notificationTypeOptions,
@@ -41,6 +42,7 @@ const emit = defineEmits<{
 const settingsButton = ref<HTMLElement | null>(null)
 const settingsPanel = ref<HTMLElement | null>(null)
 const isSettingsOpen = ref(false)
+const previewType = ref<NotificationType>(notificationTypeOptions[0]?.type ?? 'ticket_created')
 
 const toneClassMap: Record<NotificationTone, string> = {
   primary: 'border-primary/20 bg-primary/10 text-primary',
@@ -89,6 +91,8 @@ const visibleRangeEnd = computed(() =>
 const settingsSummary = computed(() =>
   `${props.enabledTypes.length} de ${notificationTypeOptions.length} tipos activos · ${props.visibleTabs.length} pestañas visibles`
 )
+
+const previewNotification = computed(() => buildNotificationPreview(previewType.value))
 
 const activeTabHasEnabledTypes = computed(() => {
   if (props.activeTab === 'all') {
@@ -265,7 +269,7 @@ onBeforeUnmount(() => {
                 <div>
                   <p class="text-sm font-semibold text-highlighted">Opciones del centro</p>
                   <p class="mt-1 text-xs text-muted">
-                    Se guardan en este navegador. {{ settingsSummary }}
+                    Los tipos se guardan en tu cuenta y las pestañas visibles se recuerdan en este navegador. {{ settingsSummary }}
                   </p>
                 </div>
 
@@ -361,12 +365,12 @@ onBeforeUnmount(() => {
                             <UIcon :name="option.icon" class="h-4 w-4" />
                           </div>
 
-                          <div class="min-w-0 flex-1">
-                            <p class="text-sm font-medium text-highlighted">{{ option.label }}</p>
-                            <p class="mt-1 text-xs text-muted">
-                              {{ isTypeEnabled(option.type) ? 'Activo en la bandeja' : 'Oculto en la bandeja' }}
-                            </p>
-                          </div>
+                      <div class="min-w-0 flex-1">
+                        <p class="text-sm font-medium text-highlighted">{{ option.label }}</p>
+                        <p class="mt-1 text-xs text-muted">
+                              {{ isTypeEnabled(option.type) ? 'Recibís este aviso en la campana' : 'Silenciado para tu cuenta' }}
+                        </p>
+                      </div>
 
                           <UIcon
                             :name="isTypeEnabled(option.type) ? 'i-lucide-check-circle-2' : 'i-lucide-circle-off'"
@@ -375,6 +379,35 @@ onBeforeUnmount(() => {
                         </button>
                       </div>
                     </div>
+                  </div>
+                </section>
+
+                <section class="grid gap-3 border-t border-default/70 pt-4">
+                  <div>
+                    <p class="text-sm font-medium text-highlighted">Vista previa</p>
+                    <p class="mt-1 text-xs text-muted">
+                      Elegí un tipo para ver cómo aparecería en tu centro antes de activarlo o silenciarlo.
+                    </p>
+                  </div>
+
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      v-for="option in notificationTypeOptions"
+                      :key="`preview-${option.type}`"
+                      type="button"
+                      class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition sm:text-sm"
+                      :class="previewType === option.type
+                        ? 'border-primary/20 bg-primary/10 text-primary shadow-sm'
+                        : 'border-default/70 bg-default/75 text-muted hover:border-primary/15 hover:text-highlighted'"
+                      @click="previewType = option.type"
+                    >
+                      <UIcon :name="option.icon" class="size-3.5" />
+                      <span>{{ option.label }}</span>
+                    </button>
+                  </div>
+
+                  <div class="pointer-events-none">
+                    <NotificationsNotificationItem :notification="previewNotification" />
                   </div>
                 </section>
               </div>

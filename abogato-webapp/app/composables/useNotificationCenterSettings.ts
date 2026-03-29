@@ -1,33 +1,20 @@
-import type { NotificationType } from '~~/shared/types/notification'
 import {
-  getAllNotificationTypes,
-  isNotificationType,
   notificationTabOptions,
   type NotificationCenterTab,
 } from '~~/shared/notifications/catalog'
 
 type NotificationCenterSettings = {
-  enabledTypes: NotificationType[]
   visibleTabs: NotificationCenterTab[]
 }
 
-const DEFAULT_ENABLED_TYPES = getAllNotificationTypes()
 const DEFAULT_VISIBLE_TABS = notificationTabOptions.map(option => option.key)
 
 let settingsWatchersInitialized = false
 
 function createDefaultSettings(): NotificationCenterSettings {
   return {
-    enabledTypes: [...DEFAULT_ENABLED_TYPES],
     visibleTabs: [...DEFAULT_VISIBLE_TABS],
   }
-}
-
-function normalizeEnabledTypes(value: unknown): NotificationType[] {
-  const list = Array.isArray(value) ? value.filter(item => typeof item === 'string') : []
-  const unique = new Set(list.filter(isNotificationType))
-
-  return DEFAULT_ENABLED_TYPES.filter(type => unique.has(type))
 }
 
 function normalizeVisibleTabs(value: unknown): NotificationCenterTab[] {
@@ -50,7 +37,6 @@ function normalizeSettings(value: unknown): NotificationCenterSettings {
   const candidate = value as Partial<NotificationCenterSettings>
 
   return {
-    enabledTypes: normalizeEnabledTypes(candidate.enabledTypes),
     visibleTabs: normalizeVisibleTabs(candidate.visibleTabs),
   }
 }
@@ -90,17 +76,6 @@ export function useNotificationCenterSettings() {
     window.localStorage.setItem(storageKey.value, JSON.stringify(settings.value))
   }
 
-  function toggleType(type: NotificationType) {
-    const nextEnabledTypes = settings.value.enabledTypes.includes(type)
-      ? settings.value.enabledTypes.filter(item => item !== type)
-      : DEFAULT_ENABLED_TYPES.filter(item => item === type || settings.value.enabledTypes.includes(item))
-
-    settings.value = {
-      ...settings.value,
-      enabledTypes: nextEnabledTypes,
-    }
-  }
-
   function toggleVisibleTab(tab: NotificationCenterTab) {
     const isVisible = settings.value.visibleTabs.includes(tab)
 
@@ -122,12 +97,10 @@ export function useNotificationCenterSettings() {
     settings.value = createDefaultSettings()
   }
 
-  const enabledTypes = computed(() => settings.value.enabledTypes)
   const visibleTabs = computed(() => settings.value.visibleTabs)
 
   const hasCustomSettings = computed(() =>
-    !sameStringArray(settings.value.enabledTypes, DEFAULT_ENABLED_TYPES)
-    || !sameStringArray(settings.value.visibleTabs, DEFAULT_VISIBLE_TABS)
+    !sameStringArray(settings.value.visibleTabs, DEFAULT_VISIBLE_TABS)
   )
 
   if (import.meta.client && !settingsWatchersInitialized) {
@@ -143,12 +116,10 @@ export function useNotificationCenterSettings() {
   }
 
   return {
-    enabledTypes,
     hasCustomSettings,
     hydrate,
     isHydrated,
     reset,
-    toggleType,
     toggleVisibleTab,
     visibleTabs,
   }

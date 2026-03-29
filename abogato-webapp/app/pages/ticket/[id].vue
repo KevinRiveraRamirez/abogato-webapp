@@ -62,6 +62,8 @@ const comentarios = ref<Comentario[]>([])
 const nuevoComentario = ref('')
 const comentarioInterno = ref(false)
 const loadingComentario = ref(false)
+const ticketSilenciado = ref(false)
+const loadingSilencioTicket = ref(false)
 
 const pageLoading = ref(true)
 const loading = ref(false)
@@ -421,11 +423,83 @@ async function cargarDocumentos() {
     .filter((documento): documento is Documento => documento !== null)
 }
 
+async function cargarSilencioTicket() {
+  if (!ticket.value || !user.value?.id) {
+    ticketSilenciado.value = false
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('ticket_notification_mutes')
+    .select('ticket_id')
+    .eq('ticket_id', ticket.value.id)
+    .eq('user_id', user.value.id)
+    .maybeSingle()
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  ticketSilenciado.value = Boolean(data)
+}
+
+async function toggleSilencioTicket() {
+  if (!ticket.value) return
+
+  const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !authUser?.id) {
+    errorMsg.value = authError?.message || 'Sesión no válida.'
+    return
+  }
+
+  loadingSilencioTicket.value = true
+  errorMsg.value = ''
+  successMsg.value = ''
+
+  let error: { message: string } | null = null
+
+  if (ticketSilenciado.value) {
+    const result = await supabase
+      .from('ticket_notification_mutes')
+      .delete()
+      .eq('user_id', authUser.id)
+      .eq('ticket_id', ticket.value.id)
+
+    error = result.error
+  } else {
+    const result = await supabase
+      .from('ticket_notification_mutes')
+      .upsert({
+        user_id: authUser.id,
+        ticket_id: ticket.value.id,
+      }, {
+        onConflict: 'user_id,ticket_id',
+      })
+
+    error = result.error
+  }
+
+  loadingSilencioTicket.value = false
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  ticketSilenciado.value = !ticketSilenciado.value
+  successMsg.value = ticketSilenciado.value
+    ? 'Silenciaste las notificaciones internas de este ticket.'
+    : 'Volviste a activar las notificaciones internas de este ticket.'
+}
+
 async function cargarDetalleInicial() {
   pageLoading.value = true
 
   try {
     await Promise.all([cargarTicket(), cargarDocumentos()])
+    await cargarSilencioTicket()
   } finally {
     pageLoading.value = false
   }
@@ -518,6 +592,15 @@ watch(user, async (newUser) => {
 
         <template #actions>
           <UButton
+            color="neutral"
+            :variant="ticketSilenciado ? 'soft' : 'outline'"
+            :loading="loadingSilencioTicket"
+            :icon="ticketSilenciado ? 'i-lucide-bell-off' : 'i-lucide-bell-ring'"
+            @click="toggleSilencioTicket"
+          >
+            {{ ticketSilenciado ? 'Activar notificaciones' : 'Silenciar notificaciones' }}
+          </UButton>
+          <UButton
             v-if="puedeEditar && !editando"
             color="neutral"
             variant="outline"
@@ -543,6 +626,14 @@ watch(user, async (newUser) => {
         variant="soft"
         title="Solicitud de reapertura enviada"
         description="Estamos esperando la respuesta del abogado asignado."
+      />
+
+      <UAlert
+        v-if="ticketSilenciado"
+        color="neutral"
+        variant="soft"
+        title="Notificaciones silenciadas en este ticket"
+        description="No vas a recibir avisos nuevos de este trámite en la campana hasta que las vuelvas a activar."
       />
 
       <UCard v-if="editando">

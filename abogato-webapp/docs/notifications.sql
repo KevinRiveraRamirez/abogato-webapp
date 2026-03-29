@@ -34,6 +34,93 @@ comment on column public.notifications.type is 'Tipo logico de la notificacion p
 comment on column public.notifications.link_path is 'Ruta interna de la app a la que debe navegar la campana.';
 comment on column public.notifications.payload is 'Datos auxiliares para render futuro o depuracion.';
 
+create table if not exists public.notification_preferences (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  notification_type text not null,
+  enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  primary key (user_id, notification_type),
+  constraint notification_preferences_type_not_blank check (length(btrim(notification_type)) > 0)
+);
+
+comment on table public.notification_preferences is 'Preferencias de recepcion por tipo de notificacion para cada usuario.';
+comment on column public.notification_preferences.enabled is 'Cuando es false, el usuario deja de recibir ese tipo de notificacion.';
+
+alter table public.notification_preferences enable row level security;
+
+drop policy if exists "notification_preferences_select_own" on public.notification_preferences;
+create policy "notification_preferences_select_own"
+on public.notification_preferences
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "notification_preferences_insert_own" on public.notification_preferences;
+create policy "notification_preferences_insert_own"
+on public.notification_preferences
+for insert
+to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists "notification_preferences_update_own" on public.notification_preferences;
+create policy "notification_preferences_update_own"
+on public.notification_preferences
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "notification_preferences_delete_own" on public.notification_preferences;
+create policy "notification_preferences_delete_own"
+on public.notification_preferences
+for delete
+to authenticated
+using (user_id = auth.uid());
+
+grant select, insert, update, delete on public.notification_preferences to authenticated;
+
+create table if not exists public.ticket_notification_mutes (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  ticket_id uuid not null references public.tickets (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, ticket_id)
+);
+
+comment on table public.ticket_notification_mutes is 'Silencios de notificaciones por ticket y por usuario.';
+
+alter table public.ticket_notification_mutes enable row level security;
+
+drop policy if exists "ticket_notification_mutes_select_own" on public.ticket_notification_mutes;
+create policy "ticket_notification_mutes_select_own"
+on public.ticket_notification_mutes
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "ticket_notification_mutes_insert_own" on public.ticket_notification_mutes;
+create policy "ticket_notification_mutes_insert_own"
+on public.ticket_notification_mutes
+for insert
+to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists "ticket_notification_mutes_delete_own" on public.ticket_notification_mutes;
+create policy "ticket_notification_mutes_delete_own"
+on public.ticket_notification_mutes
+for delete
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "ticket_notification_mutes_update_own" on public.ticket_notification_mutes;
+create policy "ticket_notification_mutes_update_own"
+on public.ticket_notification_mutes
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+grant select, insert, update, delete on public.ticket_notification_mutes to authenticated;
+
 create index if not exists notifications_recipient_created_at_idx
   on public.notifications (recipient_user_id, created_at desc);
 
@@ -54,6 +141,38 @@ to authenticated
 using (recipient_user_id = auth.uid());
 
 grant select on public.notifications to authenticated;
+
+create or replace function public.notification_type_enabled(p_user_id uuid, p_type text)
+returns boolean
+language sql
+security definer
+set search_path = public, auth
+as $$
+  select coalesce(
+    (
+      select np.enabled
+      from public.notification_preferences np
+      where np.user_id = p_user_id
+        and np.notification_type = p_type
+      limit 1
+    ),
+    true
+  );
+$$;
+
+create or replace function public.notification_ticket_is_muted(p_user_id uuid, p_ticket_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public, auth
+as $$
+  select exists (
+    select 1
+    from public.ticket_notification_mutes tnm
+    where tnm.user_id = p_user_id
+      and tnm.ticket_id = p_ticket_id
+  );
+$$;
 
 create or replace function public.notification_insert(
   p_recipient_user_id uuid,
@@ -80,6 +199,14 @@ begin
   end if;
 
   if p_actor_user_id is not null and p_recipient_user_id = p_actor_user_id then
+    return null;
+  end if;
+
+  if not public.notification_type_enabled(p_recipient_user_id, p_type) then
+    return null;
+  end if;
+
+  if p_ticket_id is not null and public.notification_ticket_is_muted(p_recipient_user_id, p_ticket_id) then
     return null;
   end if;
 
@@ -310,24 +437,51 @@ begin
   v_link_path := '/ticket/' || new.id::text;
 
   if new.assigned_to is distinct from old.assigned_to
-     and new.assigned_to is not null
-     and (v_actor_user_id is null or new.assigned_to <> v_actor_user_id) then
-    perform public.notification_insert(
-      new.assigned_to,
-      v_actor_user_id,
-      'ticket_assigned_lawyer',
-      'Tenes un caso asignado',
-      format('Se te asigno el ticket "%s".', new.title),
-      v_link_path,
-      new.id,
-      'ticket',
-      new.id,
-      jsonb_build_object(
-        'ticket_id', new.id,
-        'status', new.status,
-        'assigned_to', new.assigned_to
-      )
-    );
+  then
+    if old.assigned_to is not null
+       and (v_actor_user_id is null or old.assigned_to <> v_actor_user_id) then
+      perform public.notification_insert(
+        old.assigned_to,
+        v_actor_user_id,
+        'ticket_unassigned_lawyer',
+        'Caso reasignado',
+        case
+          when new.assigned_to is null then format('El ticket "%s" quedó sin abogado asignado.', new.title)
+          else format('El ticket "%s" fue reasignado y salió de tu bandeja.', new.title)
+        end,
+        v_link_path,
+        new.id,
+        'ticket',
+        new.id,
+        jsonb_build_object(
+          'ticket_id', new.id,
+          'status', new.status,
+          'old_assigned_to', old.assigned_to,
+          'new_assigned_to', new.assigned_to
+        )
+      );
+    end if;
+
+    if new.assigned_to is not null
+       and (v_actor_user_id is null or new.assigned_to <> v_actor_user_id) then
+      perform public.notification_insert(
+        new.assigned_to,
+        v_actor_user_id,
+        'ticket_assigned_lawyer',
+        'Tenes un caso asignado',
+        format('Se te asigno el ticket "%s".', new.title),
+        v_link_path,
+        new.id,
+        'ticket',
+        new.id,
+        jsonb_build_object(
+          'ticket_id', new.id,
+          'status', new.status,
+          'assigned_to', new.assigned_to,
+          'previous_assigned_to', old.assigned_to
+        )
+      );
+    end if;
   end if;
 
   if old.reopen_requested is distinct from new.reopen_requested and new.reopen_requested = true then
