@@ -42,54 +42,44 @@ async function cambiarPassword() {
 </script>
 
 <template>
-  <UCard class="auth-card">
-    <template #header>
-      <h1 class="text-xl font-semibold">Restablecer contraseña</h1>
-      <p class="text-sm text-gray-500 mt-1">Ingresá tu nueva contraseña.</p>
+  <AuthCardShell
+    eyebrow="Seguridad"
+    title="Restablecer contraseña"
+    description="Ingresá tu nueva contraseña para volver a entrar a la plataforma."
+    content-width="sm"
+    back-to="/login"
+    back-label="Volver al inicio de sesión"
+  >
+    <template #headerAside>
+      <UColorModeButton />
     </template>
 
-    <div class="grid gap-4">
-      <div v-if="!user" class="text-sm text-gray-500">
-        <p>El enlace de recuperación no es válido o expiró.</p>
-        <NuxtLink to="/login" class="underline">Volver al inicio de sesión</NuxtLink>
-      </div>
-
-      <template v-else>
-        <UFormField label="Nueva contraseña">
-          <UInput v-model="newPassword" type="password" placeholder="Mínimo 8 caracteres" size="lg" />
-        </UFormField>
-
-        <UFormField label="Confirmar contraseña">
-          <UInput v-model="confirmPassword" type="password" placeholder="Repetí la contraseña" size="lg" />
-        </UFormField>
-
-        <p class="text-xs text-gray-400">
-          Debe tener al menos 8 caracteres, una mayúscula y un número.
-        </p>
-
-        <UAlert v-if="errorMsg" color="warning" variant="soft" :description="errorMsg" />
-        <UAlert v-if="successMsg" color="success" variant="soft" :description="successMsg" />
-
-        <UButton block size="lg" :loading="loading" @click="cambiarPassword">
-          Guardar nueva contraseña
-        </UButton>
-
-        <NuxtLink to="/login" class="text-sm text-gray-500 hover:underline text-center">
-          Volver al inicio de sesión
-        </NuxtLink>
-      </template>
+    <div v-if="!user" class="grid gap-3 text-sm text-muted">
+      <p>El enlace de recuperación no es válido o expiró.</p>
+      <NuxtLink to="/login" class="font-medium text-primary transition hover:underline">
+        Volver al inicio de sesión
+      </NuxtLink>
     </div>
-  </UCard>
-</template>
 
-<style scoped>
-.auth-card {
-  backdrop-filter: blur(10px);
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-}
-.dark .auth-card {
-  background: rgba(17, 17, 17, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-</style>
+    <template v-else>
+      <UFormField label="Nueva contraseña">
+        <UInput v-model="newPassword" type="password" placeholder="Mínimo 8 caracteres" size="lg" />
+      </UFormField>
+
+      <UFormField label="Confirmar contraseña">
+        <UInput v-model="confirmPassword" type="password" placeholder="Repetí la contraseña" size="lg" />
+      </UFormField>
+
+      <p class="text-xs text-muted">
+        Debe tener al menos 8 caracteres, una mayúscula y un número.
+      </p>
+
+      <UAlert v-if="errorMsg" color="warning" variant="soft" :description="errorMsg" />
+      <UAlert v-if="successMsg" color="success" variant="soft" :description="successMsg" />
+
+      <UButton block size="lg" :loading="loading" @click="cambiarPassword">
+        Guardar nueva contraseña
+      </UButton>
+    </template>
+  </AuthCardShell>
+</template>

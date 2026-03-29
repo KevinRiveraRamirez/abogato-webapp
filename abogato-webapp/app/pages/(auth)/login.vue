@@ -131,248 +131,94 @@ async function enviarRecuperacion() {
 </script>
 
 <template>
-  <div class="auth-shell">
-    <UCard class="auth-card">
-      <template #header>
-        <div class="auth-header">
-          <div class="space-y-2 text-center sm:text-left">
-            <p class="auth-eyebrow">Acceso a tu cuenta</p>
-            <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
-              Bienvenido
-            </h1>
-            <p class="text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Iniciá sesión para continuar con tu seguimiento legal.
-            </p>
-          </div>
-          <div class="auth-mode">
-            <UColorModeButton />
-          </div>
-        </div>
-      </template>
+  <AuthCardShell
+    eyebrow="Acceso a tu cuenta"
+    title="Bienvenido"
+    description="Iniciá sesión para continuar con tu seguimiento legal."
+    content-width="sm"
+    back-to="/"
+    back-label="← Volver al inicio"
+  >
+    <template #headerAside>
+      <UColorModeButton />
+    </template>
 
-      <div class="auth-body">
-        <UFormField label="Correo" name="email">
-          <UInput
-            v-model="email"
-            type="email"
-            placeholder="correo@ejemplo.com"
-            autocomplete="email"
-            size="lg"
-          />
-        </UFormField>
+    <UFormField label="Correo" name="email">
+      <UInput
+        v-model="email"
+        type="email"
+        placeholder="correo@ejemplo.com"
+        autocomplete="email"
+        size="lg"
+      />
+    </UFormField>
 
-        <UFormField label="Contraseña" name="password">
-          <UInput
-            v-model="password"
-            :type="mostrarPassword ? 'text' : 'password'"
-            placeholder="••••••••"
-            autocomplete="current-password"
-            size="lg"
-          >
-            <template #trailing>
-              <button
-                type="button"
-                class="password-toggle"
-                :aria-label="mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
-                :aria-pressed="mostrarPassword"
-                @click="mostrarPassword = !mostrarPassword"
-              >
-                <UIcon :name="mostrarPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'" class="h-4 w-4" />
-              </button>
-            </template>
-          </UInput>
-        </UFormField>
-
-        <UAlert
-          v-if="errorMsg"
-          color="warning"
-          variant="soft"
-          title="Atención"
-          :description="errorMsg"
-        />
-
-        <div class="auth-actions">
-          <UButton block size="lg" :loading="loading" @click="signIn">
-            Iniciar sesión
-          </UButton>
-        </div>
-
-        <UDivider label="o" />
-
-        <p class="text-sm text-center text-gray-500 dark:text-gray-400">
-          ¿Todavía no tenés cuenta?
-          <NuxtLink to="/signup" class="font-medium text-primary-600 hover:underline dark:text-primary-400">
-            Registrate acá
-          </NuxtLink>
-        </p>
-
-        <div class="auth-recovery">
+    <UFormField label="Contraseña" name="password">
+      <UInput
+        v-model="password"
+        :type="mostrarPassword ? 'text' : 'password'"
+        placeholder="••••••••"
+        autocomplete="current-password"
+        size="lg"
+      >
+        <template #trailing>
           <button
-            class="auth-recovery-toggle"
-            @click="mostrarRecuperacion = !mostrarRecuperacion"
+            type="button"
+            class="inline-flex items-center justify-center text-muted transition hover:text-highlighted"
+            :aria-label="mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+            :aria-pressed="mostrarPassword"
+            @click="mostrarPassword = !mostrarPassword"
           >
-            ¿Olvidaste tu contraseña?
+            <UIcon :name="mostrarPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'" class="h-4 w-4" />
           </button>
+        </template>
+      </UInput>
+    </UFormField>
 
-          <div v-if="mostrarRecuperacion" class="auth-recovery-panel">
-            <UInput
-              v-model="emailRecuperacion"
-              type="email"
-              placeholder="Tu correo registrado"
-            />
-            <UButton variant="soft" :loading="loading" @click="enviarRecuperacion">
-              Enviar enlace de recuperación
-            </UButton>
-            <p v-if="mensajeRecuperacion" class="text-xs text-green-600 dark:text-green-400">
-              {{ mensajeRecuperacion }}
-            </p>
-          </div>
-        </div>
-      </div>
-    </UCard>
+    <UAlert
+      v-if="errorMsg"
+      color="warning"
+      variant="soft"
+      title="Atención"
+      :description="errorMsg"
+    />
 
-    <div class="auth-footer">
-      <NuxtLink to="/" class="text-sm text-gray-500 transition hover:text-gray-700 hover:underline dark:hover:text-gray-300">
-        ← Volver al inicio
-      </NuxtLink>
+    <div class="grid gap-3 justify-items-center">
+      <UButton block size="lg" :loading="loading" @click="signIn">
+        Iniciar sesión
+      </UButton>
     </div>
-  </div>
+
+    <UDivider label="o" />
+
+    <p class="text-center text-sm text-muted">
+      ¿Todavía no tenés cuenta?
+      <NuxtLink to="/signup" class="font-medium text-primary transition hover:underline">
+        Registrate acá
+      </NuxtLink>
+    </p>
+
+    <div class="grid justify-items-center gap-3 text-center">
+      <button
+        class="text-sm text-muted transition hover:text-highlighted hover:underline"
+        @click="mostrarRecuperacion = !mostrarRecuperacion"
+      >
+        ¿Olvidaste tu contraseña?
+      </button>
+
+      <div v-if="mostrarRecuperacion" class="app-subtle-panel app-panel-md grid w-full gap-3 p-4 text-left">
+        <UInput
+          v-model="emailRecuperacion"
+          type="email"
+          placeholder="Tu correo registrado"
+        />
+        <UButton variant="soft" :loading="loading" @click="enviarRecuperacion">
+          Enviar enlace de recuperación
+        </UButton>
+        <p v-if="mensajeRecuperacion" class="text-xs text-success">
+          {{ mensajeRecuperacion }}
+        </p>
+      </div>
+    </div>
+  </AuthCardShell>
 </template>
-
-<style scoped>
-.auth-shell {
-  display: grid;
-  gap: 1rem;
-  justify-items: center;
-}
-
-.auth-card {
-  width: min(100%, 44rem);
-  backdrop-filter: blur(10px);
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
-}
-
-.auth-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.auth-eyebrow {
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgb(22 163 74);
-}
-
-.auth-mode {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.auth-body {
-  display: grid;
-  gap: 1.25rem;
-  width: min(100%, 30rem);
-  margin: 0 auto;
-}
-
-.auth-actions {
-  display: grid;
-  gap: 0.75rem;
-  justify-items: center;
-}
-
-.auth-recovery {
-  display: grid;
-  justify-items: center;
-  gap: 0.75rem;
-  text-align: center;
-}
-
-.auth-recovery-toggle {
-  font-size: 0.875rem;
-  color: rgb(107 114 128);
-  transition: color 0.2s ease, text-decoration-color 0.2s ease;
-}
-
-.auth-recovery-toggle:hover {
-  color: rgb(31 41 55);
-  text-decoration: underline;
-}
-
-.auth-recovery-panel {
-  display: grid;
-  width: 100%;
-  gap: 0.75rem;
-  border-radius: 1rem;
-  padding: 1rem;
-  text-align: left;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.auth-footer {
-  text-align: center;
-}
-
-.password-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: rgb(107 114 128);
-  transition: color 0.2s ease;
-}
-
-.password-toggle:hover {
-  color: rgb(31 41 55);
-}
-
-.dark .auth-card {
-  background: rgba(17, 17, 17, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-}
-
-.dark .auth-eyebrow {
-  color: rgb(74 222 128);
-}
-
-.dark .auth-recovery-toggle {
-  color: rgb(156 163 175);
-}
-
-.dark .auth-recovery-toggle:hover {
-  color: rgb(229 231 235);
-}
-
-.dark .auth-recovery-panel {
-  background: rgba(17, 24, 39, 0.5);
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-.dark .password-toggle {
-  color: rgb(156 163 175);
-}
-
-.dark .password-toggle:hover {
-  color: rgb(229 231 235);
-}
-
-@media (max-width: 639px) {
-  .auth-header {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  .auth-mode {
-    width: 100%;
-    justify-content: center;
-  }
-}
-</style>

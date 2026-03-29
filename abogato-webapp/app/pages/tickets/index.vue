@@ -505,8 +505,8 @@ onMounted(async () => {
                       </p>
                     </div>
 
-                    <div class="flex min-w-0 flex-col gap-2">
-                      <UBadge :color="obtenerColorEstadoVisible(ticket)" variant="subtle">
+                    <div class="flex min-w-0 flex-col items-start gap-2">
+                      <UBadge class="self-start" :color="obtenerColorEstadoVisible(ticket)" variant="subtle">
                         {{ obtenerEtiquetaEstadoVisible(ticket) }}
                       </UBadge>
                     </div>

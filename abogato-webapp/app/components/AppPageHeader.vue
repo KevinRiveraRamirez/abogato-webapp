@@ -14,8 +14,10 @@ withDefaults(defineProps<{
 </script>
 
 <template>
-  <section
-    class="rounded-[34px] border border-white/45 bg-default/64 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-3xl backdrop-brightness-105 backdrop-saturate-150 dark:border-white/10"
+  <AppSurface
+    as="section"
+    variant="glass"
+    radius="xl"
     :class="[
       sticky ? 'sticky top-0 z-20' : '',
       compact ? 'px-5 py-4 lg:px-8' : 'px-5 py-5 lg:px-8',
@@ -74,5 +76,5 @@ withDefaults(defineProps<{
     <div v-if="$slots.footer" class="mt-6">
       <slot name="footer" />
     </div>
-  </section>
+  </AppSurface>
 </template>

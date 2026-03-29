@@ -1,6 +1,6 @@
 <template>
   <UCard
-    class="flex w-[clamp(20rem,30vw,28rem)] max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-1.5rem)] flex-col rounded-[2rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] shadow-[0_24px_70px_-36px_rgba(15,23,42,0.35)] sm:max-w-[calc(100vw-2rem)] sm:max-h-[calc(100vh-2rem)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))]"
+    class="app-floating-panel app-panel-xl flex w-[clamp(20rem,30vw,28rem)] max-h-[calc(100vh-1.5rem)] max-w-[calc(100vw-1.5rem)] flex-col sm:max-h-[calc(100vh-2rem)] sm:max-w-[calc(100vw-2rem)]"
     :ui="{
       header: 'shrink-0 px-4 pb-4 pt-4 sm:px-5 sm:pt-5',
       body: 'flex min-h-0 flex-1 flex-col px-4 pb-0 pt-0 sm:px-5',
@@ -18,7 +18,7 @@
           <USkeleton class="size-8 rounded-lg" />
         </div>
 
-        <div class="rounded-[1.2rem] border border-default/70 bg-elevated/70 p-1">
+        <div class="app-subtle-panel app-panel-sm p-1">
           <div class="grid grid-cols-3 gap-1">
             <USkeleton
               v-for="item in 3"

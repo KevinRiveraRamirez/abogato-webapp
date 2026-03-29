@@ -49,15 +49,19 @@ async function signOut() {
     :class="collapsed ? 'w-[6rem]' : 'w-[20rem]'"
   >
     <aside class="h-screen overflow-visible p-3">
-      <div
-        class="flex h-[calc(100vh-1.5rem)] flex-col rounded-[2rem] border border-default/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] p-3 shadow-[0_20px_60px_-42px_rgba(15,23,42,0.32)] backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(2,6,23,0.98),rgba(15,23,42,0.96))]"
+      <AppSurface
+        as="div"
+        variant="floating"
+        radius="xl"
+        padding="none"
+        class="flex h-[calc(100vh-1.5rem)] flex-col p-3"
       >
         <div
           class="pb-3"
           :class="collapsed ? 'flex flex-col items-center gap-2' : 'flex items-center justify-between gap-3 px-1'"
         >
           <NuxtLink :to="dashboardPath" class="flex min-w-0 items-center gap-3">
-            <div class="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950">
+            <div class="app-brand-mark flex size-11 shrink-0 items-center justify-center rounded-2xl">
               <UIcon name="i-lucide-scale" class="size-5" />
             </div>
 
@@ -131,7 +135,7 @@ async function signOut() {
 
         <div
           v-if="!collapsed"
-          class="mt-4 rounded-[1.6rem] border border-default/70 bg-elevated/40 px-4 py-4"
+          class="app-subtle-panel app-panel-lg mt-4 px-4 py-4"
         >
           <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">Sesion activa</p>
           <p class="mt-2 text-sm font-semibold text-highlighted">{{ friendlyName }}</p>
@@ -164,7 +168,7 @@ async function signOut() {
             @click="signOut"
           />
         </div>
-      </div>
+      </AppSurface>
     </aside>
   </div>
 
@@ -176,11 +180,11 @@ async function signOut() {
     }"
   >
     <template #content>
-      <aside class="h-full bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(248,250,252,0.98))] p-3 dark:bg-[linear-gradient(180deg,rgba(2,6,23,0.99),rgba(15,23,42,0.98))]">
-        <div class="flex h-full flex-col rounded-[2rem] border border-default/70 bg-default/95 p-3 shadow-[0_20px_60px_-42px_rgba(15,23,42,0.32)]">
+      <aside class="h-full p-3">
+        <AppSurface as="div" variant="floating" radius="xl" padding="none" class="flex h-full flex-col p-3">
           <div class="flex items-center justify-between gap-3 px-1 pb-3">
             <NuxtLink :to="dashboardPath" class="flex min-w-0 items-center gap-3" @click="closeMobile">
-              <div class="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950">
+              <div class="app-brand-mark flex size-11 shrink-0 items-center justify-center rounded-2xl">
                 <UIcon name="i-lucide-scale" class="size-5" />
               </div>
 
@@ -234,7 +238,7 @@ async function signOut() {
             </div>
           </div>
 
-          <div class="mt-4 rounded-[1.6rem] border border-default/70 bg-elevated/40 px-4 py-4">
+          <div class="app-subtle-panel app-panel-lg mt-4 px-4 py-4">
             <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">Sesion activa</p>
             <p class="mt-2 text-sm font-semibold text-highlighted">{{ friendlyName }}</p>
             <p class="mt-1 text-xs text-muted">{{ roleLabel }}</p>
@@ -257,7 +261,7 @@ async function signOut() {
               @click="signOut"
             />
           </div>
-        </div>
+        </AppSurface>
       </aside>
     </template>
   </USlideover>

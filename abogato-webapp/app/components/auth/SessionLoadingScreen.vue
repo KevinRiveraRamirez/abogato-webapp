@@ -13,10 +13,10 @@ const { active, title, description } = useSessionLoading()
   >
     <div
       v-if="active"
-      class="fixed inset-0 z-[200] overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_28%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.14),transparent_26%),linear-gradient(180deg,rgba(248,250,252,0.94),rgba(241,245,249,0.96))] px-4 py-8 backdrop-blur-sm dark:bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_28%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.16),transparent_24%),linear-gradient(180deg,rgba(2,6,23,0.96),rgba(15,23,42,0.98))]"
+      class="fixed inset-0 z-[200] overflow-y-auto px-4 py-8 backdrop-blur-sm app-auth-layout"
     >
       <div class="mx-auto flex min-h-full w-full max-w-6xl items-center">
-        <UCard class="w-full overflow-hidden border-primary/10 bg-default/90 shadow-[0_36px_90px_-48px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:bg-default/85">
+        <UCard class="app-floating-panel app-panel-xl w-full overflow-hidden">
           <div class="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
             <div class="space-y-6">
               <div class="inline-flex size-14 items-center justify-center rounded-[1.4rem] bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950">

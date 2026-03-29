@@ -206,7 +206,7 @@ watch(isOpen, async (open) => {
           class="fixed z-[240]"
           :style="panelStyle"
         >
-          <div class="rounded-[1.6rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.96))] p-4 shadow-[0_24px_70px_-36px_rgba(15,23,42,0.35)] backdrop-blur-2xl dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))] sm:p-5">
+          <AppSurface variant="floating" radius="xl" padding="sm">
             <div class="flex items-start justify-between gap-3">
               <div>
                 <p class="text-sm font-semibold text-highlighted">Filtros</p>
@@ -228,7 +228,7 @@ watch(isOpen, async (open) => {
             <div class="mt-4 grid gap-4">
               <slot name="filters" />
             </div>
-          </div>
+          </AppSurface>
         </div>
       </Transition>
     </Teleport>

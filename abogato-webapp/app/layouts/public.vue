@@ -3,9 +3,11 @@
   <div class="flex min-h-screen flex-col">
     <PublicHeader />
     <main class="flex-1">
-      <UContainer class="py-6 sm:py-8">
-        <slot />
-      </UContainer>
+      <div class="px-4 sm:px-5">
+        <UContainer class="app-page-shell py-8 sm:py-10 lg:py-12">
+          <slot />
+        </UContainer>
+      </div>
     </main>
     <PublicFooter />
   </div>
