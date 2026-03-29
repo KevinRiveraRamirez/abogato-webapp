@@ -90,8 +90,42 @@ a {
   transition: color 0.2s ease, opacity 0.2s ease;
 }
 
+:where(
+  a,
+  button,
+  input,
+  textarea,
+  select,
+  summary,
+  [role="button"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ui-primary) 82%, white);
+  outline-offset: 3px;
+}
+
 ::selection {
   background: color-mix(in srgb, var(--ui-primary) 24%, transparent);
+}
+
+.app-skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 300;
+  transform: translateY(-160%);
+  border-radius: 999px;
+  border: 1px solid var(--app-panel-border-strong);
+  background: var(--app-surface-floating);
+  box-shadow: var(--app-shadow-panel);
+  padding: 0.75rem 1rem;
+  color: var(--ui-text-highlighted);
+  font-weight: 700;
+  transition: transform 0.2s ease;
+}
+
+.app-skip-link:focus-visible {
+  transform: translateY(0);
 }
 
 .app-page-shell {
@@ -220,4 +254,18 @@ a {
 
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

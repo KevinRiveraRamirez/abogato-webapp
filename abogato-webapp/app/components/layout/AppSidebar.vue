@@ -48,7 +48,7 @@ async function signOut() {
     class="sticky top-0 hidden h-screen shrink-0 self-start overflow-visible lg:block"
     :class="collapsed ? 'w-[6rem]' : 'w-[20rem]'"
   >
-    <aside class="h-screen overflow-visible p-3">
+    <aside class="h-screen overflow-visible p-3" aria-label="Navegación principal">
       <AppSurface
         as="div"
         variant="floating"
@@ -93,7 +93,7 @@ async function signOut() {
         </div>
 
         <div class="scrollbar-none min-h-0 flex-1 overflow-y-auto">
-          <div class="space-y-4">
+          <nav class="space-y-4" aria-label="Secciones del panel">
             <section
               v-for="(section, index) in sections"
               :key="section.id"
@@ -130,7 +130,7 @@ async function signOut() {
                 }"
               />
             </section>
-          </div>
+          </nav>
         </div>
 
         <div
@@ -180,7 +180,7 @@ async function signOut() {
     }"
   >
     <template #content>
-      <aside class="h-full p-3">
+      <aside class="h-full p-3" aria-label="Navegación móvil">
         <AppSurface as="div" variant="floating" radius="xl" padding="none" class="flex h-full flex-col p-3">
           <div class="flex items-center justify-between gap-3 px-1 pb-3">
             <NuxtLink :to="dashboardPath" class="flex min-w-0 items-center gap-3" @click="closeMobile">
@@ -205,7 +205,7 @@ async function signOut() {
           </div>
 
           <div class="scrollbar-none min-h-0 flex-1 overflow-y-auto">
-            <div class="space-y-4">
+            <nav class="space-y-4" aria-label="Secciones del panel">
               <section
                 v-for="(section, index) in sections"
                 :key="section.id"
@@ -235,7 +235,7 @@ async function signOut() {
                   }"
                 />
               </section>
-            </div>
+            </nav>
           </div>
 
           <div class="app-subtle-panel app-panel-lg mt-4 px-4 py-4">

@@ -3,12 +3,12 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <img
         :src="img1"
-        alt="Abogados en reunión"
+        alt="Equipo legal revisando un caso en una reunión"
         class="w-full h-72 rounded-2xl object-cover"
       />
       <img
         :src="img2"
-        alt="Documentos legales"
+        alt="Documentos legales organizados sobre una mesa de trabajo"
         class="w-full h-72 rounded-2xl object-cover"
       />
     </div>

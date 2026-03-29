@@ -3,7 +3,9 @@
     <UContainer class="py-12">
       <div class="grid grid-cols-1 gap-8 md:grid-cols-4">
         <div class="space-y-3 md:col-span-1">
-          <IconsLogo />
+          <NuxtLink to="/" aria-label="Ir al inicio de Abogato" class="inline-flex">
+            <IconsLogo />
+          </NuxtLink>
           <p class="text-sm leading-relaxed text-muted">
             Soluciones legales accesibles, rápidas y transparentes para personas y empresas.
           </p>

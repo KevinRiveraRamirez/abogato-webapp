@@ -8,7 +8,7 @@ defineProps<{
   <UCard class="w-full" :ui="{ body: 'px-20' }">
     <img
       :src="product.images[0]"
-      alt="Product Image"
+      :alt="product.name"
       class="w-full h-52 object-cover rounded-md"
     />
 

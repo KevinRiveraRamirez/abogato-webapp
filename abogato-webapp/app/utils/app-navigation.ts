@@ -13,6 +13,7 @@ const clientSections: NavigationSection[] = [
     label: 'General',
     items: [
       { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/client/dashboard' },
+      { label: 'Buscar', icon: 'i-lucide-search', to: '/buscar' },
     ],
   },
   {
@@ -38,6 +39,7 @@ const lawyerSections: NavigationSection[] = [
     label: 'General',
     items: [
       { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/lawyer/dashboard' },
+      { label: 'Buscar', icon: 'i-lucide-search', to: '/buscar' },
     ],
   },
   {
@@ -63,6 +65,7 @@ const adminSections: NavigationSection[] = [
     label: 'General',
     items: [
       { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/admin/dashboard' },
+      { label: 'Buscar', icon: 'i-lucide-search', to: '/buscar' },
     ],
   },
   {
@@ -127,6 +130,7 @@ export function getNavigationTitle(path: string, role: string | null | undefined
   if (matchedItem?.label) return matchedItem.label
 
   if (path.startsWith('/ticket/')) return 'Detalle del caso'
+  if (path === '/buscar') return 'Buscar'
   if (path.startsWith('/traspaso-carro/')) return 'Traspaso de carro'
   return 'Panel'
 }

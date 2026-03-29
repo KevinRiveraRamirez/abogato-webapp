@@ -3,39 +3,48 @@
     mode="drawer"
     toggle-side="right"
     class="border-b border-default/60 bg-default/80 backdrop-blur-xl"
+    :ui="{
+      right: 'flex items-center gap-2',
+    }"
   >
     <template #title>
-      <IconsLogo />
+      <NuxtLink to="/" aria-label="Ir al inicio de Abogato">
+        <IconsLogo />
+      </NuxtLink>
     </template>
 
-    <UNavigationMenu :items="items" highlight class="hidden lg:flex" />
+    <nav aria-label="Navegación pública">
+      <UNavigationMenu :items="items" highlight class="hidden lg:flex" />
+    </nav>
 
     <template #right>
       <UColorModeButton variant="ghost" color="neutral" />
 
       <template v-if="user">
-        <UButton color="neutral" variant="ghost" :to="panelPath" label="Mi panel" />
-        <UButton color="error" variant="soft" :loading="loading" @click="cerrarSesion" label="Cerrar sesión" />
+        <UButton color="neutral" variant="ghost" icon="i-lucide-layout-dashboard" :to="panelPath" label="Mi panel" />
+        <UButton color="error" variant="soft" icon="i-lucide-log-out" :loading="loading" @click="cerrarSesion" label="Cerrar sesión" />
       </template>
 
       <template v-else>
-        <UButton color="neutral" variant="ghost" to="/signup" label="Registrarte" />
-        <UButton color="primary" variant="solid" to="/login" label="Iniciar sesión" />
+        <UButton color="neutral" variant="ghost" icon="i-lucide-user-plus" to="/signup" label="Registrarte" />
+        <UButton color="primary" variant="solid" icon="i-lucide-log-in" to="/login" label="Iniciar sesión" />
       </template>
     </template>
 
     <template #body>
       <div class="grid gap-4 px-1 py-3">
-        <UNavigationMenu :items="items" orientation="vertical" highlight class="-mx-2.5" />
-        <div class="flex items-center gap-3 border-t border-default pt-4 lg:hidden">
+        <nav aria-label="Navegación pública móvil">
+          <UNavigationMenu :items="items" orientation="vertical" highlight class="-mx-2.5" />
+        </nav>
+        <div class="grid gap-3 border-t border-default pt-4 lg:hidden">
           <UColorModeButton variant="ghost" color="neutral" />
           <template v-if="user">
-            <UButton color="neutral" variant="ghost" :to="panelPath" label="Mi panel" />
-            <UButton color="error" variant="soft" :loading="loading" @click="cerrarSesion" label="Cerrar sesión" />
+            <UButton color="neutral" variant="ghost" icon="i-lucide-layout-dashboard" :to="panelPath" label="Mi panel" />
+            <UButton color="error" variant="soft" icon="i-lucide-log-out" :loading="loading" @click="cerrarSesion" label="Cerrar sesión" />
           </template>
           <template v-else>
-            <UButton color="neutral" variant="ghost" to="/signup" label="Registrarte" />
-            <UButton to="/login" label="Iniciar sesión" />
+            <UButton color="neutral" variant="ghost" icon="i-lucide-user-plus" to="/signup" label="Registrarte" />
+            <UButton icon="i-lucide-log-in" to="/login" label="Iniciar sesión" />
           </template>
         </div>
       </div>
