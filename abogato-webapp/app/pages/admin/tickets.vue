@@ -29,7 +29,7 @@ const actionLoadingId = ref<string | null>(null)
 const errorMsg = ref('')
 const successMsg = ref('')
 const busqueda = ref('')
-const filtroEstado = ref<'todos' | 'requieren_accion' | TicketStatus>('todos')
+const filtrosEstadoSeleccionados = ref<Array<'requieren_accion' | TicketStatus>>([])
 const perfiles = ref<Record<string, TicketProfile>>({})
 const ticketExpandido = ref<string | null>(null)
 const paginaActual = ref(1)
@@ -63,7 +63,7 @@ const colorPrioridad: Record<TicketPriority, 'neutral' | 'warning' | 'error'> = 
   high: 'error',
 }
 
-const filtrosEstado = ['todos', 'requieren_accion', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
+const filtrosEstado = ['requieren_accion', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
 const opcionesCantidadPorPagina = [
   { label: '10 por página', value: 10 },
   { label: '20 por página', value: 20 },
@@ -74,9 +74,9 @@ const ticketsFiltrados = computed(() => {
   const termino = busqueda.value.trim().toLowerCase()
 
   return tickets.value.filter((ticket) => {
-    const coincideEstado = filtroEstado.value === 'todos'
-      || (filtroEstado.value === 'requieren_accion' && ticket.reopen_requested)
-      || ticket.status === filtroEstado.value
+    const coincideEstado = !filtrosEstadoSeleccionados.value.length
+      || (filtrosEstadoSeleccionados.value.includes('requieren_accion') && ticket.reopen_requested)
+      || filtrosEstadoSeleccionados.value.includes(ticket.status)
 
     if (!coincideEstado) return false
     if (!termino) return true
@@ -122,6 +122,15 @@ const resumen = computed(() => ({
   cerrados: tickets.value.filter(ticket => ['closed', 'resolved', 'cancelled'].includes(ticket.status)).length,
 }))
 
+const hayFiltrosActivos = computed(() =>
+  Boolean(busqueda.value.trim())
+  || filtrosEstadoSeleccionados.value.length > 0
+)
+
+const filtrosAplicadosCount = computed(() =>
+  filtrosEstadoSeleccionados.value.length
+)
+
 function obtenerNombre(userId: string | null) {
   if (!userId) return 'Sin asignar'
 
@@ -139,6 +148,17 @@ function formatearFecha(fecha: string) {
 
 function actualizarFilaExpandida(ticketId: string, open: boolean) {
   ticketExpandido.value = open ? ticketId : ticketExpandido.value === ticketId ? null : ticketExpandido.value
+}
+
+function limpiarFiltros() {
+  busqueda.value = ''
+  filtrosEstadoSeleccionados.value = []
+}
+
+function toggleFiltroEstado(estado: (typeof filtrosEstado)[number]) {
+  filtrosEstadoSeleccionados.value = filtrosEstadoSeleccionados.value.includes(estado)
+    ? filtrosEstadoSeleccionados.value.filter(item => item !== estado)
+    : [...filtrosEstadoSeleccionados.value, estado]
 }
 
 function puedeCerrar(ticket: Ticket) {
@@ -284,7 +304,7 @@ async function reabrirTicket(ticket: Ticket) {
   await cargarTickets()
 }
 
-watch([busqueda, filtroEstado, cantidadPorPagina], () => {
+watch([busqueda, filtrosEstadoSeleccionados, cantidadPorPagina], () => {
   paginaActual.value = 1
   ticketExpandido.value = null
 })
@@ -307,23 +327,17 @@ onMounted(() => {
 
 <template>
   <div class="mx-auto w-full max-w-7xl space-y-6">
-    <div class="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p class="text-sm font-medium uppercase tracking-[0.22em] text-primary/80">
-          Admin
-        </p>
-        <h1 class="mt-2 text-3xl font-semibold text-highlighted">
-          Control de tickets
-        </h1>
-        <p class="mt-2 max-w-3xl text-sm leading-6 text-muted">
-          Esta vista de administración está enfocada en supervisar el flujo general: ver el detalle del caso y decidir si un ticket debe cerrarse o reabrirse.
-        </p>
-      </div>
-
-      <UButton color="neutral" variant="outline" :loading="loading" @click="cargarTickets">
-        Actualizar
-      </UButton>
-    </div>
+    <AppPageHeader
+      eyebrow="Admin"
+      title="Control de tickets"
+      description="Esta vista de administración está enfocada en supervisar el flujo general: ver el detalle del caso y decidir si un ticket debe cerrarse o reabrirse."
+    >
+      <template #actions>
+        <UButton color="neutral" variant="outline" :loading="loading" @click="cargarTickets">
+          Actualizar
+        </UButton>
+      </template>
+    </AppPageHeader>
 
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <UCard>
@@ -366,48 +380,48 @@ onMounted(() => {
 
     <UCard>
       <template #header>
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div class="grid gap-3 sm:max-w-md">
-            <h2 class="font-semibold text-highlighted">Bandeja administrativa</h2>
-            <UInput
-              v-model="busqueda"
-              icon="i-lucide-search"
-              placeholder="Buscar por ticket, asunto, cliente o responsable"
-            />
-          </div>
+        <AppFilterToolbar
+          v-model:search-term="busqueda"
+          v-model:per-page="cantidadPorPagina"
+          title="Bandeja administrativa"
+          search-placeholder="Buscar por ticket, asunto, cliente o responsable"
+          :results-label="`Mostrando ${resumenPaginacion.inicio}-${resumenPaginacion.fin} de ${totalTicketsFiltrados}`"
+          :per-page-options="opcionesCantidadPorPagina"
+          :has-active-filters="hayFiltrosActivos"
+          :active-filter-count="filtrosAplicadosCount"
+          @clear-filters="limpiarFiltros"
+        >
+          <template #filters>
+            <div class="grid gap-2">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">Estado del caso</p>
+              <div class="flex flex-wrap gap-2">
+                <UButton
+                  size="sm"
+                  :color="filtrosEstadoSeleccionados.length === 0 ? 'primary' : 'neutral'"
+                  :variant="filtrosEstadoSeleccionados.length === 0 ? 'solid' : 'outline'"
+                  @click="filtrosEstadoSeleccionados = []"
+                >
+                  Todos
+                </UButton>
 
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              v-for="filtro in filtrosEstado"
-              :key="filtro"
-              size="sm"
-              :color="filtroEstado === filtro ? 'primary' : 'neutral'"
-              :variant="filtroEstado === filtro ? 'solid' : 'outline'"
-              @click="filtroEstado = filtro"
-            >
-              {{
-                filtro === 'todos'
-                  ? 'Todos'
-                  : filtro === 'requieren_accion'
-                    ? 'Reaperturas'
-                    : etiquetaEstado[filtro]
-              }}
-            </UButton>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-3">
-            <p class="text-sm text-muted">
-              Mostrando {{ resumenPaginacion.inicio }}-{{ resumenPaginacion.fin }} de {{ totalTicketsFiltrados }}
-            </p>
-
-            <USelect
-              v-model="cantidadPorPagina"
-              class="min-w-40"
-              value-key="value"
-              :items="opcionesCantidadPorPagina"
-            />
-          </div>
-        </div>
+                <UButton
+                  v-for="filtro in filtrosEstado"
+                  :key="filtro"
+                  size="sm"
+                  :color="filtrosEstadoSeleccionados.includes(filtro) ? 'primary' : 'neutral'"
+                  :variant="filtrosEstadoSeleccionados.includes(filtro) ? 'solid' : 'outline'"
+                  @click="toggleFiltroEstado(filtro)"
+                >
+                  {{
+                    filtro === 'requieren_accion'
+                      ? 'Reaperturas'
+                      : etiquetaEstado[filtro]
+                  }}
+                </UButton>
+              </div>
+            </div>
+          </template>
+        </AppFilterToolbar>
       </template>
 
       <SkeletonListCards v-if="loading && !tickets.length" :items="4" />

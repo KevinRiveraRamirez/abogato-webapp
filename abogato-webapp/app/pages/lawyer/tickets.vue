@@ -65,7 +65,7 @@ type DocumentoModal = {
 const tickets = ref<Ticket[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
-const filtroEstado = ref('todos')
+const filtrosEstadoSeleccionados = ref<Ticket['status'][]>([])
 const busqueda = ref('')
 const paginaActual = ref(1)
 const cantidadPorPagina = ref(10)
@@ -100,7 +100,7 @@ const colorPrioridad: Record<Ticket['priority'], 'neutral' | 'warning' | 'error'
   high: 'error'
 }
 
-const filtrosEstado = ['todos', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
+const filtrosEstado = ['open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
 const opcionesCantidadPorPagina = [
   { label: '10 por página', value: 10 },
   { label: '20 por página', value: 20 },
@@ -187,7 +187,8 @@ const ticketsFiltrados = computed(() => {
   const termino = busqueda.value.trim().toLowerCase()
 
   return tickets.value.filter((ticket) => {
-    const coincideEstado = filtroEstado.value === 'todos' || ticket.status === filtroEstado.value
+    const coincideEstado = !filtrosEstadoSeleccionados.value.length
+      || filtrosEstadoSeleccionados.value.includes(ticket.status)
 
     if (!coincideEstado) return false
     if (!termino) return true
@@ -225,6 +226,15 @@ const resumenPaginacion = computed(() => {
   return { inicio, fin }
 })
 
+const hayFiltrosActivos = computed(() =>
+  Boolean(busqueda.value.trim())
+  || filtrosEstadoSeleccionados.value.length > 0
+)
+
+const filtrosAplicadosCount = computed(() =>
+  filtrosEstadoSeleccionados.value.length
+)
+
 const ticketsConReapertura = computed(() =>
   tickets.value.filter(t => t.reopen_requested)
 )
@@ -232,6 +242,17 @@ const ticketsConReapertura = computed(() =>
 const expandedRows = computed(() =>
   ticketExpandido.value ? { [ticketExpandido.value]: true } : {}
 )
+
+function limpiarFiltros() {
+  busqueda.value = ''
+  filtrosEstadoSeleccionados.value = []
+}
+
+function toggleFiltroEstado(estado: Ticket['status']) {
+  filtrosEstadoSeleccionados.value = filtrosEstadoSeleccionados.value.includes(estado)
+    ? filtrosEstadoSeleccionados.value.filter(item => item !== estado)
+    : [...filtrosEstadoSeleccionados.value, estado]
+}
 
 async function cargarTickets() {
   const { data: { user: authUser } } = await supabase.auth.getUser()
@@ -808,7 +829,7 @@ onMounted(async () => {
   await cargarTickets()
 })
 
-watch([busqueda, filtroEstado, cantidadPorPagina], () => {
+watch([busqueda, filtrosEstadoSeleccionados, cantidadPorPagina], () => {
   paginaActual.value = 1
   ticketExpandido.value = null
 })
@@ -826,20 +847,18 @@ watch(ticketsPaginados, (lista) => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-7xl">
-    <div class="mb-6 flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold text-highlighted">
-        {{ profile?.role === 'admin' ? 'Todos los tickets' : 'Mis casos' }}
-        </h1>
-        <p class="mt-1 text-sm text-muted">
-          Revisá solicitudes activas, documentos y reaperturas desde una sola vista.
-        </p>
-      </div>
-      <UButton color="neutral" variant="outline" :loading="loading" @click="cargarTickets">
-        Actualizar
-      </UButton>
-    </div>
+  <div class="mx-auto w-full max-w-7xl space-y-6">
+    <AppPageHeader
+      :eyebrow="profile?.role === 'admin' ? 'Admin' : 'Abogado'"
+      :title="profile?.role === 'admin' ? 'Todos los tickets' : 'Mis casos'"
+      description="Revisá solicitudes activas, documentos y reaperturas desde una sola vista."
+    >
+      <template #actions>
+        <UButton color="neutral" variant="outline" :loading="loading" @click="cargarTickets">
+          Actualizar
+        </UButton>
+      </template>
+    </AppPageHeader>
 
     <UAlert
       v-if="errorMsg"
@@ -880,42 +899,44 @@ watch(ticketsPaginados, (lista) => {
 
     <UCard>
       <template #header>
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div class="grid gap-3 sm:max-w-md">
-            <h2 class="font-semibold text-highlighted">Bandeja de tickets</h2>
-            <UInput
-              v-model="busqueda"
-              icon="i-lucide-search"
-              placeholder="Buscar por ticket, asunto, responsable o estado"
-            />
-          </div>
+        <AppFilterToolbar
+          v-model:search-term="busqueda"
+          v-model:per-page="cantidadPorPagina"
+          title="Bandeja de tickets"
+          search-placeholder="Buscar por ticket, asunto, responsable o estado"
+          :results-label="`Mostrando ${resumenPaginacion.inicio}-${resumenPaginacion.fin} de ${totalTicketsFiltrados}`"
+          :per-page-options="opcionesCantidadPorPagina"
+          :has-active-filters="hayFiltrosActivos"
+          :active-filter-count="filtrosAplicadosCount"
+          @clear-filters="limpiarFiltros"
+        >
+          <template #filters>
+            <div class="grid gap-2">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">Estado del caso</p>
+              <div class="flex flex-wrap gap-2">
+                <UButton
+                  size="sm"
+                  :color="filtrosEstadoSeleccionados.length === 0 ? 'primary' : 'neutral'"
+                  :variant="filtrosEstadoSeleccionados.length === 0 ? 'solid' : 'outline'"
+                  @click="filtrosEstadoSeleccionados = []"
+                >
+                  Todos
+                </UButton>
 
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              v-for="f in filtrosEstado"
-              :key="f"
-              size="sm"
-              :color="filtroEstado === f ? 'primary' : 'neutral'"
-              :variant="filtroEstado === f ? 'solid' : 'outline'"
-              @click="filtroEstado = f"
-            >
-              {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
-            </UButton>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-3">
-            <p class="text-sm text-muted">
-              Mostrando {{ resumenPaginacion.inicio }}-{{ resumenPaginacion.fin }} de {{ totalTicketsFiltrados }}
-            </p>
-
-            <USelect
-              v-model="cantidadPorPagina"
-              class="min-w-40"
-              value-key="value"
-              :items="opcionesCantidadPorPagina"
-            />
-          </div>
-        </div>
+                <UButton
+                  v-for="f in filtrosEstado"
+                  :key="f"
+                  size="sm"
+                  :color="filtrosEstadoSeleccionados.includes(f) ? 'primary' : 'neutral'"
+                  :variant="filtrosEstadoSeleccionados.includes(f) ? 'solid' : 'outline'"
+                  @click="toggleFiltroEstado(f)"
+                >
+                  {{ etiquetaEstado[f] }}
+                </UButton>
+              </div>
+            </div>
+          </template>
+        </AppFilterToolbar>
       </template>
 
       <SkeletonListCards v-if="loading && !tickets.length" :items="4" />

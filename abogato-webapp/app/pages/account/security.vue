@@ -64,13 +64,12 @@ async function cambiarPassword() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl">
-    <div class="mb-6">
-      <h1 class="text-2xl font-semibold text-highlighted">Cambiar contraseña</h1>
-      <p class="mt-1 text-sm text-muted">
-        Mantené tu cuenta protegida con una contraseña segura y actualizada.
-      </p>
-    </div>
+  <div class="mx-auto max-w-2xl space-y-6">
+    <AppPageHeader
+      eyebrow="Cuenta"
+      title="Cambiar contraseña"
+      description="Mantené tu cuenta protegida con una contraseña segura y actualizada."
+    />
 
     <UCard>
       <div class="grid gap-4">

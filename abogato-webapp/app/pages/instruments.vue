@@ -127,18 +127,18 @@ watch(user, () => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl py-8">
-    <div class="mb-6 flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold text-highlighted">Mis instruments</h1>
-        <p class="mt-1 text-sm text-muted">
-          Demo simple conectada a Supabase con la misma base visual del resto de la app.
-        </p>
-      </div>
-      <UButton color="neutral" variant="outline" :loading="loading" @click="refresh">
-        Actualizar
-      </UButton>
-    </div>
+  <div class="mx-auto max-w-3xl space-y-6 py-8">
+    <AppPageHeader
+      eyebrow="Demo"
+      title="Mis instruments"
+      description="Demo simple conectada a Supabase con la misma base visual del resto de la app."
+    >
+      <template #actions>
+        <UButton color="neutral" variant="outline" :loading="loading" @click="refresh">
+          Actualizar
+        </UButton>
+      </template>
+    </AppPageHeader>
 
     <UAlert
       v-if="errorMsg"

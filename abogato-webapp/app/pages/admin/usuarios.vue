@@ -27,8 +27,8 @@ const filaExpandida = ref<string | null>(null)
 const errorMsg = ref('')
 const successMsg = ref('')
 const busqueda = ref('')
-const filtroRol = ref<'todos' | UserRole>('todos')
-const filtroEstado = ref<'todos' | 'activos' | 'inactivos'>('todos')
+const rolesSeleccionados = ref<UserRole[]>([])
+const estadosSeleccionados = ref<Array<'activos' | 'inactivos'>>([])
 const paginaActual = ref(1)
 const cantidadPorPagina = ref(10)
 
@@ -64,8 +64,8 @@ const opcionesRol = [
   { label: 'Admin', value: 'admin' },
 ] as const
 
-const rolesFiltro = ['todos', 'cliente', 'abogado', 'admin'] as const
-const estadosFiltro = ['todos', 'activos', 'inactivos'] as const
+const rolesFiltro = ['cliente', 'abogado', 'admin'] as const
+const estadosFiltro = ['activos', 'inactivos'] as const
 const opcionesCantidadPorPagina = [
   { label: '10 por página', value: 10 },
   { label: '20 por página', value: 20 },
@@ -76,10 +76,10 @@ const usuariosFiltrados = computed(() => {
   const termino = busqueda.value.trim().toLowerCase()
 
   return usuarios.value.filter((usuario) => {
-    const coincideRol = filtroRol.value === 'todos' || usuario.role === filtroRol.value
-    const coincideEstado = filtroEstado.value === 'todos'
-      || (filtroEstado.value === 'activos' && usuario.is_active)
-      || (filtroEstado.value === 'inactivos' && !usuario.is_active)
+    const coincideRol = !rolesSeleccionados.value.length || rolesSeleccionados.value.includes(usuario.role)
+    const coincideEstado = !estadosSeleccionados.value.length
+      || (estadosSeleccionados.value.includes('activos') && usuario.is_active)
+      || (estadosSeleccionados.value.includes('inactivos') && !usuario.is_active)
 
     if (!coincideRol || !coincideEstado) return false
     if (!termino) return true
@@ -124,6 +124,17 @@ const resumen = computed(() => ({
   inactivos: usuarios.value.filter(usuario => !usuario.is_active).length,
   internos: usuarios.value.filter(usuario => usuario.role === 'admin' || usuario.role === 'abogado').length,
 }))
+
+const hayFiltrosActivos = computed(() =>
+  Boolean(busqueda.value.trim())
+  || rolesSeleccionados.value.length > 0
+  || estadosSeleccionados.value.length > 0
+)
+
+const filtrosAplicadosCount = computed(() =>
+  rolesSeleccionados.value.length
+  + estadosSeleccionados.value.length
+)
 
 const mostrarDireccionOficina = computed(
   () => nuevoRol.value === 'abogado' || nuevoRol.value === 'admin'
@@ -170,6 +181,24 @@ function obtenerResumenEstado(usuario: Usuario) {
   return usuario.is_active
     ? 'Acceso habilitado'
     : `Suspendido el ${formatearFechaHora(usuario.deactivated_at)}`
+}
+
+function limpiarFiltros() {
+  busqueda.value = ''
+  rolesSeleccionados.value = []
+  estadosSeleccionados.value = []
+}
+
+function toggleFiltroRol(rol: UserRole) {
+  rolesSeleccionados.value = rolesSeleccionados.value.includes(rol)
+    ? rolesSeleccionados.value.filter(item => item !== rol)
+    : [...rolesSeleccionados.value, rol]
+}
+
+function toggleFiltroEstado(estado: (typeof estadosFiltro)[number]) {
+  estadosSeleccionados.value = estadosSeleccionados.value.includes(estado)
+    ? estadosSeleccionados.value.filter(item => item !== estado)
+    : [...estadosSeleccionados.value, estado]
 }
 
 function actualizarFilaExpandida(userId: string, open: boolean) {
@@ -293,7 +322,7 @@ async function toggleActivo(usuario: Usuario) {
   await actualizarUsuario(usuario, { isActive: !usuario.is_active })
 }
 
-watch([busqueda, filtroRol, filtroEstado, cantidadPorPagina], () => {
+watch([busqueda, rolesSeleccionados, estadosSeleccionados, cantidadPorPagina], () => {
   paginaActual.value = 1
   filaExpandida.value = null
 })
@@ -316,28 +345,20 @@ onMounted(() => {
 
 <template>
   <div class="mx-auto w-full max-w-7xl space-y-6">
-    <div class="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p class="text-sm font-medium uppercase tracking-[0.22em] text-primary/80">
-          Admin
-        </p>
-        <h1 class="mt-2 text-3xl font-semibold text-highlighted">
-          Gestión de usuarios
-        </h1>
-        <p class="mt-2 max-w-3xl text-sm leading-6 text-muted">
-          Cambiá roles, filtrá la base de usuarios y desactivá cuentas cuando necesites cortar su acceso. Las cuentas inactivas no podrán iniciar sesión ni usar rutas protegidas hasta ser reactivadas.
-        </p>
-      </div>
-
-      <div class="flex flex-wrap gap-2">
+    <AppPageHeader
+      eyebrow="Admin"
+      title="Gestión de usuarios"
+      description="Cambiá roles, filtrá la base de usuarios y desactivá cuentas cuando necesites cortar su acceso. Las cuentas inactivas no podrán iniciar sesión ni usar rutas protegidas hasta ser reactivadas."
+    >
+      <template #actions>
         <UButton color="neutral" variant="outline" :loading="loading" @click="cargarUsuarios">
           Actualizar
         </UButton>
         <UButton @click="mostrarFormulario = !mostrarFormulario">
           {{ mostrarFormulario ? 'Cancelar' : 'Nuevo usuario' }}
         </UButton>
-      </div>
-    </div>
+      </template>
+    </AppPageHeader>
 
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <UCard>
@@ -443,75 +464,80 @@ onMounted(() => {
 
     <UCard>
       <template #header>
-        <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div class="grid gap-3 sm:max-w-md">
-            <div class="flex flex-wrap items-center gap-3">
-              <div>
-                <h2 class="font-semibold text-highlighted">Base de usuarios</h2>
-                <p class="mt-1 text-sm text-muted">
-                  Vista compacta para revisar permisos, estado y contexto operativo sin salir del listado.
-                </p>
+        <AppFilterToolbar
+          v-model:search-term="busqueda"
+          v-model:per-page="cantidadPorPagina"
+          title="Base de usuarios"
+          description="Vista compacta para revisar permisos, estado y contexto operativo sin salir del listado."
+          search-placeholder="Buscar por nombre, correo, teléfono o dirección"
+          :results-label="`Mostrando ${resumenPaginacion.inicio}-${resumenPaginacion.fin} de ${totalUsuariosFiltrados}`"
+          :per-page-options="opcionesCantidadPorPagina"
+          :has-active-filters="hayFiltrosActivos"
+          :active-filter-count="filtrosAplicadosCount"
+          @clear-filters="limpiarFiltros"
+        >
+          <template #titleMeta>
+            <UBadge color="neutral" variant="subtle">
+              {{ usuariosFiltrados.length }} visibles
+            </UBadge>
+          </template>
+
+          <template #filters>
+            <div class="grid gap-2">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">Rol</p>
+              <div class="flex flex-wrap gap-2">
+                <UButton
+                  size="sm"
+                  :color="rolesSeleccionados.length === 0 ? 'primary' : 'neutral'"
+                  :variant="rolesSeleccionados.length === 0 ? 'solid' : 'outline'"
+                  @click="rolesSeleccionados = []"
+                >
+                  Todos los roles
+                </UButton>
+
+                <UButton
+                  v-for="rol in rolesFiltro"
+                  :key="rol"
+                  size="sm"
+                  :color="rolesSeleccionados.includes(rol) ? 'primary' : 'neutral'"
+                  :variant="rolesSeleccionados.includes(rol) ? 'solid' : 'outline'"
+                  @click="toggleFiltroRol(rol)"
+                >
+                  {{ etiquetaRol[rol] }}
+                </UButton>
               </div>
-
-              <UBadge color="neutral" variant="subtle">
-                {{ usuariosFiltrados.length }} visibles
-              </UBadge>
             </div>
 
-            <UInput
-              v-model="busqueda"
-              icon="i-lucide-search"
-              placeholder="Buscar por nombre, correo, teléfono o dirección"
-            />
-          </div>
+            <div class="grid gap-2">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">Estado</p>
+              <div class="flex flex-wrap gap-2">
+                <UButton
+                  size="sm"
+                  :color="estadosSeleccionados.length === 0 ? 'primary' : 'neutral'"
+                  :variant="estadosSeleccionados.length === 0 ? 'solid' : 'outline'"
+                  @click="estadosSeleccionados = []"
+                >
+                  Todos los estados
+                </UButton>
 
-          <div class="grid gap-3">
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                v-for="rol in rolesFiltro"
-                :key="rol"
-                size="sm"
-                :color="filtroRol === rol ? 'primary' : 'neutral'"
-                :variant="filtroRol === rol ? 'solid' : 'outline'"
-                @click="filtroRol = rol"
-              >
-                {{ rol === 'todos' ? 'Todos los roles' : etiquetaRol[rol] }}
-              </UButton>
-            </div>
-
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                v-for="estado in estadosFiltro"
-                :key="estado"
-                size="sm"
-                :color="filtroEstado === estado ? 'primary' : 'neutral'"
-                :variant="filtroEstado === estado ? 'solid' : 'outline'"
-                @click="filtroEstado = estado"
-              >
-                {{
-                  estado === 'todos'
-                    ? 'Todos los estados'
-                    : estado === 'activos'
+                <UButton
+                  v-for="estado in estadosFiltro"
+                  :key="estado"
+                  size="sm"
+                  :color="estadosSeleccionados.includes(estado) ? 'primary' : 'neutral'"
+                  :variant="estadosSeleccionados.includes(estado) ? 'solid' : 'outline'"
+                  @click="toggleFiltroEstado(estado)"
+                >
+                  {{
+                    estado === 'activos'
                       ? 'Activos'
                       : 'Inactivos'
-                }}
-              </UButton>
+                  }}
+                </UButton>
+              </div>
             </div>
-
-            <div class="flex flex-wrap items-center gap-3">
-              <p class="text-sm text-muted">
-                Mostrando {{ resumenPaginacion.inicio }}-{{ resumenPaginacion.fin }} de {{ totalUsuariosFiltrados }}
-              </p>
-
-              <USelect
-                v-model="cantidadPorPagina"
-                class="min-w-40"
-                value-key="value"
-                :items="opcionesCantidadPorPagina"
-              />
-            </div>
-          </div>
-        </div>
+          </template>
+        </AppFilterToolbar>
       </template>
 
       <SkeletonListCards v-if="loading && !usuarios.length" :items="4" />

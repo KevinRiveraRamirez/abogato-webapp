@@ -29,13 +29,13 @@ const plantillas = ref<Template[]>([])
 const errorMsg = ref('')
 const successMsg = ref('')
 const busqueda = ref('')
-const filtroEstado = ref<'todos' | 'activas' | 'inactivas'>('todos')
-const filtroOrigen = ref<'todos' | 'manuales' | 'vinculadas'>('todos')
+const filtrosEstadoSeleccionados = ref<Array<'activas' | 'inactivas'>>([])
+const filtrosOrigenSeleccionados = ref<Array<'manuales' | 'vinculadas'>>([])
 const paginaActual = ref(1)
 const cantidadPorPagina = ref(10)
 
-const filtrosEstado = ['todos', 'activas', 'inactivas'] as const
-const filtrosOrigen = ['todos', 'manuales', 'vinculadas'] as const
+const filtrosEstado = ['activas', 'inactivas'] as const
+const filtrosOrigen = ['manuales', 'vinculadas'] as const
 const opcionesCantidadPorPagina = [
   { label: '10 por página', value: 10 },
   { label: '20 por página', value: 20 },
@@ -43,13 +43,11 @@ const opcionesCantidadPorPagina = [
 ] as const
 
 const etiquetaFiltroEstado: Record<(typeof filtrosEstado)[number], string> = {
-  todos: 'Todas',
   activas: 'Activas',
   inactivas: 'Inactivas',
 }
 
 const etiquetaFiltroOrigen: Record<(typeof filtrosOrigen)[number], string> = {
-  todos: 'Todos los orígenes',
   manuales: 'Sin servicio vinculado',
   vinculadas: 'Heredadas con servicio',
 }
@@ -76,13 +74,13 @@ const plantillasFiltradas = computed(() => {
   const termino = busqueda.value.trim().toLowerCase()
 
   return plantillas.value.filter((template) => {
-    const coincideEstado = filtroEstado.value === 'todos'
-      || (filtroEstado.value === 'activas' && template.activo)
-      || (filtroEstado.value === 'inactivas' && !template.activo)
+    const coincideEstado = !filtrosEstadoSeleccionados.value.length
+      || (filtrosEstadoSeleccionados.value.includes('activas') && template.activo)
+      || (filtrosEstadoSeleccionados.value.includes('inactivas') && !template.activo)
 
-    const coincideOrigen = filtroOrigen.value === 'todos'
-      || (filtroOrigen.value === 'manuales' && template.servicio_id == null)
-      || (filtroOrigen.value === 'vinculadas' && template.servicio_id != null)
+    const coincideOrigen = !filtrosOrigenSeleccionados.value.length
+      || (filtrosOrigenSeleccionados.value.includes('manuales') && template.servicio_id == null)
+      || (filtrosOrigenSeleccionados.value.includes('vinculadas') && template.servicio_id != null)
 
     if (!coincideEstado || !coincideOrigen) return false
     if (!termino) return true
@@ -137,14 +135,31 @@ const resumen = computed(() => ({
 
 const hayFiltrosActivos = computed(() =>
   Boolean(busqueda.value.trim())
-  || filtroEstado.value !== 'todos'
-  || filtroOrigen.value !== 'todos'
+  || filtrosEstadoSeleccionados.value.length > 0
+  || filtrosOrigenSeleccionados.value.length > 0
+)
+
+const filtrosAplicadosCount = computed(() =>
+  filtrosEstadoSeleccionados.value.length
+  + filtrosOrigenSeleccionados.value.length
 )
 
 function limpiarFiltros() {
   busqueda.value = ''
-  filtroEstado.value = 'todos'
-  filtroOrigen.value = 'todos'
+  filtrosEstadoSeleccionados.value = []
+  filtrosOrigenSeleccionados.value = []
+}
+
+function toggleFiltroEstado(estado: (typeof filtrosEstado)[number]) {
+  filtrosEstadoSeleccionados.value = filtrosEstadoSeleccionados.value.includes(estado)
+    ? filtrosEstadoSeleccionados.value.filter(item => item !== estado)
+    : [...filtrosEstadoSeleccionados.value, estado]
+}
+
+function toggleFiltroOrigen(origen: (typeof filtrosOrigen)[number]) {
+  filtrosOrigenSeleccionados.value = filtrosOrigenSeleccionados.value.includes(origen)
+    ? filtrosOrigenSeleccionados.value.filter(item => item !== origen)
+    : [...filtrosOrigenSeleccionados.value, origen]
 }
 
 function formatearFecha(fecha: string) {
@@ -187,7 +202,7 @@ async function toggleActivo(template: Template) {
     : 'Plantilla activada correctamente.'
 }
 
-watch([busqueda, filtroEstado, filtroOrigen, cantidadPorPagina], () => {
+watch([busqueda, filtrosEstadoSeleccionados, filtrosOrigenSeleccionados, cantidadPorPagina], () => {
   paginaActual.value = 1
 })
 
@@ -210,19 +225,18 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-[1560px]">
-    <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold text-highlighted">Plantillas de documentos</h1>
-        <p class="mt-1 text-sm text-muted">
-          Diseñá formularios visuales para el admin y guardalos directamente en `document_templates`.
-        </p>
-      </div>
-
-      <UButton to="/admin/plantillas/nueva">
-        Nueva plantilla
-      </UButton>
-    </div>
+  <div class="mx-auto w-full max-w-[1560px] space-y-6">
+    <AppPageHeader
+      eyebrow="Admin"
+      title="Plantillas de documentos"
+      description="Diseñá formularios visuales para el admin y guardalos directamente en `document_templates`."
+    >
+      <template #actions>
+        <UButton to="/admin/plantillas/nueva">
+          Nueva plantilla
+        </UButton>
+      </template>
+    </AppPageHeader>
 
     <UAlert
       v-if="errorMsg"
@@ -270,72 +284,76 @@ onMounted(async () => {
       </div>
 
       <UCard>
-        <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div class="grid gap-3 xl:min-w-[340px] xl:max-w-xl">
-            <div>
-              <h2 class="font-semibold text-highlighted">Filtrar plantillas</h2>
-              <p class="mt-1 text-sm text-muted">
-                Buscá por nombre, placeholders, secciones o texto base del documento.
-              </p>
+        <AppFilterToolbar
+          v-model:search-term="busqueda"
+          v-model:per-page="cantidadPorPagina"
+          title="Filtrar plantillas"
+          description="Buscá por nombre, placeholders, secciones o texto base del documento."
+          search-placeholder="Buscar por título, campos o contenido"
+          :results-label="`Mostrando ${resumenPaginacion.inicio}-${resumenPaginacion.fin} de ${totalPlantillasFiltradas} visibles`"
+          :per-page-options="opcionesCantidadPorPagina"
+          :has-active-filters="hayFiltrosActivos"
+          :active-filter-count="filtrosAplicadosCount"
+          @clear-filters="limpiarFiltros"
+        >
+          <template #summaryExtra>
+            <span class="text-sm text-muted">
+              {{ plantillasFiltradas.length }} de {{ plantillas.length }} plantillas filtradas
+            </span>
+          </template>
+
+          <template #filters>
+            <div class="grid gap-2">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">Estado</p>
+              <div class="flex flex-wrap gap-2">
+                <UButton
+                  size="sm"
+                  :color="filtrosEstadoSeleccionados.length === 0 ? 'primary' : 'neutral'"
+                  :variant="filtrosEstadoSeleccionados.length === 0 ? 'solid' : 'outline'"
+                  @click="filtrosEstadoSeleccionados = []"
+                >
+                  Todas
+                </UButton>
+
+                <UButton
+                  v-for="estado in filtrosEstado"
+                  :key="estado"
+                  size="sm"
+                  :color="filtrosEstadoSeleccionados.includes(estado) ? 'primary' : 'neutral'"
+                  :variant="filtrosEstadoSeleccionados.includes(estado) ? 'solid' : 'outline'"
+                  @click="toggleFiltroEstado(estado)"
+                >
+                  {{ etiquetaFiltroEstado[estado] }}
+                </UButton>
+              </div>
             </div>
 
-            <UInput
-              v-model="busqueda"
-              icon="i-lucide-search"
-              placeholder="Buscar por título, campos o contenido"
-            />
-          </div>
+            <div class="grid gap-2">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">Origen</p>
+              <div class="flex flex-wrap gap-2">
+                <UButton
+                  size="sm"
+                  :color="filtrosOrigenSeleccionados.length === 0 ? 'primary' : 'neutral'"
+                  :variant="filtrosOrigenSeleccionados.length === 0 ? 'solid' : 'outline'"
+                  @click="filtrosOrigenSeleccionados = []"
+                >
+                  Todos los orígenes
+                </UButton>
 
-          <div class="grid gap-3 xl:max-w-2xl xl:justify-items-end">
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                v-for="estado in filtrosEstado"
-                :key="estado"
-                size="sm"
-                :color="filtroEstado === estado ? 'primary' : 'neutral'"
-                :variant="filtroEstado === estado ? 'solid' : 'outline'"
-                @click="filtroEstado = estado"
-              >
-                {{ etiquetaFiltroEstado[estado] }}
-              </UButton>
+                <UButton
+                  v-for="origen in filtrosOrigen"
+                  :key="origen"
+                  size="sm"
+                  :color="filtrosOrigenSeleccionados.includes(origen) ? 'primary' : 'neutral'"
+                  :variant="filtrosOrigenSeleccionados.includes(origen) ? 'solid' : 'outline'"
+                  @click="toggleFiltroOrigen(origen)"
+                >
+                  {{ etiquetaFiltroOrigen[origen] }}
+                </UButton>
+              </div>
             </div>
-
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                v-for="origen in filtrosOrigen"
-                :key="origen"
-                size="sm"
-                :color="filtroOrigen === origen ? 'primary' : 'neutral'"
-                :variant="filtroOrigen === origen ? 'soft' : 'outline'"
-                @click="filtroOrigen = origen"
-              >
-                {{ etiquetaFiltroOrigen[origen] }}
-              </UButton>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-3 text-sm text-muted">
-              <span>
-                Mostrando {{ resumenPaginacion.inicio }}-{{ resumenPaginacion.fin }} de {{ totalPlantillasFiltradas }} visibles
-              </span>
-              <span>{{ plantillasFiltradas.length }} de {{ plantillas.length }} plantillas filtradas</span>
-              <USelect
-                v-model="cantidadPorPagina"
-                class="min-w-40"
-                value-key="value"
-                :items="opcionesCantidadPorPagina"
-              />
-              <UButton
-                v-if="hayFiltrosActivos"
-                size="sm"
-                color="neutral"
-                variant="ghost"
-                @click="limpiarFiltros"
-              >
-                Limpiar filtros
-              </UButton>
-            </div>
-          </div>
-        </div>
+          </template>
+        </AppFilterToolbar>
       </UCard>
     </div>
 

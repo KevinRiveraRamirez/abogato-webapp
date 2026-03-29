@@ -356,28 +356,22 @@ function getInitials(value: string) {
 
 <template>
   <div class="mx-auto max-w-6xl space-y-8">
-    <div class="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p class="text-sm font-medium uppercase tracking-[0.22em] text-primary/80">
-          Cuenta
-        </p>
-        <h1 class="mt-2 text-3xl font-semibold text-highlighted sm:text-4xl">
-          Mi perfil
-        </h1>
-        <p class="mt-2 max-w-2xl text-sm leading-6 text-muted sm:text-base">
-          Visulisa tus datos personales dentro de Abogato
-        </p>
-      </div>
-
-      <UButton
-        to="/account/security"
-        color="neutral"
-        variant="ghost"
-        leading-icon="i-lucide-shield-check"
-      >
-        Seguridad
-      </UButton>
-    </div>
+    <AppPageHeader
+      eyebrow="Cuenta"
+      title="Mi perfil"
+      description="Visulisa tus datos personales dentro de Abogato"
+    >
+      <template #actions>
+        <UButton
+          to="/account/security"
+          color="neutral"
+          variant="ghost"
+          leading-icon="i-lucide-shield-check"
+        >
+          Seguridad
+        </UButton>
+      </template>
+    </AppPageHeader>
 
     <div class="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <UCard class="relative overflow-hidden border-primary/10 bg-default/90 shadow-[0_30px_60px_-32px_rgba(15,23,42,0.18)] dark:bg-elevated/80 dark:shadow-[0_30px_60px_-32px_rgba(2,6,23,0.65)]">

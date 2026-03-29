@@ -464,16 +464,6 @@ watch(user, async (newUser) => {
 
 <template>
   <div class="mx-auto max-w-5xl">
-    <div class="mb-6">
-      <UButton
-        :to="profile?.role === 'admin' ? '/admin/tickets' : profile?.role === 'abogado' ? '/lawyer/tickets' : '/tickets'"
-        color="neutral"
-        variant="ghost"
-        leading-icon="i-lucide-arrow-left"
-      >
-        Volver
-      </UButton>
-    </div>
 
     <UAlert
       v-if="errorMsg"
@@ -495,52 +485,65 @@ watch(user, async (newUser) => {
     <SkeletonTicketDetail v-if="pageLoading" />
 
     <div v-else-if="ticket" class="grid gap-6">
-      <UCard>
-        <div class="flex justify-between items-start gap-3 flex-wrap">
-          <div>
-            <h1 class="text-2xl font-semibold text-highlighted">{{ ticket.title }}</h1>
-            <div class="mt-2 flex flex-wrap items-center gap-2">
-              <UBadge :color="ticketDisplayStatusColors[visibleTicketStatus]" variant="subtle">
-                {{ ticketDisplayStatusLabels[visibleTicketStatus] }}
-              </UBadge>
-              <UBadge :color="colorPrioridad[ticket.priority]" variant="outline">
-                Prioridad: {{ etiquetaPrioridad[ticket.priority] }}
-              </UBadge>
-            </div>
-            <p class="mt-1 text-xs text-toned">
-              Creado: {{ new Date(ticket.created_at).toLocaleString('es-CR') }}
-            </p>
-          </div>
+      <AppPageHeader
+        eyebrow="Ticket"
+        :title="ticket.title"
+        :description="ticket.description || 'Seguimiento completo del trámite, documentos, comentarios e historial.'"
+      >
+        <template #leading>
+          <UButton
+            :to="profile?.role === 'admin' ? '/admin/tickets' : profile?.role === 'abogado' ? '/lawyer/tickets' : '/tickets'"
+            color="neutral"
+            variant="ghost"
+            leading-icon="i-lucide-arrow-left"
+          >
+            Volver
+          </UButton>
+        </template>
 
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              v-if="puedeEditar && !editando"
-              color="neutral"
-              variant="outline"
-              @click="editando = true"
-            >
-              Editar
-            </UButton>
-            <UButton
-              v-if="puedeReabrir"
-              color="warning"
-              variant="outline"
-              :disabled="loading"
-              @click="solicitarReapertura"
-            >
-              Solicitar reapertura
-            </UButton>
-          </div>
-        </div>
-        <UAlert
-          v-if="ticket.reopen_requested"
-          color="warning"
-          variant="soft"
-          title="Solicitud de reapertura enviada"
-          description="Estamos esperando la respuesta del abogado asignado."
-          class="mt-4"
-        />
-      </UCard>
+        <template #titleMeta>
+          <UBadge :color="ticketDisplayStatusColors[visibleTicketStatus]" variant="subtle">
+            {{ ticketDisplayStatusLabels[visibleTicketStatus] }}
+          </UBadge>
+          <UBadge :color="colorPrioridad[ticket.priority]" variant="outline">
+            Prioridad: {{ etiquetaPrioridad[ticket.priority] }}
+          </UBadge>
+        </template>
+
+        <template #meta>
+          <p class="text-xs text-toned">
+            Creado: {{ new Date(ticket.created_at).toLocaleString('es-CR') }}
+          </p>
+        </template>
+
+        <template #actions>
+          <UButton
+            v-if="puedeEditar && !editando"
+            color="neutral"
+            variant="outline"
+            @click="editando = true"
+          >
+            Editar
+          </UButton>
+          <UButton
+            v-if="puedeReabrir"
+            color="warning"
+            variant="outline"
+            :disabled="loading"
+            @click="solicitarReapertura"
+          >
+            Solicitar reapertura
+          </UButton>
+        </template>
+      </AppPageHeader>
+
+      <UAlert
+        v-if="ticket.reopen_requested"
+        color="warning"
+        variant="soft"
+        title="Solicitud de reapertura enviada"
+        description="Estamos esperando la respuesta del abogado asignado."
+      />
 
       <UCard v-if="editando">
         <template #header>

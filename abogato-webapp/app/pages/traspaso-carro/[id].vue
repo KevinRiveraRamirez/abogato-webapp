@@ -220,16 +220,13 @@ async function guardarDocumento() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
-    <div class="mb-6 flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold text-highlighted">Traspaso de carro</h1>
-        <p class="mt-1 text-sm text-muted">
-          Consultá al propietario por cédula y agregá el vehículo al trámite notarial.
-        </p>
-      </div>
-
-      <div class="flex flex-wrap gap-2">
+  <div class="mx-auto max-w-5xl space-y-6">
+    <AppPageHeader
+      eyebrow="Vehículos"
+      title="Traspaso de carro"
+      description="Consultá al propietario por cédula y agregá el vehículo al trámite notarial."
+    >
+      <template #actions>
         <UButton
           to="/traspaso-carro"
           color="neutral"
@@ -245,8 +242,8 @@ async function guardarDocumento() {
         >
           Ver ticket
         </UButton>
-      </div>
-    </div>
+      </template>
+    </AppPageHeader>
 
     <UAlert
       v-if="errorMsg"

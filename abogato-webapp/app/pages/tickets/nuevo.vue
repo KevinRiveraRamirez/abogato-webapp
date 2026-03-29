@@ -584,9 +584,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-5xl">
-    <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div class="flex items-start gap-3">
+  <div class="mx-auto w-full max-w-5xl space-y-6">
+    <AppPageHeader
+      eyebrow="Cliente"
+      title="Nuevo ticket"
+      description="Elegí la plantilla del trámite, completá el formulario y adjuntá respaldo si hace falta."
+    >
+      <template #leading>
         <UButton
           color="neutral"
           variant="ghost"
@@ -594,23 +598,17 @@ onBeforeUnmount(() => {
           square
           @click="void volverAlListado()"
         />
-        <div>
-          <h1 class="text-2xl font-semibold text-highlighted">Nuevo ticket</h1>
-          <p class="mt-1 text-sm text-muted">
-            Elegí la plantilla del trámite, completá el formulario y adjuntá respaldo si hace falta.
-          </p>
-        </div>
-      </div>
+      </template>
 
-      <div class="flex flex-wrap gap-3">
+      <template #actions>
         <UButton color="neutral" variant="outline" @click="void volverAlListado()">
           Cancelar
         </UButton>
         <UButton :loading="loading" @click="crearTicket">
           {{ loading ? 'Creando...' : 'Crear ticket' }}
         </UButton>
-      </div>
-    </div>
+      </template>
+    </AppPageHeader>
 
     <UAlert
       v-if="errorMsg"

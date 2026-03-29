@@ -585,48 +585,43 @@ onMounted(() => {
   <SkeletonDashboardPage v-if="isInitialLoading" />
 
   <div v-else class="mx-auto w-full max-w-7xl space-y-8">
-    <section class="relative overflow-hidden rounded-[2rem] border border-primary/10 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.16),_transparent_36%),linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] p-8 shadow-[0_32px_80px_-44px_rgba(15,23,42,0.25)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.22),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.2),_transparent_36%),linear-gradient(135deg,rgba(15,23,42,0.92),rgba(2,6,23,0.96))]">
-      <div class="flex flex-wrap items-start justify-between gap-6">
-        <div class="max-w-3xl">
-          <p class="text-sm font-medium uppercase tracking-[0.22em] text-primary/80">
-            Abogado
-          </p>
-          <h1 class="mt-3 text-3xl font-semibold text-highlighted sm:text-4xl">
-            {{ heroTitle }}
-          </h1>
-          <p class="mt-3 text-sm leading-6 text-muted sm:text-base">
-            Un tablero operativo para priorizar casos, revisar documentos pendientes y detectar rapido donde hace falta criterio legal o asignacion.
-          </p>
-          <p v-if="profile?.office_address" class="mt-4 text-sm text-toned">
-            {{ profile.office_address }}
-          </p>
-        </div>
+    <AppPageHeader
+      eyebrow="Abogado"
+      :title="heroTitle"
+      description="Un tablero operativo para priorizar casos, revisar documentos pendientes y detectar rapido donde hace falta criterio legal o asignacion."
+    >
+      <template #actions>
+        <UButton color="primary" to="/lawyer/tickets">
+          Abrir mis casos
+        </UButton>
+        <UButton color="neutral" variant="outline" to="/account/profile">
+          Perfil profesional
+        </UButton>
+        <UButton color="neutral" variant="ghost" :loading="loading" @click="cargarDashboard">
+          Actualizar
+        </UButton>
+      </template>
 
-        <div class="flex flex-wrap gap-3">
-          <UButton color="primary" to="/lawyer/tickets">
-            Abrir mis casos
-          </UButton>
-          <UButton color="neutral" variant="outline" to="/account/profile">
-            Perfil profesional
-          </UButton>
-          <UButton color="neutral" variant="ghost" :loading="loading" @click="cargarDashboard">
-            Actualizar
-          </UButton>
-        </div>
-      </div>
+      <template #meta>
+        <p v-if="profile?.office_address" class="text-sm text-toned">
+          {{ profile.office_address }}
+        </p>
+      </template>
 
-      <div class="mt-8 grid gap-4 md:grid-cols-3">
-        <div
-          v-for="item in heroHighlights"
-          :key="item.label"
-          class="rounded-[1.5rem] border border-white/50 bg-white/65 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5"
-        >
-          <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">{{ item.label }}</p>
-          <p class="mt-3 text-3xl font-semibold text-highlighted">{{ item.value }}</p>
-          <p class="mt-2 text-sm text-muted">{{ item.helper }}</p>
+      <template #footer>
+        <div class="grid gap-4 md:grid-cols-3">
+          <div
+            v-for="item in heroHighlights"
+            :key="item.label"
+            class="rounded-[1.5rem] border border-white/50 bg-white/65 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5"
+          >
+            <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">{{ item.label }}</p>
+            <p class="mt-3 text-3xl font-semibold text-highlighted">{{ item.value }}</p>
+            <p class="mt-2 text-sm text-muted">{{ item.helper }}</p>
+          </div>
         </div>
-      </div>
-    </section>
+      </template>
+    </AppPageHeader>
 
     <UAlert
       v-if="errorMsg"

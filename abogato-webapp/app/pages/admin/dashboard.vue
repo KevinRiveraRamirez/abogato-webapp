@@ -188,25 +188,17 @@ onMounted(() => {
   <SkeletonDashboardPage v-if="isInitialLoading" />
 
   <div v-else class="mx-auto w-full max-w-7xl space-y-8">
-    <section class="relative overflow-hidden rounded-[2rem] border border-primary/10 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.14),_transparent_36%),linear-gradient(135deg,rgba(255,255,255,0.92),rgba(248,250,252,0.94))] p-8 shadow-[0_32px_80px_-44px_rgba(15,23,42,0.25)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.22),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.18),_transparent_36%),linear-gradient(135deg,rgba(15,23,42,0.92),rgba(2,6,23,0.96))]">
-      <div class="flex flex-wrap items-start justify-between gap-6">
-        <div class="max-w-3xl">
-          <p class="text-sm font-medium uppercase tracking-[0.22em] text-primary/80">
-            Admin
-          </p>
-          <h1 class="mt-3 text-3xl font-semibold text-highlighted sm:text-4xl">
-            Estado general del sistema
-          </h1>
-          <p class="mt-3 text-sm leading-6 text-muted sm:text-base">
-            Un panel operativo para ver carga de tickets, reaperturas, revisión documental y salud de usuarios sin mezclarlo con la vista del abogado.
-          </p>
-        </div>
-
+    <AppPageHeader
+      eyebrow="Admin"
+      title="Estado general del sistema"
+      description="Un panel operativo para ver carga de tickets, reaperturas, revisión documental y salud de usuarios sin mezclarlo con la vista del abogado."
+    >
+      <template #actions>
         <UButton color="neutral" variant="outline" :loading="loading" @click="cargarDashboard">
           Actualizar métricas
         </UButton>
-      </div>
-    </section>
+      </template>
+    </AppPageHeader>
 
     <UAlert
       v-if="errorMsg"
