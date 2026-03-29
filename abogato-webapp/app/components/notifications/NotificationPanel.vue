@@ -10,6 +10,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  dragStart: [event: PointerEvent]
   select: [notification: NotificationRecord]
   markAll: []
   refresh: []
@@ -73,7 +74,10 @@ const emptyFilterMessage = computed(() => {
     }"
   >
     <template #header>
-      <div class="flex items-start justify-between gap-3">
+      <div
+        class="flex items-start justify-between gap-3 cursor-grab select-none touch-none active:cursor-grabbing"
+        @pointerdown="emit('dragStart', $event)"
+      >
         <div>
           <h3 class="text-xl font-semibold tracking-tight text-highlighted">Notificaciones</h3>
           <p class="mt-1 text-sm text-muted">
@@ -81,15 +85,22 @@ const emptyFilterMessage = computed(() => {
           </p>
         </div>
 
-        <UButton
-          icon="i-lucide-refresh-cw"
-          size="sm"
-          color="neutral"
-          variant="ghost"
-          square
-          :loading="loading"
-          @click="emit('refresh')"
-        />
+        <div class="flex items-center gap-2">
+          <span class="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+            Arrastrar
+          </span>
+          <UIcon name="i-lucide-grip-horizontal" class="size-4 text-muted" />
+
+          <UButton
+            icon="i-lucide-refresh-cw"
+            size="sm"
+            color="neutral"
+            variant="ghost"
+            square
+            :loading="loading"
+            @click="emit('refresh')"
+          />
+        </div>
       </div>
 
       <div class="app-subtle-panel app-panel-sm mt-4 p-1">

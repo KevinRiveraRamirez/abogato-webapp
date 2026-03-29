@@ -31,9 +31,29 @@ const emit = defineEmits<{
 }>()
 
 const root = ref<HTMLElement | null>(null)
-const panel = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
-const panelStyle = ref<Record<string, string>>({})
+const viewportPadding = 12
+const {
+  panel,
+  panelStyle,
+  updatePanelPosition,
+  startDragging,
+  shouldIgnoreOutsideClick,
+} = useFloatingPanel({
+  storageKey: 'floating-panel:filters',
+  viewportMargin: viewportPadding,
+  getBaseStyle: () => {
+    const rect = root.value?.getBoundingClientRect()
+    const preferredWidth = 672
+    const maxWidth = Math.min(preferredWidth, window.innerWidth - viewportPadding * 2)
+    const width = Math.min(Math.max(rect?.width ?? 320, 320), maxWidth)
+
+    return {
+      width: `${width}px`,
+      maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
+    }
+  },
+})
 
 const searchModel = computed({
   get: () => props.searchTerm,
@@ -49,31 +69,10 @@ function closePanel() {
   isOpen.value = false
 }
 
-async function updatePanelPosition() {
-  if (!root.value) return
-
-  const rect = root.value.getBoundingClientRect()
-  const viewportPadding = 12
-  const preferredWidth = 672
-  const maxWidth = Math.min(preferredWidth, window.innerWidth - viewportPadding * 2)
-  const width = Math.min(Math.max(rect.width, 320), maxWidth)
-  const left = Math.min(
-    Math.max(viewportPadding, rect.right - width),
-    window.innerWidth - width - viewportPadding
-  )
-
-  panelStyle.value = {
-    top: `${rect.bottom + 8}px`,
-    left: `${left}px`,
-    width: `${width}px`,
-    maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
-  }
-}
-
 async function openPanel() {
   isOpen.value = true
   await nextTick()
-  await updatePanelPosition()
+  updatePanelPosition()
 }
 
 async function togglePanel() {
@@ -87,6 +86,7 @@ async function togglePanel() {
 
 function handleClickOutside(event: MouseEvent) {
   if (!isOpen.value || !root.value) return
+  if (shouldIgnoreOutsideClick()) return
 
   const target = event.target as Node | null
   if (target && (root.value.contains(target) || panel.value?.contains(target))) return
@@ -208,11 +208,23 @@ watch(isOpen, async (open) => {
         >
           <AppSurface variant="floating" radius="xl" padding="sm">
             <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-sm font-semibold text-highlighted">Filtros</p>
-                <p class="mt-1 text-xs text-muted">
-                  {{ activeFilterCount ? `${activeFilterCount} aplicados` : 'Sin filtros adicionales aplicados' }}
-                </p>
+              <div
+                class="flex flex-1 items-start justify-between gap-3 cursor-grab select-none touch-none active:cursor-grabbing"
+                @pointerdown="startDragging"
+              >
+                <div>
+                  <p class="text-sm font-semibold text-highlighted">Filtros</p>
+                  <p class="mt-1 text-xs text-muted">
+                    {{ activeFilterCount ? `${activeFilterCount} aplicados` : 'Sin filtros adicionales aplicados' }}
+                  </p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+                    Arrastrar
+                  </span>
+                  <UIcon name="i-lucide-grip-horizontal" class="size-4 text-muted" />
+                </div>
               </div>
 
               <UButton

@@ -1,5 +1,5 @@
 export function useAppShell() {
-  const collapsed = useState<boolean>('app-shell:collapsed', () => false)
+  const collapsed = useState<boolean>('app-shell:collapsed', () => true)
   const mobileOpen = useState<boolean>('app-shell:mobile-open', () => false)
 
   function toggleCollapsed() {

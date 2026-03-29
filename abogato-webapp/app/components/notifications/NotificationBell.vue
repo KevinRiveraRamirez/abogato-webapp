@@ -22,10 +22,16 @@ const {
 } = useNotifications()
 
 const root = ref<HTMLElement | null>(null)
-const panel = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
-
-const panelStyle = ref<Record<string, string>>({})
+const {
+  panel,
+  panelStyle,
+  updatePanelPosition,
+  startDragging,
+  shouldIgnoreOutsideClick,
+} = useFloatingPanel({
+  storageKey: 'floating-panel:notifications',
+})
 
 const unreadBadge = computed(() => {
   if (!unreadCount.value) return ''
@@ -84,6 +90,7 @@ async function handleMarkAll() {
 
 function handleClickOutside(event: MouseEvent) {
   if (!isOpen.value || !root.value) return
+  if (shouldIgnoreOutsideClick()) return
 
   const target = event.target
   if (!(target instanceof Node)) return
@@ -96,43 +103,6 @@ function handleClickOutside(event: MouseEvent) {
 function handleEscape(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     isOpen.value = false
-  }
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max)
-}
-
-function updatePanelPosition() {
-  if (!isOpen.value || !root.value || !panel.value || !import.meta.client) return
-
-  const gap = 12
-  const margin = 16
-  const triggerRect = root.value.getBoundingClientRect()
-  const panelRect = panel.value.getBoundingClientRect()
-  const viewportWidth = window.innerWidth
-  const viewportHeight = window.innerHeight
-
-  let left = triggerRect.right - panelRect.width
-  let top = triggerRect.bottom + gap
-
-  if (props.panelPlacement === 'right-end') {
-    left = triggerRect.right + gap
-    top = triggerRect.bottom - panelRect.height
-  } else if (props.panelPlacement === 'bottom-start') {
-    left = triggerRect.left
-    top = triggerRect.bottom + gap
-  } else if (props.panelPlacement === 'top-start') {
-    left = triggerRect.left
-    top = triggerRect.top - panelRect.height - gap
-  }
-
-  left = clamp(left, margin, Math.max(margin, viewportWidth - panelRect.width - margin))
-  top = clamp(top, margin, Math.max(margin, viewportHeight - panelRect.height - margin))
-
-  panelStyle.value = {
-    left: `${left}px`,
-    top: `${top}px`,
   }
 }
 
@@ -194,6 +164,7 @@ onBeforeUnmount(() => {
             :unread-count="unreadCount"
             :loading="loading"
             :error="lastError"
+            @drag-start="startDragging"
             @select="handleSelect"
             @mark-all="handleMarkAll"
             @refresh="refresh"
