@@ -31,6 +31,9 @@ const successMsg = ref('')
 const busqueda = ref('')
 const filtroEstado = ref<'todos' | 'requieren_accion' | TicketStatus>('todos')
 const perfiles = ref<Record<string, TicketProfile>>({})
+const ticketExpandido = ref<string | null>(null)
+const paginaActual = ref(1)
+const cantidadPorPagina = ref(10)
 
 const etiquetaEstado: Record<TicketStatus, string> = {
   open: 'Pendiente',
@@ -61,6 +64,11 @@ const colorPrioridad: Record<TicketPriority, 'neutral' | 'warning' | 'error'> = 
 }
 
 const filtrosEstado = ['todos', 'requieren_accion', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
+const opcionesCantidadPorPagina = [
+  { label: '10 por página', value: 10 },
+  { label: '20 por página', value: 20 },
+  { label: '50 por página', value: 50 },
+] as const
 
 const ticketsFiltrados = computed(() => {
   const termino = busqueda.value.trim().toLowerCase()
@@ -85,6 +93,28 @@ const ticketsFiltrados = computed(() => {
   })
 })
 
+const totalTicketsFiltrados = computed(() => ticketsFiltrados.value.length)
+
+const totalPaginas = computed(() => {
+  return Math.max(1, Math.ceil(totalTicketsFiltrados.value / cantidadPorPagina.value))
+})
+
+const ticketsPaginados = computed(() => {
+  const inicio = (paginaActual.value - 1) * cantidadPorPagina.value
+  return ticketsFiltrados.value.slice(inicio, inicio + cantidadPorPagina.value)
+})
+
+const resumenPaginacion = computed(() => {
+  if (!totalTicketsFiltrados.value) {
+    return { inicio: 0, fin: 0 }
+  }
+
+  const inicio = (paginaActual.value - 1) * cantidadPorPagina.value + 1
+  const fin = Math.min(inicio + cantidadPorPagina.value - 1, totalTicketsFiltrados.value)
+
+  return { inicio, fin }
+})
+
 const resumen = computed(() => ({
   total: tickets.value.length,
   requierenAccion: tickets.value.filter(ticket => ticket.reopen_requested).length,
@@ -105,6 +135,10 @@ function formatearFecha(fecha: string) {
     month: 'short',
     year: 'numeric',
   })
+}
+
+function actualizarFilaExpandida(ticketId: string, open: boolean) {
+  ticketExpandido.value = open ? ticketId : ticketExpandido.value === ticketId ? null : ticketExpandido.value
 }
 
 function puedeCerrar(ticket: Ticket) {
@@ -250,6 +284,22 @@ async function reabrirTicket(ticket: Ticket) {
   await cargarTickets()
 }
 
+watch([busqueda, filtroEstado, cantidadPorPagina], () => {
+  paginaActual.value = 1
+  ticketExpandido.value = null
+})
+
+watch(totalPaginas, (total) => {
+  if (paginaActual.value > total) paginaActual.value = total
+})
+
+watch(ticketsPaginados, (lista) => {
+  if (!ticketExpandido.value) return
+
+  const sigueVisible = lista.some(ticket => ticket.id === ticketExpandido.value)
+  if (!sigueVisible) ticketExpandido.value = null
+})
+
 onMounted(() => {
   cargarTickets()
 })
@@ -344,6 +394,19 @@ onMounted(() => {
               }}
             </UButton>
           </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <p class="text-sm text-muted">
+              Mostrando {{ resumenPaginacion.inicio }}-{{ resumenPaginacion.fin }} de {{ totalTicketsFiltrados }}
+            </p>
+
+            <USelect
+              v-model="cantidadPorPagina"
+              class="min-w-40"
+              value-key="value"
+              :items="opcionesCantidadPorPagina"
+            />
+          </div>
         </div>
       </template>
 
@@ -354,76 +417,197 @@ onMounted(() => {
         <p class="mt-2 text-sm text-muted">Probá otro estado o una búsqueda distinta.</p>
       </div>
 
-      <div v-else class="grid gap-4">
-        <UCard
-          v-for="ticket in ticketsFiltrados"
-          :key="ticket.id"
-          class="border border-default/80 bg-default/90 shadow-sm"
-        >
-          <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <UBadge :color="colorEstado[ticket.status]" variant="subtle">
-                  {{ etiquetaEstado[ticket.status] }}
-                </UBadge>
-                <UBadge :color="colorPrioridad[ticket.priority]" variant="outline">
-                  {{ etiquetaPrioridad[ticket.priority] }}
-                </UBadge>
-                <UBadge v-if="ticket.reopen_requested" color="warning" variant="soft">
-                  Reapertura solicitada
-                </UBadge>
-              </div>
-
-              <h3 class="mt-4 text-lg font-semibold text-highlighted">
-                {{ ticket.title }}
-              </h3>
-
-              <p v-if="ticket.description" class="mt-2 max-w-3xl text-sm leading-6 text-muted">
-                {{ ticket.description }}
-              </p>
-
-              <div class="mt-4 grid gap-2 text-sm text-muted sm:grid-cols-2 xl:grid-cols-4">
-                <p><span class="font-medium text-highlighted">Ticket:</span> #{{ String(ticket.id).slice(0, 8) }}</p>
-                <p><span class="font-medium text-highlighted">Cliente:</span> {{ obtenerNombre(ticket.created_by) }}</p>
-                <p><span class="font-medium text-highlighted">Responsable:</span> {{ obtenerNombre(ticket.assigned_to) }}</p>
-                <p><span class="font-medium text-highlighted">Fecha:</span> {{ formatearFecha(ticket.created_at) }}</p>
-              </div>
+      <div
+        v-else
+        class="overflow-hidden rounded-[1.75rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] shadow-[0_24px_70px_-42px_rgba(15,23,42,0.3)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))]"
+      >
+        <div class="overflow-x-auto pb-1 [scrollbar-gutter:stable_both-edges]">
+          <div class="min-w-[60rem]">
+            <div class="grid grid-cols-[10rem_minmax(16rem,1.8fr)_minmax(11rem,1.1fr)_11rem_9rem] gap-4 border-b border-default/70 bg-elevated/70 pl-5 pr-9 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted sm:pr-10">
+              <p>Ticket</p>
+              <p>Caso</p>
+              <p>Cliente</p>
+              <p>Estado</p>
+              <p>Fecha</p>
             </div>
 
-            <div class="flex flex-wrap gap-2 xl:justify-end">
-              <UButton
-                color="neutral"
-                variant="outline"
-                :to="`/ticket/${ticket.id}`"
+            <div class="divide-y divide-default/60">
+              <UCollapsible
+                v-for="ticket in ticketsPaginados"
+                :key="ticket.id"
+                :open="ticketExpandido === ticket.id"
+                :unmount-on-hide="false"
+                @update:open="(open) => actualizarFilaExpandida(ticket.id, open)"
               >
-                Ver detalle
-              </UButton>
+                <template #default="{ open }">
+                  <button
+                    type="button"
+                    class="grid w-full grid-cols-[10rem_minmax(16rem,1.8fr)_minmax(11rem,1.1fr)_11rem_9rem] gap-4 pl-5 pr-9 py-4 text-left transition hover:bg-primary/5 sm:pr-10"
+                    :class="[
+                      open ? 'bg-primary/6' : '',
+                      ticket.reopen_requested ? 'bg-warning/5 hover:bg-warning/8' : ''
+                    ]"
+                    :aria-label="open ? `Minimizar ticket ${ticket.id}` : `Expandir ticket ${ticket.id}`"
+                  >
+                    <div class="min-w-0">
+                      <p class="font-semibold text-highlighted">
+                        #{{ String(ticket.id).slice(0, 8) }}
+                      </p>
+                      <p class="mt-1 text-xs text-muted">
+                        {{ ticket.reopen_requested ? 'Reapertura pendiente' : 'Seguimiento administrativo' }}
+                      </p>
+                    </div>
 
-              <UButton
-                v-if="puedeReabrir(ticket)"
-                color="warning"
-                variant="soft"
-                :loading="actionLoadingId === ticket.id"
-                :disabled="actionLoadingId === ticket.id"
-                @click="reabrirTicket(ticket)"
-              >
-                Reabrir ticket
-              </UButton>
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="truncate font-medium text-highlighted">
+                          {{ ticket.title }}
+                        </p>
+                        <UBadge :color="colorPrioridad[ticket.priority]" variant="outline" size="sm">
+                          {{ etiquetaPrioridad[ticket.priority] }}
+                        </UBadge>
+                      </div>
+                      <p class="mt-1 line-clamp-2 text-xs text-muted">
+                        {{ ticket.description || 'Sin descripción adicional.' }}
+                      </p>
+                    </div>
 
-              <UButton
-                v-if="puedeCerrar(ticket)"
-                color="neutral"
-                variant="soft"
-                :loading="actionLoadingId === ticket.id"
-                :disabled="actionLoadingId === ticket.id"
-                @click="cerrarTicket(ticket)"
-              >
-                {{ ticket.reopen_requested ? 'Mantener cerrado' : 'Cerrar ticket' }}
-              </UButton>
+                    <div class="min-w-0">
+                      <p class="truncate text-sm font-medium text-highlighted">
+                        {{ obtenerNombre(ticket.created_by) }}
+                      </p>
+                      <p class="mt-1 truncate text-xs text-muted">
+                        Solicitante del caso
+                      </p>
+                    </div>
+
+                    <div class="flex min-w-0 flex-col gap-2">
+                      <UBadge :color="colorEstado[ticket.status]" variant="subtle">
+                        {{ etiquetaEstado[ticket.status] }}
+                      </UBadge>
+                      <UBadge v-if="ticket.reopen_requested" color="warning" variant="soft">
+                        Reapertura solicitada
+                      </UBadge>
+                    </div>
+
+                    <div class="text-sm text-muted">
+                      {{ formatearFecha(ticket.created_at) }}
+                    </div>
+                  </button>
+                </template>
+
+                <template #content>
+                  <div class="border-t border-default/60 bg-elevated/35 px-5 py-5">
+                    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                      <div class="grid gap-4 md:grid-cols-2">
+                        <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Estado</p>
+                          <div class="mt-2 flex flex-wrap gap-2">
+                            <UBadge :color="colorEstado[ticket.status]" variant="subtle">
+                              {{ etiquetaEstado[ticket.status] }}
+                            </UBadge>
+                            <UBadge :color="colorPrioridad[ticket.priority]" variant="outline">
+                              {{ etiquetaPrioridad[ticket.priority] }}
+                            </UBadge>
+                          </div>
+                          <p class="mt-3 text-sm text-muted">
+                            {{
+                              ticket.reopen_requested
+                                ? 'Este ticket está esperando una decisión administrativa sobre la reapertura.'
+                                : 'Estado actual del caso dentro del flujo interno.'
+                            }}
+                          </p>
+                        </div>
+
+                        <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Participantes</p>
+                          <p class="mt-2 text-sm font-medium text-highlighted">
+                            Cliente: {{ obtenerNombre(ticket.created_by) }}
+                          </p>
+                          <p class="mt-2 text-sm text-muted">
+                            Responsable: {{ obtenerNombre(ticket.assigned_to) }}
+                          </p>
+                          <p class="mt-3 text-xs text-muted">
+                            Alta {{ formatearFecha(ticket.created_at) }}
+                          </p>
+                        </div>
+
+                        <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm md:col-span-2">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Descripción</p>
+                          <p class="mt-2 text-sm leading-6 text-muted">
+                            {{ ticket.description || 'Este ticket no tiene descripción adicional registrada.' }}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div class="grid gap-3 rounded-[1.5rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                        <div>
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Acciones rápidas</p>
+                          <p class="mt-2 text-sm text-muted">
+                            Revisá el detalle completo y decidí si el caso debe mantenerse cerrado o volver a abrirse.
+                          </p>
+                        </div>
+
+                        <UButton
+                          color="neutral"
+                          variant="outline"
+                          class="justify-center"
+                          :to="`/ticket/${ticket.id}`"
+                        >
+                          Ver detalle
+                        </UButton>
+
+                        <UButton
+                          v-if="puedeReabrir(ticket)"
+                          color="warning"
+                          variant="soft"
+                          :loading="actionLoadingId === ticket.id"
+                          :disabled="actionLoadingId === ticket.id"
+                          class="justify-center"
+                          @click="reabrirTicket(ticket)"
+                        >
+                          Reabrir ticket
+                        </UButton>
+
+                        <UButton
+                          v-if="puedeCerrar(ticket)"
+                          color="neutral"
+                          variant="soft"
+                          :loading="actionLoadingId === ticket.id"
+                          :disabled="actionLoadingId === ticket.id"
+                          class="justify-center"
+                          @click="cerrarTicket(ticket)"
+                        >
+                          {{ ticket.reopen_requested ? 'Mantener cerrado' : 'Cerrar ticket' }}
+                        </UButton>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </UCollapsible>
             </div>
           </div>
-        </UCard>
+        </div>
       </div>
+
+      <template v-if="totalTicketsFiltrados">
+        <USeparator class="mt-6" />
+
+        <div class="flex flex-col gap-4 pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <p class="text-sm text-muted">
+            Página {{ paginaActual }} de {{ totalPaginas }}
+          </p>
+
+          <UPagination
+            v-model:page="paginaActual"
+            :total="totalTicketsFiltrados"
+            :items-per-page="cantidadPorPagina"
+            show-edges
+            active-color="primary"
+            active-variant="solid"
+          />
+        </div>
+      </template>
     </UCard>
   </div>
 </template>

@@ -67,6 +67,8 @@ const loading = ref(false)
 const errorMsg = ref('')
 const filtroEstado = ref('todos')
 const busqueda = ref('')
+const paginaActual = ref(1)
+const cantidadPorPagina = ref(10)
 const documentosPorTicket = ref<Record<string, Documento[]>>({})
 const perfilesAbogados = ref<Record<string, PerfilAbogado>>({})
 const ticketExpandido = ref<string | null>(null)
@@ -99,6 +101,11 @@ const colorPrioridad: Record<Ticket['priority'], 'neutral' | 'warning' | 'error'
 }
 
 const filtrosEstado = ['todos', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
+const opcionesCantidadPorPagina = [
+  { label: '10 por página', value: 10 },
+  { label: '20 por página', value: 20 },
+  { label: '50 por página', value: 50 },
+] as const
 
 const colorEstadoDocumento: Record<string, 'warning' | 'success' | 'error' | 'neutral'> = {
   submitted: 'warning',
@@ -194,6 +201,28 @@ const ticketsFiltrados = computed(() => {
       etiquetaPrioridad[ticket.priority],
     ].some(value => String(value).toLowerCase().includes(termino))
   })
+})
+
+const totalTicketsFiltrados = computed(() => ticketsFiltrados.value.length)
+
+const totalPaginas = computed(() => {
+  return Math.max(1, Math.ceil(totalTicketsFiltrados.value / cantidadPorPagina.value))
+})
+
+const ticketsPaginados = computed(() => {
+  const inicio = (paginaActual.value - 1) * cantidadPorPagina.value
+  return ticketsFiltrados.value.slice(inicio, inicio + cantidadPorPagina.value)
+})
+
+const resumenPaginacion = computed(() => {
+  if (!totalTicketsFiltrados.value) {
+    return { inicio: 0, fin: 0 }
+  }
+
+  const inicio = (paginaActual.value - 1) * cantidadPorPagina.value + 1
+  const fin = Math.min(inicio + cantidadPorPagina.value - 1, totalTicketsFiltrados.value)
+
+  return { inicio, fin }
 })
 
 const ticketsConReapertura = computed(() =>
@@ -319,6 +348,22 @@ async function toggleDocumentos(ticket: Ticket) {
       cargarDocumentosTicket(ticket.id)
     ])
   }
+}
+
+async function actualizarFilaExpandida(ticket: Ticket, open: boolean) {
+  if (!open) {
+    if (ticketExpandido.value === ticket.id) ticketExpandido.value = null
+    return
+  }
+
+  if (ticketExpandido.value !== ticket.id) {
+    ticketExpandido.value = ticket.id
+  }
+
+  await Promise.all([
+    cargarPerfilAbogado(ticket.assigned_to),
+    cargarDocumentosTicket(ticket.id),
+  ])
 }
 
 function obtenerPlantillaDocumento(documento: Documento) {
@@ -582,7 +627,6 @@ const columns = computed<TableColumn<Ticket>[]>(() => [
         size: 'sm',
         color: obtenerColorEstadoVisible(row.original),
         variant: 'soft',
-        trailingIcon: 'i-lucide-chevron-down',
       }, () => obtenerEtiquetaEstadoVisible(row.original)),
     }),
     meta: {
@@ -599,7 +643,6 @@ const columns = computed<TableColumn<Ticket>[]>(() => [
       size: 'sm',
       color: 'neutral',
       variant: row.original.id === ticketExpandido.value ? 'soft' : 'outline',
-      trailingIcon: row.original.id === ticketExpandido.value ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down',
       onClick: () => toggleDocumentos(row.original),
     }, () => row.original.id === ticketExpandido.value ? 'Ocultar' : 'Abrir'),
     meta: {
@@ -764,6 +807,22 @@ onMounted(async () => {
   await cargarPerfil()
   await cargarTickets()
 })
+
+watch([busqueda, filtroEstado, cantidadPorPagina], () => {
+  paginaActual.value = 1
+  ticketExpandido.value = null
+})
+
+watch(totalPaginas, (total) => {
+  if (paginaActual.value > total) paginaActual.value = total
+})
+
+watch(ticketsPaginados, (lista) => {
+  if (!ticketExpandido.value) return
+
+  const sigueVisible = lista.some(ticket => ticket.id === ticketExpandido.value)
+  if (!sigueVisible) ticketExpandido.value = null
+})
 </script>
 
 <template>
@@ -843,125 +902,320 @@ onMounted(async () => {
               {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
             </UButton>
           </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <p class="text-sm text-muted">
+              Mostrando {{ resumenPaginacion.inicio }}-{{ resumenPaginacion.fin }} de {{ totalTicketsFiltrados }}
+            </p>
+
+            <USelect
+              v-model="cantidadPorPagina"
+              class="min-w-40"
+              value-key="value"
+              :items="opcionesCantidadPorPagina"
+            />
+          </div>
         </div>
       </template>
 
-      <UTable
-        :data="ticketsFiltrados"
-        :columns="columns"
-        :loading="loading"
-        :expanded="expandedRows"
-        :get-row-id="(ticket) => ticket.id"
-        :expanded-options="{ getRowCanExpand: () => true }"
-        sticky="header"
-        empty="No hay tickets para este filtro."
-        :meta="{
-          class: {
-            tr: (row) => row.original.id === ticketExpandido ? 'bg-elevated/60' : ''
-          }
-        }"
+      <SkeletonListCards v-if="loading && !tickets.length" :items="4" />
+
+      <div v-else-if="!ticketsFiltrados.length" class="py-10 text-center">
+        <p class="font-medium text-highlighted">No hay tickets para este filtro.</p>
+        <p class="mt-2 text-sm text-muted">Probá otro estado o ajustá la búsqueda.</p>
+      </div>
+
+      <div
+        v-else
+        class="overflow-hidden rounded-[1.75rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] shadow-[0_24px_70px_-42px_rgba(15,23,42,0.3)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))]"
       >
-        <template #expanded="{ row }">
-          <div class="min-w-0 max-w-full whitespace-normal px-1 py-2">
-            <div class="min-w-0 overflow-hidden rounded-3xl border border-default bg-gradient-to-br from-elevated/70 via-default to-elevated/30">
-              <div class="border-b border-default/70 px-4 py-4 sm:px-5">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <UBadge color="neutral" variant="soft">Documentos</UBadge>
-                      <UBadge color="primary" variant="subtle">
-                        {{ documentosPorTicket[row.original.id]?.length ?? 0 }}
-                      </UBadge>
-                      <span class="text-xs text-muted">Ticket #{{ String(row.original.id).slice(0, 8) }}</span>
-                    </div>
-                    <h3 class="mt-3 text-base font-semibold text-highlighted">{{ row.original.title }}</h3>
-                    <p v-if="row.original.description" class="mt-1 max-w-3xl text-sm leading-6 text-muted">
-                      {{ row.original.description }}
-                    </p>
-                  </div>
+        <div class="overflow-x-auto pb-1">
+          <div class="min-w-[52rem] w-full">
+            <div class="grid grid-cols-[10rem_minmax(18rem,2fr)_11rem_9rem] gap-4 border-b border-default/70 bg-elevated/70 pl-5 pr-9 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted sm:pr-10">
+              <p>Ticket</p>
+              <p>Asunto</p>
+              <p>Estado</p>
+              <p>Fecha</p>
+            </div>
 
-                  <div class="min-w-0">
-                    <UButton
-                      size="sm"
-                      color="neutral"
-                      variant="ghost"
-                      icon="i-lucide-file-text"
-                      @click="abrirDocumentoDesdeTicket(row.original)"
-                    >
-                      Abrir mas reciente
-                    </UButton>
-                  </div>
-                </div>
-              </div>
-
-              <div class="p-4 sm:p-5">
-                <div
-                  v-if="!documentosPorTicket[row.original.id]?.length"
-                  class="rounded-2xl border border-dashed border-default bg-default/80 px-4 py-8 text-center"
-                >
-                  <p class="font-medium text-highlighted">Todavia no hay documentos en este ticket.</p>
-                  <p class="mt-2 text-sm text-muted">
-                    Cuando el cliente genere un documento, lo vas a poder revisar y aprobar desde aqui.
-                  </p>
-                </div>
-
-                <div v-else class="grid gap-3 xl:grid-cols-2">
-                  <UCard
-                    v-for="d in documentosPorTicket[row.original.id]"
-                    :key="d.id"
-                    class="min-w-0 border border-default/80 bg-default/90 shadow-sm"
+            <div class="divide-y divide-default/60">
+              <UCollapsible
+                v-for="ticket in ticketsPaginados"
+                :key="ticket.id"
+                :open="ticketExpandido === ticket.id"
+                :unmount-on-hide="false"
+                @update:open="(open) => actualizarFilaExpandida(ticket, open)"
+              >
+                <template #default="{ open }">
+                  <button
+                    type="button"
+                    class="grid w-full grid-cols-[10rem_minmax(18rem,2fr)_11rem_9rem] gap-4 pl-5 pr-9 py-4 text-left transition hover:bg-primary/5 sm:pr-10"
+                    :class="[
+                      open ? 'bg-primary/6' : '',
+                      ticket.reopen_requested ? 'bg-warning/5 hover:bg-warning/8' : ''
+                    ]"
+                    :aria-label="open ? `Minimizar ticket ${ticket.id}` : `Expandir ticket ${ticket.id}`"
                   >
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <p class="truncate font-medium text-highlighted">
-                          {{ obtenerPlantillaDocumento(d)?.title ?? 'Documento legal' }}
-                        </p>
-                        <p class="mt-1 text-xs text-muted">
-                          Generado {{ formatearFecha(d.created_at) }}
-                        </p>
-                      </div>
-
-                      <UBadge :color="colorEstadoDocumento[d.status] ?? 'neutral'" variant="subtle">
-                        {{ etiquetaEstadoDocumento[d.status] ?? 'Borrador' }}
-                      </UBadge>
-                    </div>
-
-                    <div class="mt-4 min-w-0 rounded-2xl border border-default/70 bg-elevated/50 p-3">
-                      <p class="break-words text-sm leading-6 text-muted">
-                        Revisá el contenido legal completo con los datos ya integrados antes de aprobarlo o rechazarlo.
+                    <div class="min-w-0">
+                      <p class="font-semibold text-highlighted">
+                        #{{ String(ticket.id).slice(0, 8) }}
+                      </p>
+                      <p class="mt-1 text-xs text-muted">
+                        {{
+                          ticket.reopen_requested
+                            ? 'Reapertura solicitada'
+                            : ticket.wasReopened
+                              ? 'Reabierto'
+                              : 'Bandeja legal'
+                        }}
                       </p>
                     </div>
 
-                    <UAlert
-                      v-if="d.status === 'rejected' && d.rejection_reason"
-                      color="error"
-                      variant="soft"
-                      title="Motivo del rechazo"
-                      :description="d.rejection_reason"
-                      class="mt-4"
-                    />
-
-                    <div class="mt-4 flex flex-wrap items-center gap-2">
-                      <UButton size="sm" color="neutral" variant="outline" @click="abrirDocumento(d, row.original)">
-                        Ver documento
-                      </UButton>
-
-                      <template v-if="d.status === 'submitted'">
-                        <UButton size="sm" @click="aprobarDocumento(d.id, row.original.id)">
-                          Aprobar
-                        </UButton>
-                        <UButton size="sm" color="error" variant="outline" @click="abrirModalRechazo(d.id, row.original.id)">
-                          Rechazar
-                        </UButton>
-                      </template>
+                    <div class="min-w-0">
+                      <p class="truncate font-medium text-highlighted">
+                        {{ ticket.title }}
+                      </p>
+                      <p class="mt-1 line-clamp-2 text-xs text-muted">
+                        {{ ticket.description || 'Sin descripción adicional.' }}
+                      </p>
                     </div>
-                  </UCard>
-                </div>
-              </div>
+
+                    <div class="flex min-w-0 flex-col gap-2">
+                      <UBadge :color="obtenerColorEstadoVisible(ticket)" variant="subtle">
+                        {{ obtenerEtiquetaEstadoVisible(ticket) }}
+                      </UBadge>
+                    </div>
+
+                    <div class="whitespace-nowrap text-sm text-muted">
+                      {{ formatearFecha(ticket.created_at) }}
+                    </div>
+                  </button>
+                </template>
+
+                <template #content>
+                  <div class="border-t border-default/60 bg-elevated/35 px-5 py-5">
+                    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                      <div class="grid gap-4 md:grid-cols-2">
+                        <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Estado</p>
+                          <div class="mt-2 flex flex-wrap gap-2">
+                            <UBadge :color="obtenerColorEstadoVisible(ticket)" variant="subtle">
+                              {{ obtenerEtiquetaEstadoVisible(ticket) }}
+                            </UBadge>
+                            <UBadge :color="colorPrioridad[ticket.priority]" variant="outline">
+                              {{ etiquetaPrioridad[ticket.priority] }}
+                            </UBadge>
+                          </div>
+                          <p class="mt-3 text-sm text-muted">
+                            {{
+                              ticket.reopen_requested
+                                ? 'Hay una solicitud de reapertura esperando tu decisión.'
+                                : 'Gestioná el siguiente paso del caso desde esta bandeja.'
+                            }}
+                          </p>
+                        </div>
+
+                        <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Responsable y fecha</p>
+                          <p class="mt-2 text-sm font-medium text-highlighted">
+                            {{ obtenerNombreResponsable(ticket) }}
+                          </p>
+                          <p class="mt-2 text-sm text-muted">
+                            Creado {{ formatearFecha(ticket.created_at) }}
+                          </p>
+                          <p class="mt-3 text-xs text-muted">
+                            {{ ticket.assigned_to ? 'Ya está asignado a un abogado.' : 'Todavía no fue tomado por nadie.' }}
+                          </p>
+                        </div>
+
+                        <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm md:col-span-2">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Descripción</p>
+                          <p class="mt-2 text-sm leading-6 text-muted">
+                            {{ ticket.description || 'Este ticket no tiene descripción adicional registrada.' }}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div class="grid gap-3 rounded-[1.5rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                        <div>
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Acciones rápidas</p>
+                          <p class="mt-2 text-sm text-muted">
+                            Abrí el detalle completo, revisá el documento más reciente o avanzá el estado del caso.
+                          </p>
+                        </div>
+
+                        <UButton
+                          color="neutral"
+                          variant="outline"
+                          class="justify-center"
+                          :to="`/ticket/${ticket.id}`"
+                        >
+                          Ver detalle
+                        </UButton>
+
+                        <UButton
+                          color="neutral"
+                          variant="ghost"
+                          icon="i-lucide-file-text"
+                          class="justify-center"
+                          @click="abrirDocumentoDesdeTicket(ticket)"
+                        >
+                          Abrir mas reciente
+                        </UButton>
+
+                        <UButton
+                          v-if="siguienteEstado[ticket.status]"
+                          color="primary"
+                          variant="soft"
+                          class="justify-center"
+                          @click="avanzarEstado(ticket)"
+                        >
+                          {{ obtenerEtiquetaAccion(ticket) }}
+                        </UButton>
+
+                        <template v-if="ticket.reopen_requested">
+                          <UButton
+                            color="warning"
+                            variant="soft"
+                            class="justify-center"
+                            @click="aprobarReapertura(ticket)"
+                          >
+                            Aprobar reapertura
+                          </UButton>
+                          <UButton
+                            color="error"
+                            variant="outline"
+                            class="justify-center"
+                            @click="rechazarReapertura(ticket)"
+                          >
+                            Rechazar reapertura
+                          </UButton>
+                        </template>
+                      </div>
+                    </div>
+
+                    <div class="mt-4 min-w-0 overflow-hidden rounded-3xl border border-default bg-gradient-to-br from-elevated/70 via-default to-elevated/30">
+                      <div class="border-b border-default/70 px-4 py-4 sm:px-5">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                              <UBadge color="neutral" variant="soft">Documentos</UBadge>
+                              <UBadge color="primary" variant="subtle">
+                                {{ documentosPorTicket[ticket.id]?.length ?? 0 }}
+                              </UBadge>
+                              <span class="text-xs text-muted">Ticket #{{ String(ticket.id).slice(0, 8) }}</span>
+                            </div>
+                            <h3 class="mt-3 text-base font-semibold text-highlighted">{{ ticket.title }}</h3>
+                            <p v-if="ticket.description" class="mt-1 max-w-3xl text-sm leading-6 text-muted">
+                              {{ ticket.description }}
+                            </p>
+                          </div>
+
+                          <div class="min-w-0">
+                            <UButton
+                              size="sm"
+                              color="neutral"
+                              variant="ghost"
+                              icon="i-lucide-file-text"
+                              @click="abrirDocumentoDesdeTicket(ticket)"
+                            >
+                              Abrir mas reciente
+                            </UButton>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="p-4 sm:p-5">
+                        <div
+                          v-if="!documentosPorTicket[ticket.id]?.length"
+                          class="rounded-2xl border border-dashed border-default bg-default/80 px-4 py-8 text-center"
+                        >
+                          <p class="font-medium text-highlighted">Todavia no hay documentos en este ticket.</p>
+                          <p class="mt-2 text-sm text-muted">
+                            Cuando el cliente genere un documento, lo vas a poder revisar y aprobar desde aqui.
+                          </p>
+                        </div>
+
+                        <div v-else class="grid gap-3 xl:grid-cols-2">
+                          <UCard
+                            v-for="d in documentosPorTicket[ticket.id]"
+                            :key="d.id"
+                            class="min-w-0 border border-default/80 bg-default/90 shadow-sm"
+                          >
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                              <div class="min-w-0">
+                                <p class="truncate font-medium text-highlighted">
+                                  {{ obtenerPlantillaDocumento(d)?.title ?? 'Documento legal' }}
+                                </p>
+                                <p class="mt-1 text-xs text-muted">
+                                  Generado {{ formatearFecha(d.created_at) }}
+                                </p>
+                              </div>
+
+                              <UBadge :color="colorEstadoDocumento[d.status] ?? 'neutral'" variant="subtle">
+                                {{ etiquetaEstadoDocumento[d.status] ?? 'Borrador' }}
+                              </UBadge>
+                            </div>
+
+                            <div class="mt-4 min-w-0 rounded-2xl border border-default/70 bg-elevated/50 p-3">
+                              <p class="break-words text-sm leading-6 text-muted">
+                                Revisá el contenido legal completo con los datos ya integrados antes de aprobarlo o rechazarlo.
+                              </p>
+                            </div>
+
+                            <UAlert
+                              v-if="d.status === 'rejected' && d.rejection_reason"
+                              color="error"
+                              variant="soft"
+                              title="Motivo del rechazo"
+                              :description="d.rejection_reason"
+                              class="mt-4"
+                            />
+
+                            <div class="mt-4 flex flex-wrap items-center gap-2">
+                              <UButton size="sm" color="neutral" variant="outline" @click="abrirDocumento(d, ticket)">
+                                Ver documento
+                              </UButton>
+
+                              <template v-if="d.status === 'submitted'">
+                                <UButton size="sm" @click="aprobarDocumento(d.id, ticket.id)">
+                                  Aprobar
+                                </UButton>
+                                <UButton size="sm" color="error" variant="outline" @click="abrirModalRechazo(d.id, ticket.id)">
+                                  Rechazar
+                                </UButton>
+                              </template>
+                            </div>
+                          </UCard>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </UCollapsible>
             </div>
           </div>
-        </template>
-      </UTable>
+        </div>
+      </div>
+
+      <template v-if="totalTicketsFiltrados">
+        <USeparator />
+
+        <div class="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+          <p class="text-sm text-muted">
+            Página {{ paginaActual }} de {{ totalPaginas }}
+          </p>
+
+          <UPagination
+            v-model:page="paginaActual"
+            :total="totalTicketsFiltrados"
+            :items-per-page="cantidadPorPagina"
+            show-edges
+            active-color="primary"
+            active-variant="solid"
+          />
+        </div>
+      </template>
     </UCard>
 
     <UModal

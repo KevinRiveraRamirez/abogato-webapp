@@ -31,9 +31,16 @@ const successMsg = ref('')
 const busqueda = ref('')
 const filtroEstado = ref<'todos' | 'activas' | 'inactivas'>('todos')
 const filtroOrigen = ref<'todos' | 'manuales' | 'vinculadas'>('todos')
+const paginaActual = ref(1)
+const cantidadPorPagina = ref(10)
 
 const filtrosEstado = ['todos', 'activas', 'inactivas'] as const
 const filtrosOrigen = ['todos', 'manuales', 'vinculadas'] as const
+const opcionesCantidadPorPagina = [
+  { label: '10 por página', value: 10 },
+  { label: '20 por página', value: 20 },
+  { label: '50 por página', value: 50 },
+] as const
 
 const etiquetaFiltroEstado: Record<(typeof filtrosEstado)[number], string> = {
   todos: 'Todas',
@@ -99,6 +106,28 @@ const plantillasFiltradas = computed(() => {
   })
 })
 
+const totalPlantillasFiltradas = computed(() => plantillasFiltradas.value.length)
+
+const totalPaginas = computed(() => {
+  return Math.max(1, Math.ceil(totalPlantillasFiltradas.value / cantidadPorPagina.value))
+})
+
+const plantillasPaginadas = computed(() => {
+  const inicio = (paginaActual.value - 1) * cantidadPorPagina.value
+  return plantillasFiltradas.value.slice(inicio, inicio + cantidadPorPagina.value)
+})
+
+const resumenPaginacion = computed(() => {
+  if (!totalPlantillasFiltradas.value) {
+    return { inicio: 0, fin: 0 }
+  }
+
+  const inicio = (paginaActual.value - 1) * cantidadPorPagina.value + 1
+  const fin = Math.min(inicio + cantidadPorPagina.value - 1, totalPlantillasFiltradas.value)
+
+  return { inicio, fin }
+})
+
 const resumen = computed(() => ({
   total: plantillas.value.length,
   activas: plantillas.value.filter(template => template.activo).length,
@@ -157,6 +186,14 @@ async function toggleActivo(template: Template) {
     ? 'Plantilla desactivada correctamente.'
     : 'Plantilla activada correctamente.'
 }
+
+watch([busqueda, filtroEstado, filtroOrigen, cantidadPorPagina], () => {
+  paginaActual.value = 1
+})
+
+watch(totalPaginas, (total) => {
+  if (paginaActual.value > total) paginaActual.value = total
+})
 
 onMounted(async () => {
   await cargarPerfil()
@@ -277,7 +314,16 @@ onMounted(async () => {
             </div>
 
             <div class="flex flex-wrap items-center gap-3 text-sm text-muted">
-              <span>{{ plantillasFiltradas.length }} de {{ plantillas.length }} plantillas visibles</span>
+              <span>
+                Mostrando {{ resumenPaginacion.inicio }}-{{ resumenPaginacion.fin }} de {{ totalPlantillasFiltradas }} visibles
+              </span>
+              <span>{{ plantillasFiltradas.length }} de {{ plantillas.length }} plantillas filtradas</span>
+              <USelect
+                v-model="cantidadPorPagina"
+                class="min-w-40"
+                value-key="value"
+                :items="opcionesCantidadPorPagina"
+              />
               <UButton
                 v-if="hayFiltrosActivos"
                 size="sm"
@@ -317,56 +363,73 @@ onMounted(async () => {
       </div>
     </UCard>
 
-    <div v-else class="grid gap-4 lg:grid-cols-2">
-      <UCard
-        v-for="template in plantillasFiltradas"
-        :key="template.id"
-      >
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div class="min-w-0 flex-1">
-            <p class="font-medium text-highlighted">{{ template.title }}</p>
-            <p class="mt-1 text-sm text-muted">
-              {{ template.servicio_id == null ? 'Visible en el selector de trámites' : 'Plantilla heredada con servicio vinculado' }}
-            </p>
+    <div v-else class="space-y-5">
+      <div class="grid gap-4 lg:grid-cols-2">
+        <UCard
+          v-for="template in plantillasPaginadas"
+          :key="template.id"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <p class="font-medium text-highlighted">{{ template.title }}</p>
+              <p class="mt-1 text-sm text-muted">
+                {{ template.servicio_id == null ? 'Visible en el selector de trámites' : 'Plantilla heredada con servicio vinculado' }}
+              </p>
 
-            <div class="mt-3 flex flex-wrap gap-2">
-              <UBadge
-                :color="template.activo ? 'success' : 'neutral'"
-                :variant="template.activo ? 'soft' : 'outline'"
-              >
-                {{ template.activo ? 'Activa' : 'Inactiva' }}
-              </UBadge>
-              <UBadge color="neutral" variant="subtle">
-                {{ groupTemplateFields(template.fields).length }} secciones
-              </UBadge>
-              <UBadge color="primary" variant="soft">
-                {{ template.fields.length }} campos
-              </UBadge>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <UBadge
+                  :color="template.activo ? 'success' : 'neutral'"
+                  :variant="template.activo ? 'soft' : 'outline'"
+                >
+                  {{ template.activo ? 'Activa' : 'Inactiva' }}
+                </UBadge>
+                <UBadge color="neutral" variant="subtle">
+                  {{ groupTemplateFields(template.fields).length }} secciones
+                </UBadge>
+                <UBadge color="primary" variant="soft">
+                  {{ template.fields.length }} campos
+                </UBadge>
+              </div>
+
+              <p class="mt-3 text-xs text-toned">{{ formatearFecha(template.created_at) }}</p>
             </div>
 
-            <p class="mt-3 text-xs text-toned">{{ formatearFecha(template.created_at) }}</p>
+            <div class="flex flex-wrap justify-end gap-2">
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                :to="`/admin/plantillas/${template.id}`"
+              >
+                Editar
+              </UButton>
+              <UButton
+                size="sm"
+                :color="template.activo ? 'warning' : 'success'"
+                :variant="template.activo ? 'outline' : 'soft'"
+                @click="toggleActivo(template)"
+              >
+                {{ template.activo ? 'Desactivar' : 'Activar' }}
+              </UButton>
+            </div>
           </div>
+        </UCard>
+      </div>
 
-          <div class="flex flex-wrap justify-end gap-2">
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="outline"
-              :to="`/admin/plantillas/${template.id}`"
-            >
-              Editar
-            </UButton>
-            <UButton
-              size="sm"
-              :color="template.activo ? 'warning' : 'success'"
-              :variant="template.activo ? 'outline' : 'soft'"
-              @click="toggleActivo(template)"
-            >
-              {{ template.activo ? 'Desactivar' : 'Activar' }}
-            </UButton>
-          </div>
-        </div>
-      </UCard>
+      <div class="flex flex-col gap-4 rounded-[1.6rem] border border-default/80 bg-default/85 px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-sm text-muted">
+          Página {{ paginaActual }} de {{ totalPaginas }}
+        </p>
+
+        <UPagination
+          v-model:page="paginaActual"
+          :total="totalPlantillasFiltradas"
+          :items-per-page="cantidadPorPagina"
+          show-edges
+          active-color="primary"
+          active-variant="solid"
+        />
+      </div>
     </div>
   </div>
 </template>

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { h, resolveComponent } from 'vue'
-import type { DropdownMenuItem, TableColumn } from '#ui/types'
 import type { Database } from '~/types/database.types'
 import {
   getReopenedTicketIds,
@@ -65,10 +63,9 @@ const successMsg = ref('')
 const filtroEstado = ref('todos')
 const busqueda = ref('')
 const ticketRecienCreadoId = ref('')
-
-const UBadge = resolveComponent('UBadge')
-const UButton = resolveComponent('UButton')
-const UDropdownMenu = resolveComponent('UDropdownMenu')
+const ticketExpandido = ref<string | null>(null)
+const paginaActual = ref(1)
+const cantidadPorPagina = ref(10)
 
 const etiquetaEstado: Record<string, string> = {
   open: 'Pendiente',
@@ -91,6 +88,25 @@ const colorPrioridad: Record<Ticket['priority'], 'neutral' | 'warning' | 'error'
 }
 
 const filtrosEstado = ['todos', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
+const opcionesCantidadPorPagina = [
+  { label: '10 por página', value: 10 },
+  { label: '20 por página', value: 20 },
+  { label: '50 por página', value: 50 },
+] as const
+
+const etiquetaEstadoDocumento: Record<string, string> = {
+  submitted: 'En revisión',
+  approved: 'Aprobado',
+  rejected: 'Rechazado',
+  draft: 'Borrador',
+}
+
+const colorEstadoDocumento: Record<string, 'warning' | 'success' | 'error' | 'neutral'> = {
+  submitted: 'warning',
+  approved: 'success',
+  rejected: 'error',
+  draft: 'neutral',
+}
 
 const ticketsFiltrados = computed(() => {
   const termino = busqueda.value.trim().toLowerCase()
@@ -112,6 +128,28 @@ const ticketsFiltrados = computed(() => {
   })
 })
 
+const totalTicketsFiltrados = computed(() => ticketsFiltrados.value.length)
+
+const totalPaginas = computed(() => {
+  return Math.max(1, Math.ceil(totalTicketsFiltrados.value / cantidadPorPagina.value))
+})
+
+const ticketsPaginados = computed(() => {
+  const inicio = (paginaActual.value - 1) * cantidadPorPagina.value
+  return ticketsFiltrados.value.slice(inicio, inicio + cantidadPorPagina.value)
+})
+
+const resumenPaginacion = computed(() => {
+  if (!totalTicketsFiltrados.value) {
+    return { inicio: 0, fin: 0 }
+  }
+
+  const inicio = (paginaActual.value - 1) * cantidadPorPagina.value + 1
+  const fin = Math.min(inicio + cantidadPorPagina.value - 1, totalTicketsFiltrados.value)
+
+  return { inicio, fin }
+})
+
 function obtenerEstadoVisible(ticket: Ticket): TicketDisplayStatus {
   return getTicketDisplayStatus(ticket)
 }
@@ -124,6 +162,18 @@ function obtenerColorEstadoVisible(ticket: Ticket) {
   return ticketDisplayStatusColors[obtenerEstadoVisible(ticket)]
 }
 
+function obtenerEstadoDocumento(ticketId: string) {
+  return estadoDocumentoPorTicket.value[ticketId] ?? 'draft'
+}
+
+function obtenerEtiquetaEstadoDocumento(ticketId: string) {
+  return etiquetaEstadoDocumento[obtenerEstadoDocumento(ticketId)] ?? 'Sin documento'
+}
+
+function obtenerColorEstadoDocumento(ticketId: string) {
+  return colorEstadoDocumento[obtenerEstadoDocumento(ticketId)] ?? 'neutral'
+}
+
 function formatearFecha(fecha: string) {
   return new Date(fecha).toLocaleDateString('es-CR', {
     day: '2-digit',
@@ -132,120 +182,9 @@ function formatearFecha(fecha: string) {
   })
 }
 
-function obtenerMenuAcciones(ticket: Ticket): DropdownMenuItem[][] {
-  const items: DropdownMenuItem[][] = [[
-    {
-      label: 'Ver ticket',
-      icon: 'i-lucide-external-link',
-      to: `/ticket/${ticket.id}`,
-    },
-  ]]
-
-  if (ticket.status === 'open') {
-    items.push([
-      {
-        label: 'Cancelar ticket',
-        icon: 'i-lucide-ban',
-        color: 'error',
-        onSelect: () => cancelarTicket(ticket.id),
-      },
-    ])
-  }
-
-  return items
+function actualizarFilaExpandida(ticketId: string, open: boolean) {
+  ticketExpandido.value = open ? ticketId : ticketExpandido.value === ticketId ? null : ticketExpandido.value
 }
-
-const columns = computed<TableColumn<Ticket>[]>(() => [
-  {
-    accessorKey: 'id',
-    header: 'Ticket',
-    cell: ({ row }) => h('span', { class: 'font-medium text-highlighted' }, `#${String(row.original.id).slice(0, 8)}`),
-    meta: {
-      class: {
-        th: 'w-32',
-        td: 'align-top',
-      },
-    },
-  },
-  {
-    accessorKey: 'title',
-    header: 'Asunto',
-    cell: ({ row }) => h('div', { class: 'min-w-0' }, [
-      h('p', { class: 'font-medium text-highlighted' }, row.original.title),
-      row.original.description
-        ? h('p', { class: 'mt-1 line-clamp-2 text-xs text-muted' }, row.original.description)
-        : null,
-    ]),
-  },
-  {
-    accessorKey: 'priority',
-    header: 'Prioridad',
-    cell: ({ row }) => h(UBadge, {
-      color: colorPrioridad[row.original.priority],
-      variant: 'subtle',
-    }, () => etiquetaPrioridad[row.original.priority]),
-    meta: {
-      class: {
-        th: 'w-36',
-        td: 'align-top',
-      },
-    },
-  },
-  {
-    accessorKey: 'created_at',
-    header: 'Fecha',
-    cell: ({ row }) => h('span', { class: 'text-sm text-muted' }, formatearFecha(row.original.created_at)),
-    meta: {
-      class: {
-        th: 'w-36',
-        td: 'align-top',
-      },
-    },
-  },
-  {
-    id: 'status',
-    header: 'Estado',
-    cell: ({ row }) => h('div', { class: 'flex flex-wrap items-center gap-2' }, [
-      h(UBadge, {
-        color: obtenerColorEstadoVisible(row.original),
-        variant: 'subtle',
-      }, () => obtenerEtiquetaEstadoVisible(row.original)),
-      estadoDocumentoPorTicket.value[row.original.id] === 'rejected'
-        ? h(UBadge, {
-            color: 'error',
-            variant: 'soft',
-          }, () => 'Documento rechazado')
-        : null,
-    ]),
-    meta: {
-      class: {
-        th: 'w-56',
-        td: 'align-top',
-      },
-    },
-  },
-  {
-    id: 'actions',
-    header: '',
-    cell: ({ row }) => h(UDropdownMenu, {
-      items: obtenerMenuAcciones(row.original),
-    }, {
-      default: () => h(UButton, {
-        size: 'sm',
-        color: 'neutral',
-        variant: 'ghost',
-        icon: 'i-lucide-ellipsis',
-        square: true,
-      }),
-    }),
-    meta: {
-      class: {
-        th: 'w-16',
-        td: 'align-top text-right',
-      },
-    },
-  },
-])
 
 function obtenerMensajeExito(status: string) {
   if (status === 'created') return 'Tu ticket fue creado correctamente.'
@@ -365,6 +304,22 @@ async function cancelarTicket(id: string) {
   await cargarTickets()
 }
 
+watch([busqueda, filtroEstado, cantidadPorPagina], () => {
+  paginaActual.value = 1
+  ticketExpandido.value = null
+})
+
+watch(totalPaginas, (total) => {
+  if (paginaActual.value > total) paginaActual.value = total
+})
+
+watch(ticketsPaginados, (lista) => {
+  if (!ticketExpandido.value) return
+
+  const sigueVisible = lista.some(ticket => ticket.id === ticketExpandido.value)
+  if (!sigueVisible) ticketExpandido.value = null
+})
+
 onMounted(async () => {
   await cargarTickets()
 
@@ -448,16 +403,201 @@ onMounted(async () => {
               {{ f === 'todos' ? 'Todos' : etiquetaEstado[f] }}
             </UButton>
           </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <p class="text-sm text-muted">
+              Mostrando {{ resumenPaginacion.inicio }}-{{ resumenPaginacion.fin }} de {{ totalTicketsFiltrados }}
+            </p>
+
+            <USelect
+              v-model="cantidadPorPagina"
+              class="min-w-40"
+              value-key="value"
+              :items="opcionesCantidadPorPagina"
+            />
+          </div>
         </div>
       </template>
 
-      <UTable
-        :data="ticketsFiltrados"
-        :columns="columns"
-        :loading="loading"
-        sticky="header"
-        empty="No hay tickets para este filtro."
-      />
+      <SkeletonListCards v-if="loading && !tickets.length" :items="4" />
+
+      <div v-else-if="!ticketsFiltrados.length" class="py-10 text-center">
+        <p class="font-medium text-highlighted">No hay tickets para este filtro.</p>
+        <p class="mt-2 text-sm text-muted">Probá otro estado o ajustá la búsqueda.</p>
+      </div>
+
+      <div
+        v-else
+        class="overflow-hidden rounded-[1.75rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] shadow-[0_24px_70px_-42px_rgba(15,23,42,0.3)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))]"
+      >
+        <div class="overflow-x-auto pb-1">
+          <div class="min-w-[52rem] w-full">
+            <div class="grid grid-cols-[10rem_minmax(18rem,2fr)_11rem_9rem] gap-4 border-b border-default/70 bg-elevated/70 pl-5 pr-9 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted sm:pr-10">
+              <p>Ticket</p>
+              <p>Asunto</p>
+              <p>Estado</p>
+              <p>Fecha</p>
+            </div>
+
+            <div class="divide-y divide-default/60">
+              <UCollapsible
+                v-for="ticket in ticketsPaginados"
+                :key="ticket.id"
+                :open="ticketExpandido === ticket.id"
+                :unmount-on-hide="false"
+                @update:open="(open) => actualizarFilaExpandida(ticket.id, open)"
+              >
+                <template #default="{ open }">
+                  <button
+                    type="button"
+                    class="grid w-full grid-cols-[10rem_minmax(18rem,2fr)_11rem_9rem] gap-4 pl-5 pr-9 py-4 text-left transition hover:bg-primary/5 sm:pr-10"
+                    :class="open ? 'bg-primary/6' : ''"
+                    :aria-label="open ? `Minimizar ticket ${ticket.id}` : `Expandir ticket ${ticket.id}`"
+                  >
+                    <div class="min-w-0">
+                      <p class="font-semibold text-highlighted">
+                        #{{ String(ticket.id).slice(0, 8) }}
+                      </p>
+                      <p class="mt-1 text-xs text-muted">
+                        {{
+                          obtenerEstadoDocumento(ticket.id) === 'approved'
+                            ? 'Documento aprobado'
+                            : obtenerEstadoDocumento(ticket.id) === 'submitted'
+                              ? 'Documento en revision'
+                              : obtenerEstadoDocumento(ticket.id) === 'rejected'
+                                ? 'Documento rechazado'
+                                : ticket.wasReopened
+                                  ? 'Reabierto'
+                                  : 'Seguimiento activo'
+                        }}
+                      </p>
+                    </div>
+
+                    <div class="min-w-0">
+                      <p class="truncate font-medium text-highlighted">
+                        {{ ticket.title }}
+                      </p>
+                      <p class="mt-1 line-clamp-2 text-xs text-muted">
+                        {{ ticket.description || 'Sin descripción adicional.' }}
+                      </p>
+                    </div>
+
+                    <div class="flex min-w-0 flex-col gap-2">
+                      <UBadge :color="obtenerColorEstadoVisible(ticket)" variant="subtle">
+                        {{ obtenerEtiquetaEstadoVisible(ticket) }}
+                      </UBadge>
+                    </div>
+
+                    <div class="whitespace-nowrap text-sm text-muted">
+                      {{ formatearFecha(ticket.created_at) }}
+                    </div>
+                  </button>
+                </template>
+
+                <template #content>
+                  <div class="border-t border-default/60 bg-elevated/35 px-5 py-5">
+                    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_19rem]">
+                      <div class="grid gap-4 md:grid-cols-2">
+                        <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Estado del trámite</p>
+                          <div class="mt-2 flex flex-wrap gap-2">
+                            <UBadge :color="obtenerColorEstadoVisible(ticket)" variant="subtle">
+                              {{ obtenerEtiquetaEstadoVisible(ticket) }}
+                            </UBadge>
+                            <UBadge :color="colorPrioridad[ticket.priority]" variant="outline">
+                              {{ etiquetaPrioridad[ticket.priority] }}
+                            </UBadge>
+                          </div>
+                          <p class="mt-3 text-sm text-muted">
+                            Creado el {{ formatearFecha(ticket.created_at) }}.
+                          </p>
+                        </div>
+
+                        <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Documento legal</p>
+                          <p class="mt-2 font-semibold text-highlighted">
+                            {{ obtenerEtiquetaEstadoDocumento(ticket.id) }}
+                          </p>
+                          <p class="mt-2 text-sm text-muted">
+                            {{
+                              obtenerEstadoDocumento(ticket.id) === 'rejected'
+                                ? 'Tu documento requiere ajustes antes de continuar.'
+                                : obtenerEstadoDocumento(ticket.id) === 'approved'
+                                  ? 'El documento ya fue aprobado por el equipo legal.'
+                                  : obtenerEstadoDocumento(ticket.id) === 'submitted'
+                                    ? 'Está en revisión por el abogado asignado.'
+                                    : 'Todavía no hay un documento enviado en este ticket.'
+                            }}
+                          </p>
+                        </div>
+
+                        <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm md:col-span-2">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Detalle</p>
+                          <p class="mt-2 text-sm leading-6 text-muted">
+                            {{ ticket.description || 'Este ticket no tiene una descripción adicional registrada.' }}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div class="grid gap-3 rounded-[1.5rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                        <div>
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Acciones</p>
+                          <p class="mt-2 text-sm text-muted">
+                            Entrá al detalle completo del trámite o cancelalo si todavía está pendiente.
+                          </p>
+                        </div>
+
+                        <UButton
+                          color="neutral"
+                          variant="outline"
+                          class="justify-center"
+                          :to="`/ticket/${ticket.id}`"
+                        >
+                          Ver detalle
+                        </UButton>
+
+                        <UButton
+                          v-if="ticket.status === 'open'"
+                          color="error"
+                          variant="soft"
+                          :loading="loading"
+                          class="justify-center"
+                          @click="cancelarTicket(ticket.id)"
+                        >
+                          Cancelar ticket
+                        </UButton>
+
+                        <p class="text-xs text-muted">
+                          El detalle del ticket muestra historial, comentarios y adjuntos del trámite.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </UCollapsible>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template v-if="totalTicketsFiltrados">
+        <USeparator />
+
+        <div class="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+          <p class="text-sm text-muted">
+            Página {{ paginaActual }} de {{ totalPaginas }}
+          </p>
+
+          <UPagination
+            v-model:page="paginaActual"
+            :total="totalTicketsFiltrados"
+            :items-per-page="cantidadPorPagina"
+            show-edges
+            active-color="primary"
+            active-variant="solid"
+          />
+        </div>
+      </template>
     </UCard>
   </div>
 </template>
