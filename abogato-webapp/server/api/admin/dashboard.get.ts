@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
     adminApi.countRows('profiles'),
     adminApi.countRows('profiles', { is_active: 'eq.true' }),
     adminApi.countRows('profiles', { is_active: 'eq.false' }),
-    adminApi.countRows('profiles', { role: 'eq.admin' }),
+    adminApi.countRows('profiles', { role: `in.${toSupabaseInFilter(['admin', 'superadmin'])}` }),
     adminApi.countRows('profiles', { role: 'eq.abogado' }),
     adminApi.countRows('profiles', { role: 'eq.cliente' }),
   ])
@@ -140,7 +140,7 @@ export default defineEventHandler(async (event) => {
       { key: 'rejected', label: 'Rechazados', value: rejectedDocuments },
     ],
     usersByRole: [
-      { key: 'admin', label: 'Admins', value: adminUsers },
+      { key: 'admin', label: 'Equipo admin', value: adminUsers },
       { key: 'abogado', label: 'Abogados', value: lawyerUsers },
       { key: 'cliente', label: 'Clientes', value: clientUsers },
     ],

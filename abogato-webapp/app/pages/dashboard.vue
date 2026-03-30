@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { getDashboardPathForRole } from '~/utils/app-navigation'
+
 definePageMeta({ middleware: 'auth' })
 
 const supabase = useSupabaseClient()
@@ -14,13 +16,7 @@ if (!user) {
     .eq('user_id', user.id)
     .maybeSingle()
 
-  if (data?.role === 'admin') {
-    await navigateTo('/admin/dashboard', { replace: true })
-  } else if (data?.role === 'abogado') {
-    await navigateTo('/lawyer/dashboard', { replace: true })
-  } else {
-    await navigateTo('/client/dashboard', { replace: true })
-  }
+  await navigateTo(getDashboardPathForRole(data?.role), { replace: true })
 }
 </script>
 

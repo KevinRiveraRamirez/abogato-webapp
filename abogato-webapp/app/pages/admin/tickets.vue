@@ -2,6 +2,7 @@
 definePageMeta({ layout: 'app', middleware: ['auth', 'admin'] })
 
 const supabase = useSupabaseClient()
+const { adminFetch } = useAdminApi()
 
 type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled'
 type TicketPriority = 'low' | 'normal' | 'high'
@@ -29,7 +30,31 @@ type LawyerProfile = {
   contact_email: string | null
 }
 
+type TicketAssignmentSource = 'auto' | 'manual' | 'self' | 'unassigned'
+
+type AssignmentHistoryEntry = {
+  id: string
+  previous_assigned_to: string | null
+  previous_assigned_to_name: string
+  assigned_to: string | null
+  assigned_to_name: string
+  assigned_by: string | null
+  assigned_by_name: string
+  assignment_source: TicketAssignmentSource
+  notes: string | null
+  created_at: string
+}
+
+type AssignmentHistoryResponse = {
+  items: AssignmentHistoryEntry[]
+  page: number
+  perPage: number
+  total: number
+  totalPages: number
+}
+
 const SIN_ABOGADO_VALUE = '__unassigned__'
+const HISTORIAL_ASIGNACION_POR_PAGINA = 5
 
 const tickets = ref<Ticket[]>([])
 const abogados = ref<LawyerProfile[]>([])
@@ -45,6 +70,11 @@ const asignacionSeleccionada = ref<Record<string, string>>({})
 const ticketExpandido = ref<string | null>(null)
 const paginaActual = ref(1)
 const cantidadPorPagina = ref(10)
+const historialAsignacionPorTicket = ref<Record<string, AssignmentHistoryEntry[]>>({})
+const historialAsignacionLoadingPorTicket = ref<Record<string, boolean>>({})
+const historialAsignacionErrorPorTicket = ref<Record<string, string>>({})
+const historialAsignacionPaginaPorTicket = ref<Record<string, number>>({})
+const historialAsignacionTotalPorTicket = ref<Record<string, number>>({})
 
 const etiquetaEstado: Record<TicketStatus, string> = {
   open: 'Pendiente',
@@ -75,6 +105,20 @@ const colorPrioridad: Record<TicketPriority, 'neutral' | 'warning' | 'error'> = 
 }
 
 const filtrosEstado = ['requieren_accion', 'open', 'in_progress', 'resolved', 'closed', 'cancelled'] as const
+const etiquetaFuenteAsignacion: Record<TicketAssignmentSource, string> = {
+  auto: 'Autoasignación',
+  manual: 'Gestión admin',
+  self: 'Tomado por abogado',
+  unassigned: 'Sin responsable',
+}
+
+const colorFuenteAsignacion: Record<TicketAssignmentSource, 'primary' | 'neutral' | 'info' | 'warning'> = {
+  auto: 'primary',
+  manual: 'neutral',
+  self: 'info',
+  unassigned: 'warning',
+}
+
 const opcionesCantidadPorPagina = [
   { label: '10 por página', value: 10 },
   { label: '20 por página', value: 20 },
@@ -182,6 +226,16 @@ function formatearFecha(fecha: string) {
   })
 }
 
+function formatearFechaHora(fecha: string) {
+  return new Date(fecha).toLocaleString('es-CR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function normalizarValorAsignacion(userId: string | null | undefined) {
   return userId ?? SIN_ABOGADO_VALUE
 }
@@ -213,6 +267,10 @@ function hayCambioAsignacion(ticket: Ticket) {
 
 function actualizarFilaExpandida(ticketId: string, open: boolean) {
   ticketExpandido.value = open ? ticketId : ticketExpandido.value === ticketId ? null : ticketExpandido.value
+
+  if (open) {
+    void cargarHistorialAsignacion(ticketId, obtenerPaginaHistorialAsignacion(ticketId))
+  }
 }
 
 function limpiarFiltros() {
@@ -232,6 +290,93 @@ function puedeCerrar(ticket: Ticket) {
 
 function puedeReabrir(ticket: Ticket) {
   return ticket.reopen_requested || ['closed', 'resolved', 'cancelled'].includes(ticket.status)
+}
+
+function obtenerMensajeError(error: unknown) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'data' in error &&
+    error.data &&
+    typeof error.data === 'object' &&
+    'message' in error.data &&
+    typeof error.data.message === 'string'
+  ) {
+    return error.data.message
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return 'No se pudo cargar el historial solicitado.'
+}
+
+function obtenerPaginaHistorialAsignacion(ticketId: string) {
+  return historialAsignacionPaginaPorTicket.value[ticketId] ?? 1
+}
+
+function obtenerTotalHistorialAsignacion(ticketId: string) {
+  return historialAsignacionTotalPorTicket.value[ticketId] ?? 0
+}
+
+function obtenerEntradasHistorialAsignacion(ticketId: string) {
+  return historialAsignacionPorTicket.value[ticketId] ?? []
+}
+
+function obtenerErrorHistorialAsignacion(ticketId: string) {
+  return historialAsignacionErrorPorTicket.value[ticketId] ?? ''
+}
+
+function obtenerTotalPaginasHistorialAsignacion(ticketId: string) {
+  return Math.max(1, Math.ceil(obtenerTotalHistorialAsignacion(ticketId) / HISTORIAL_ASIGNACION_POR_PAGINA))
+}
+
+async function cargarHistorialAsignacion(ticketId: string, page = 1) {
+  historialAsignacionLoadingPorTicket.value = {
+    ...historialAsignacionLoadingPorTicket.value,
+    [ticketId]: true,
+  }
+  historialAsignacionErrorPorTicket.value = {
+    ...historialAsignacionErrorPorTicket.value,
+    [ticketId]: '',
+  }
+
+  try {
+    const response = await adminFetch<AssignmentHistoryResponse>(`/api/admin/tickets/${ticketId}/assignment-history`, {
+      query: {
+        page,
+        perPage: HISTORIAL_ASIGNACION_POR_PAGINA,
+      },
+    })
+
+    historialAsignacionPorTicket.value = {
+      ...historialAsignacionPorTicket.value,
+      [ticketId]: response.items,
+    }
+    historialAsignacionPaginaPorTicket.value = {
+      ...historialAsignacionPaginaPorTicket.value,
+      [ticketId]: response.page,
+    }
+    historialAsignacionTotalPorTicket.value = {
+      ...historialAsignacionTotalPorTicket.value,
+      [ticketId]: response.total,
+    }
+  } catch (error) {
+    historialAsignacionErrorPorTicket.value = {
+      ...historialAsignacionErrorPorTicket.value,
+      [ticketId]: obtenerMensajeError(error),
+    }
+  } finally {
+    historialAsignacionLoadingPorTicket.value = {
+      ...historialAsignacionLoadingPorTicket.value,
+      [ticketId]: false,
+    }
+  }
+}
+
+function cambiarPaginaHistorialAsignacion(ticketId: string, page: number) {
+  void cargarHistorialAsignacion(ticketId, page)
 }
 
 async function cargarPerfilesRelacionados(ticketRows: Ticket[]) {
@@ -361,6 +506,9 @@ async function cerrarTicket(ticket: Ticket) {
     ? 'La solicitud de reapertura fue rechazada.'
     : 'El ticket se cerró correctamente.'
   await cargarTickets()
+  if (ticketExpandido.value === ticket.id) {
+    await cargarHistorialAsignacion(ticket.id, obtenerPaginaHistorialAsignacion(ticket.id))
+  }
 }
 
 async function reabrirTicket(ticket: Ticket) {
@@ -388,6 +536,9 @@ async function reabrirTicket(ticket: Ticket) {
 
   successMsg.value = 'El ticket quedó reabierto.'
   await cargarTickets()
+  if (ticketExpandido.value === ticket.id) {
+    await cargarHistorialAsignacion(ticket.id, obtenerPaginaHistorialAsignacion(ticket.id))
+  }
 }
 
 async function guardarAsignacion(ticket: Ticket) {
@@ -417,6 +568,9 @@ async function guardarAsignacion(ticket: Ticket) {
     ? 'La asignación del ticket se actualizó correctamente.'
     : 'El ticket quedó sin responsable asignado.'
   await cargarTickets()
+  if (ticketExpandido.value === ticket.id) {
+    await cargarHistorialAsignacion(ticket.id, obtenerPaginaHistorialAsignacion(ticket.id))
+  }
 }
 
 watch([busqueda, filtrosEstadoSeleccionados, cantidadPorPagina], () => {
@@ -734,6 +888,98 @@ onMounted(() => {
                         <p class="text-xs text-muted">
                           Solo se notifica a las personas involucradas cuando cambia la asignación.
                         </p>
+                      </div>
+                    </div>
+
+                    <div class="mt-4 rounded-[1.5rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                      <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Historial de asignación</p>
+                          <p class="mt-2 text-sm text-muted">
+                            Trazabilidad de autoasignaciones, tomas manuales y reasignaciones administrativas.
+                          </p>
+                        </div>
+
+                        <UBadge color="neutral" variant="outline">
+                          {{ obtenerTotalHistorialAsignacion(ticket.id) }} movimiento(s)
+                        </UBadge>
+                      </div>
+
+                      <div v-if="historialAsignacionLoadingPorTicket[ticket.id] && !obtenerEntradasHistorialAsignacion(ticket.id).length" class="mt-4 rounded-2xl border border-dashed border-default px-4 py-8 text-center text-sm text-muted">
+                        Cargando historial de asignación...
+                      </div>
+
+                      <div v-else-if="obtenerErrorHistorialAsignacion(ticket.id)" class="mt-4 rounded-2xl border border-error/20 bg-error/5 px-4 py-4 text-sm text-error">
+                        {{ obtenerErrorHistorialAsignacion(ticket.id) }}
+                      </div>
+
+                      <div v-else-if="obtenerEntradasHistorialAsignacion(ticket.id).length" class="mt-4 grid gap-3">
+                        <div
+                          v-for="entry in obtenerEntradasHistorialAsignacion(ticket.id)"
+                          :key="entry.id"
+                          class="rounded-[1.25rem] border border-default/80 bg-elevated/45 p-4"
+                        >
+                          <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div class="flex flex-wrap items-center gap-2">
+                                <UBadge :color="colorFuenteAsignacion[entry.assignment_source]" variant="soft">
+                                  {{ etiquetaFuenteAsignacion[entry.assignment_source] }}
+                                </UBadge>
+                                <p class="font-medium text-highlighted">
+                                  {{ entry.assigned_by_name }}
+                                </p>
+                              </div>
+                              <p class="mt-2 text-xs text-muted">
+                                {{ formatearFechaHora(entry.created_at) }}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div class="mt-4 grid gap-3 md:grid-cols-2">
+                            <div class="rounded-2xl border border-default/80 bg-default/85 p-3">
+                              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                Antes
+                              </p>
+                              <p class="mt-2 text-sm text-highlighted">
+                                {{ entry.previous_assigned_to_name }}
+                              </p>
+                            </div>
+
+                            <div class="rounded-2xl border border-default/80 bg-default/85 p-3">
+                              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                Después
+                              </p>
+                              <p class="mt-2 text-sm text-highlighted">
+                                {{ entry.assigned_to_name }}
+                              </p>
+                            </div>
+                          </div>
+
+                          <p v-if="entry.notes" class="mt-3 text-sm text-muted">
+                            {{ entry.notes }}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div v-else class="mt-4 rounded-2xl border border-dashed border-default px-4 py-8 text-center text-sm text-muted">
+                        Todavía no hay movimientos de asignación para este ticket.
+                      </div>
+
+                      <div v-if="obtenerTotalHistorialAsignacion(ticket.id) > HISTORIAL_ASIGNACION_POR_PAGINA" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p class="text-xs text-muted">
+                          Página {{ obtenerPaginaHistorialAsignacion(ticket.id) }} de {{ obtenerTotalPaginasHistorialAsignacion(ticket.id) }}
+                        </p>
+
+                        <UPagination
+                          :page="obtenerPaginaHistorialAsignacion(ticket.id)"
+                          :total="obtenerTotalHistorialAsignacion(ticket.id)"
+                          :items-per-page="HISTORIAL_ASIGNACION_POR_PAGINA"
+                          size="sm"
+                          show-edges
+                          active-color="primary"
+                          active-variant="solid"
+                          @update:page="(page) => cambiarPaginaHistorialAsignacion(ticket.id, page)"
+                        />
                       </div>
                     </div>
                   </div>

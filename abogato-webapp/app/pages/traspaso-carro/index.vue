@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { isAdminLikeRole } from '~~/shared/roles'
+
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
 const supabase = useSupabaseClient()
@@ -73,7 +75,7 @@ async function cargarTickets() {
     .neq('status', 'cancelled')
     .order('created_at', { ascending: false })
 
-  if (profile.value?.role !== 'admin' && profile.value?.role !== 'abogado') {
+  if (!isAdminLikeRole(profile.value?.role) && profile.value?.role !== 'abogado') {
     query = query.eq('created_by', user.id)
   }
 

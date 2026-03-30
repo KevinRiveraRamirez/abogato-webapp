@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { getDashboardPathForRole } from '~/utils/app-navigation'
+import type { AppRole } from '~~/shared/roles'
+
 definePageMeta({ layout: "login-layout" });
 
 
@@ -52,7 +55,7 @@ async function signIn() {
     })
     sessionTransitionStarted = true
 
-    let profile: { role: 'cliente' | 'abogado' | 'admin', is_active: boolean } | null = null
+    let profile: { role: AppRole, is_active: boolean } | null = null
 
     const { data: existingProfile } = await supabase
       .from('profiles')
@@ -87,19 +90,7 @@ async function signIn() {
       return
     }
 
-    const role = profile?.role ?? 'cliente';
-
-    if (role === 'abogado') {
-      await navigateTo("/lawyer/dashboard", { replace: true });
-      return;
-    }
-
-    if (role === 'admin') {
-      await navigateTo("/admin/dashboard", { replace: true });
-      return;
-    }
-
-    await navigateTo("/client/dashboard", { replace: true });
+    await navigateTo(getDashboardPathForRole(profile?.role), { replace: true });
   } catch (error) {
     if (sessionTransitionStarted) {
       finishSessionLoading()

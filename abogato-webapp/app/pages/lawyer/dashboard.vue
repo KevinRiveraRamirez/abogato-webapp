@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import type { Database } from '~/types/database.types'
 import {
+  lawyerAvailabilityDescriptions,
+  lawyerAvailabilityLabels,
+  normalizeLawyerAvailabilityStatus,
+  type LawyerAvailabilityStatus,
+} from '~~/shared/roles'
+import {
   documentStatusColors,
   documentStatusLabels,
   formatDateTime,
@@ -80,12 +86,16 @@ type DashboardDocumentRow = DocumentRow & {
 
 const loading = ref(false)
 const errorMsg = ref('')
+const availabilityError = ref('')
+const availabilitySuccess = ref('')
+const availabilityLoading = ref(false)
 const currentUserId = ref('')
 const tickets = ref<TicketSummary[]>([])
 const documents = ref<DocumentSummary[]>([])
 const notifications = ref<NotificationSummary[]>([])
 const clientsById = ref<Record<string, ClientSummary>>({})
 const unreadNotificationsCount = ref(0)
+const availabilityStatus = ref<LawyerAvailabilityStatus>('available')
 const isInitialLoading = computed(
   () => loading.value && !tickets.value.length && !documents.value.length && !notifications.value.length
 )
@@ -250,6 +260,26 @@ const documentsPreview = computed(() =>
 
 const recentNotifications = computed(() => notifications.value.slice(0, 4))
 
+const availabilityOptions = [
+  { label: lawyerAvailabilityLabels.available, value: 'available' },
+  { label: lawyerAvailabilityLabels.busy, value: 'busy' },
+  { label: lawyerAvailabilityLabels.offline, value: 'offline' },
+] as const
+
+const currentAvailabilityStatus = computed(() =>
+  normalizeLawyerAvailabilityStatus(profile.value?.availability_status, 'available')
+)
+
+const availabilityDirty = computed(
+  () => availabilityStatus.value !== currentAvailabilityStatus.value
+)
+
+const availabilityBadgeColor = computed(() => {
+  if (availabilityStatus.value === 'available') return 'success'
+  if (availabilityStatus.value === 'busy') return 'warning'
+  return 'neutral'
+})
+
 const attentionItems = computed(() => {
   const items: Array<{
     title: string
@@ -356,6 +386,16 @@ function getPriorityWeight(priority: TicketPriority) {
   return 1
 }
 
+function formatProfessionalLicenseExpiry(value: string | null | undefined) {
+  if (!value) return 'Sin vigencia registrada'
+
+  return new Date(value).toLocaleDateString('es-CR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
 function getDocumentPriority(status: DocumentStatus) {
   if (status === 'submitted') return 2
   if (status === 'rejected') return 1
@@ -435,6 +475,46 @@ async function resolveCurrentUserId() {
   }
 
   return data.user?.id ?? null
+}
+
+async function guardarDisponibilidad() {
+  availabilityError.value = ''
+  availabilitySuccess.value = ''
+
+  const userId = currentUserId.value || await resolveCurrentUserId()
+
+  if (!userId) {
+    availabilityError.value = 'No se pudo identificar tu sesión actual.'
+    return
+  }
+
+  if (!availabilityDirty.value) {
+    availabilitySuccess.value = 'Tu disponibilidad ya estaba al día.'
+    return
+  }
+
+  availabilityLoading.value = true
+
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        availability_status: availabilityStatus.value,
+      })
+      .eq('user_id', userId)
+
+    if (error) {
+      throw error
+    }
+
+    await cargarPerfil()
+    availabilityStatus.value = currentAvailabilityStatus.value
+    availabilitySuccess.value = 'Disponibilidad actualizada.'
+  } catch (error) {
+    availabilityError.value = getErrorMessage(error)
+  } finally {
+    availabilityLoading.value = false
+  }
 }
 
 async function cargarDashboard() {
@@ -576,6 +656,14 @@ async function cargarDashboard() {
   }
 }
 
+watch(
+  () => profile.value?.availability_status,
+  (value) => {
+    availabilityStatus.value = normalizeLawyerAvailabilityStatus(value, 'available')
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   cargarDashboard()
 })
@@ -630,6 +718,74 @@ onMounted(() => {
       title="No se pudo cargar el dashboard"
       :description="errorMsg"
     />
+
+    <UCard class="border border-default/80 bg-default/90 shadow-sm">
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-3">
+            <p class="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+              Disponibilidad operativa
+            </p>
+            <UBadge :color="availabilityBadgeColor" variant="soft">
+              {{ lawyerAvailabilityLabels[availabilityStatus] }}
+            </UBadge>
+          </div>
+
+          <p class="mt-3 max-w-2xl text-sm leading-6 text-muted">
+            {{ lawyerAvailabilityDescriptions[availabilityStatus] }}
+          </p>
+
+          <div class="mt-4 flex flex-wrap items-center gap-5 text-sm text-toned">
+            <div v-if="profile?.professional_license_number" class="flex items-center gap-2">
+              <UIcon name="i-lucide-badge-check" class="size-4 text-primary" />
+              <span>{{ profile.professional_license_number }}</span>
+            </div>
+            <div v-if="profile?.professional_license_expires_at" class="flex items-center gap-2">
+              <UIcon name="i-lucide-calendar-range" class="size-4 text-primary" />
+              <span>Vigente hasta {{ formatProfessionalLicenseExpiry(profile.professional_license_expires_at) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="w-full max-w-md rounded-[1.5rem] border border-default/80 bg-elevated/60 p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+            Cambiar estado
+          </p>
+
+          <div class="mt-4 grid gap-3">
+            <USelect
+              v-model="availabilityStatus"
+              value-key="value"
+              :items="availabilityOptions"
+              :disabled="availabilityLoading"
+            />
+
+            <div class="flex flex-wrap items-center gap-3">
+              <UButton
+                color="primary"
+                variant="soft"
+                :loading="availabilityLoading"
+                :disabled="availabilityLoading || !availabilityDirty"
+                @click="guardarDisponibilidad"
+              >
+                Guardar disponibilidad
+              </UButton>
+
+              <UButton color="neutral" variant="ghost" to="/account/profile">
+                Abrir perfil
+              </UButton>
+            </div>
+
+            <p v-if="availabilityError" class="text-sm text-error">
+              {{ availabilityError }}
+            </p>
+            <p v-else-if="availabilitySuccess" class="text-sm text-success">
+              {{ availabilitySuccess }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </UCard>
 
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <UCard

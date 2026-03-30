@@ -54,6 +54,7 @@
 
 <script setup lang="ts">
 import type { NavigationMenuItem } from "#ui/types";
+import { getDashboardPathForRole } from '~/utils/app-navigation'
 
 const supabase = useSupabaseClient();
 const user = useSupabaseUser();
@@ -62,10 +63,7 @@ const loading = ref(false);
 const route = useRoute();
 
 const panelPath = computed(() => {
-  if (profile.value?.role === 'admin') return '/admin/dashboard'
-  if (profile.value?.role === 'abogado') return '/lawyer/dashboard'
-  if (profile.value?.role === 'cliente') return '/client/dashboard'
-  return '/dashboard'
+  return getDashboardPathForRole(profile.value?.role)
 })
 
 async function cerrarSesion() {

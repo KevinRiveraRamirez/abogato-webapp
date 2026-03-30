@@ -1,16 +1,25 @@
 import { requireAdminAccess } from '~~/server/utils/admin-access'
-
-type AppRole = 'cliente' | 'abogado' | 'admin'
+import {
+  canManageAdminAccounts,
+  type AppRole,
+} from '~~/shared/roles'
 
 type CreateUserBody = {
   email?: string
   password?: string
   displayName?: string
-  role?: AppRole
+  role?: Extract<AppRole, 'cliente' | 'abogado' | 'admin'>
   officeAddress?: string
+  professionalLicenseNumber?: string
 }
 
-const validRoles = new Set<AppRole>(['cliente', 'abogado', 'admin'])
+const validRoles = new Set<Extract<AppRole, 'cliente' | 'abogado' | 'admin'>>(['cliente', 'abogado', 'admin'])
+
+function buildProfessionalLicenseExpiryDate() {
+  const expiryDate = new Date()
+  expiryDate.setFullYear(expiryDate.getFullYear() + 5)
+  return expiryDate.toISOString()
+}
 
 function validatePassword(password: string) {
   if (password.length < 8) return 'La contraseña debe tener al menos 8 caracteres.'
@@ -20,7 +29,7 @@ function validatePassword(password: string) {
 }
 
 export default defineEventHandler(async (event) => {
-  const { adminApi } = await requireAdminAccess(event)
+  const { adminApi, currentProfile } = await requireAdminAccess(event)
   const body = await readBody<CreateUserBody>(event).catch(() => ({} as CreateUserBody))
 
   const email = body.email?.trim().toLowerCase() ?? ''
@@ -28,6 +37,7 @@ export default defineEventHandler(async (event) => {
   const displayName = body.displayName?.trim() ?? ''
   const role = body.role ?? 'abogado'
   const officeAddress = body.officeAddress?.trim() ?? ''
+  const professionalLicenseNumber = body.professionalLicenseNumber?.trim().toUpperCase() ?? ''
 
   if (!email) {
     throw createError({
@@ -54,6 +64,43 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (role === 'admin' && !canManageAdminAccounts(currentProfile.role)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Forbidden',
+      message: 'Solo una cuenta superadmin puede crear administradores.',
+    })
+  }
+
+  if (role === 'abogado' && !professionalLicenseNumber) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Validation error',
+      message: 'La cédula profesional es obligatoria para crear un abogado.',
+    })
+  }
+
+  if (professionalLicenseNumber) {
+    const duplicateProfessionalLicense = await adminApi.selectSingle<{ user_id: string }>('profiles', {
+      columns: 'user_id',
+      filters: {
+        professional_license_number: `eq.${professionalLicenseNumber}`,
+      },
+    })
+
+    if (duplicateProfessionalLicense?.user_id) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Validation error',
+        message: 'La cédula profesional ya está registrada en otra cuenta.',
+      })
+    }
+  }
+
+  const professionalLicenseExpiresAt = role === 'abogado' && professionalLicenseNumber
+    ? buildProfessionalLicenseExpiryDate()
+    : null
+
   const createdUser = await adminApi.createUser({
     email,
     password,
@@ -75,6 +122,9 @@ export default defineEventHandler(async (event) => {
       display_name: displayName || null,
       contact_email: email,
       office_address: role === 'cliente' ? null : officeAddress || null,
+      professional_license_number: professionalLicenseNumber || null,
+      professional_license_expires_at: professionalLicenseExpiresAt,
+      availability_status: role === 'abogado' ? 'available' : null,
       is_active: true,
       deactivated_at: null,
     })
@@ -86,6 +136,9 @@ export default defineEventHandler(async (event) => {
       contact_email: email,
       role,
       office_address: role === 'cliente' ? null : officeAddress || null,
+      professional_license_number: professionalLicenseNumber || null,
+      professional_license_expires_at: professionalLicenseExpiresAt,
+      availability_status: role === 'abogado' ? 'available' : null,
       is_active: true,
     },
   }

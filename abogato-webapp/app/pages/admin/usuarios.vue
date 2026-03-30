@@ -1,11 +1,24 @@
 <script setup lang="ts">
+import {
+  canManageAdminAccounts,
+  isLawyerAvailabilityStatus,
+  isSuperadminRole,
+  lawyerAvailabilityLabels,
+  roleDescriptions,
+  roleLabels,
+  type AppRole,
+  type LawyerAvailabilityStatus,
+  type ManageableUserRole,
+} from '~~/shared/roles'
+
 definePageMeta({ layout: 'app', middleware: ['auth', 'admin'] })
 
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
+const { profile, cargarPerfil } = useUsuario()
 const { adminFetch } = useAdminApi()
 
-type UserRole = 'cliente' | 'abogado' | 'admin'
+type UserRole = AppRole
 
 type Usuario = {
   user_id: string
@@ -16,9 +29,35 @@ type Usuario = {
   personal_address: string | null
   role: UserRole
   office_address: string | null
+  professional_license_number: string | null
+  professional_license_expires_at: string | null
+  availability_status: LawyerAvailabilityStatus | null
   is_active: boolean
   deactivated_at: string | null
 }
+
+type AuditFieldChange = {
+  old: unknown
+  new: unknown
+}
+
+type ProfileAuditEntry = {
+  id: string
+  actor_user_id: string | null
+  actor_name: string
+  changed_fields: Record<string, AuditFieldChange>
+  created_at: string
+}
+
+type ProfileAuditResponse = {
+  items: ProfileAuditEntry[]
+  page: number
+  perPage: number
+  total: number
+  totalPages: number
+}
+
+const AUDITORIA_POR_PAGINA = 5
 
 const usuarios = ref<Usuario[]>([])
 const loading = ref(false)
@@ -35,42 +74,51 @@ const cantidadPorPagina = ref(10)
 const mostrarFormulario = ref(false)
 const nuevoEmail = ref('')
 const nuevoNombre = ref('')
-const nuevoRol = ref<UserRole>('abogado')
+const nuevoRol = ref<ManageableUserRole>('abogado')
 const nuevaPassword = ref('')
 const nuevaDireccionOficina = ref('')
+const nuevaCedulaProfesional = ref('')
 const creatingUser = ref(false)
+const cedulasProfesionales = ref<Record<string, string>>({})
+const auditoriaPorUsuario = ref<Record<string, ProfileAuditEntry[]>>({})
+const auditoriaLoadingPorUsuario = ref<Record<string, boolean>>({})
+const auditoriaErrorPorUsuario = ref<Record<string, string>>({})
+const auditoriaPaginaPorUsuario = ref<Record<string, number>>({})
+const auditoriaTotalPorUsuario = ref<Record<string, number>>({})
 
-const etiquetaRol: Record<UserRole, string> = {
-  cliente: 'Cliente',
-  abogado: 'Abogado',
-  admin: 'Admin',
-}
-
-const colorRol: Record<UserRole, 'neutral' | 'info' | 'success'> = {
+const colorRol: Record<UserRole, 'neutral' | 'info' | 'success' | 'primary'> = {
   cliente: 'neutral',
   abogado: 'info',
   admin: 'success',
+  superadmin: 'primary',
 }
 
-const descripcionAcceso: Record<UserRole, string> = {
-  cliente: 'Portal cliente',
-  abogado: 'Operación legal',
-  admin: 'Administración total',
-}
-
-const opcionesRol = [
-  { label: 'Cliente', value: 'cliente' },
-  { label: 'Abogado', value: 'abogado' },
-  { label: 'Admin', value: 'admin' },
-] as const
-
-const rolesFiltro = ['cliente', 'abogado', 'admin'] as const
+const rolesFiltro = ['cliente', 'abogado', 'admin', 'superadmin'] as const
 const estadosFiltro = ['activos', 'inactivos'] as const
 const opcionesCantidadPorPagina = [
   { label: '10 por página', value: 10 },
   { label: '20 por página', value: 20 },
   { label: '50 por página', value: 50 },
 ] as const
+
+const esSuperadmin = computed(() => isSuperadminRole(profile.value?.role))
+
+const opcionesRol = computed(() => {
+  const baseOptions = [
+    { label: 'Cliente', value: 'cliente' },
+    { label: 'Abogado', value: 'abogado' },
+  ] as Array<{ label: string, value: ManageableUserRole }>
+
+  if (canManageAdminAccounts(profile.value?.role)) {
+    baseOptions.push({ label: 'Admin', value: 'admin' })
+  }
+
+  return baseOptions
+})
+
+const mostrarCamposAbogado = computed(
+  () => nuevoRol.value === 'abogado'
+)
 
 const usuariosFiltrados = computed(() => {
   const termino = busqueda.value.trim().toLowerCase()
@@ -88,10 +136,12 @@ const usuariosFiltrados = computed(() => {
       usuario.display_name ?? '',
       usuario.contact_email ?? '',
       usuario.contact_phone ?? '',
-      etiquetaRol[usuario.role],
-      descripcionAcceso[usuario.role],
+      roleLabels[usuario.role],
+      roleDescriptions[usuario.role],
       usuario.office_address ?? '',
       usuario.personal_address ?? '',
+      usuario.professional_license_number ?? '',
+      usuario.availability_status ? lawyerAvailabilityLabels[usuario.availability_status] : '',
     ].some(value => value.toLowerCase().includes(termino))
   })
 })
@@ -122,7 +172,7 @@ const resumen = computed(() => ({
   total: usuarios.value.length,
   activos: usuarios.value.filter(usuario => usuario.is_active).length,
   inactivos: usuarios.value.filter(usuario => !usuario.is_active).length,
-  internos: usuarios.value.filter(usuario => usuario.role === 'admin' || usuario.role === 'abogado').length,
+  internos: usuarios.value.filter(usuario => usuario.role === 'admin' || usuario.role === 'superadmin' || usuario.role === 'abogado').length,
 }))
 
 const hayFiltrosActivos = computed(() =>
@@ -140,6 +190,18 @@ const mostrarDireccionOficina = computed(
   () => nuevoRol.value === 'abogado' || nuevoRol.value === 'admin'
 )
 
+const etiquetasAuditoria: Record<string, string> = {
+  contact_email: 'Correo de contacto',
+  contact_phone: 'Teléfono',
+  personal_address: 'Dirección personal',
+  office_address: 'Oficina / notaría',
+  role: 'Rol',
+  is_active: 'Estado de acceso',
+  professional_license_number: 'Cédula profesional',
+  professional_license_expires_at: 'Vigencia de cédula',
+  availability_status: 'Disponibilidad',
+}
+
 function formatearFechaHora(fecha: string | null) {
   if (!fecha) return 'Sin dato'
 
@@ -154,6 +216,16 @@ function formatearFechaHora(fecha: string | null) {
 
 function formatearFechaCorta(fecha: string | null) {
   if (!fecha) return 'Sin dato'
+
+  return new Date(fecha).toLocaleDateString('es-CR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function formatearVigenciaProfesional(fecha: string | null) {
+  if (!fecha) return 'Sin vigencia registrada'
 
   return new Date(fecha).toLocaleDateString('es-CR', {
     day: '2-digit',
@@ -183,6 +255,46 @@ function obtenerResumenEstado(usuario: Usuario) {
     : `Suspendido el ${formatearFechaHora(usuario.deactivated_at)}`
 }
 
+function sincronizarCedulasProfesionales(userRows: Usuario[]) {
+  cedulasProfesionales.value = Object.fromEntries(
+    userRows.map(usuario => [usuario.user_id, usuario.professional_license_number ?? ''])
+  )
+}
+
+function obtenerCedulaProfesional(usuario: Usuario) {
+  return cedulasProfesionales.value[usuario.user_id] ?? usuario.professional_license_number ?? ''
+}
+
+function actualizarCedulaProfesionalLocal(userId: string, value: string) {
+  cedulasProfesionales.value = {
+    ...cedulasProfesionales.value,
+    [userId]: value,
+  }
+}
+
+function puedeEditarUsuario(usuario: Usuario) {
+  if (esMismoUsuario(usuario)) return false
+  if (usuario.role === 'superadmin') return esSuperadmin.value
+
+  if (!esSuperadmin.value && (usuario.role === 'admin' || usuario.role === 'superadmin')) {
+    return false
+  }
+
+  return true
+}
+
+function hayCambioCedulaProfesional(usuario: Usuario) {
+  return obtenerCedulaProfesional(usuario).trim().toUpperCase() !== (usuario.professional_license_number ?? '')
+}
+
+function obtenerOpcionesRolUsuario(usuario: Usuario) {
+  if (puedeEditarUsuario(usuario)) {
+    return opcionesRol.value
+  }
+
+  return [{ label: roleLabels[usuario.role], value: usuario.role }]
+}
+
 function limpiarFiltros() {
   busqueda.value = ''
   rolesSeleccionados.value = []
@@ -203,6 +315,10 @@ function toggleFiltroEstado(estado: (typeof estadosFiltro)[number]) {
 
 function actualizarFilaExpandida(userId: string, open: boolean) {
   filaExpandida.value = open ? userId : filaExpandida.value === userId ? null : filaExpandida.value
+
+  if (open) {
+    void cargarAuditoriaUsuario(userId, obtenerPaginaAuditoria(userId))
+  }
 }
 
 function esMismoUsuario(usuario: Usuario) {
@@ -229,13 +345,119 @@ function obtenerMensajeError(error: unknown) {
   return 'No se pudo completar la acción.'
 }
 
+function obtenerPaginaAuditoria(userId: string) {
+  return auditoriaPaginaPorUsuario.value[userId] ?? 1
+}
+
+function obtenerTotalAuditoria(userId: string) {
+  return auditoriaTotalPorUsuario.value[userId] ?? 0
+}
+
+function obtenerEntradasAuditoria(userId: string) {
+  return auditoriaPorUsuario.value[userId] ?? []
+}
+
+function obtenerErrorAuditoria(userId: string) {
+  return auditoriaErrorPorUsuario.value[userId] ?? ''
+}
+
+function obtenerTotalPaginasAuditoria(userId: string) {
+  return Math.max(1, Math.ceil(obtenerTotalAuditoria(userId) / AUDITORIA_POR_PAGINA))
+}
+
+function formatearValorAuditoria(field: string, value: unknown) {
+  if (value === null || value === undefined || value === '') {
+    if (field === 'availability_status') return 'Sin estado manual'
+    if (field === 'professional_license_expires_at') return 'Sin vigencia'
+    return 'Vacío'
+  }
+
+  if (field === 'role' && typeof value === 'string' && value in roleLabels) {
+    return roleLabels[value as UserRole]
+  }
+
+  if (field === 'availability_status' && isLawyerAvailabilityStatus(value)) {
+    return lawyerAvailabilityLabels[value]
+  }
+
+  if (field === 'is_active' && typeof value === 'boolean') {
+    return value ? 'Activo' : 'Inactivo'
+  }
+
+  if (field.endsWith('_at') && typeof value === 'string') {
+    return formatearFechaHora(value)
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Sí' : 'No'
+  }
+
+  return String(value)
+}
+
+function obtenerCambiosAuditoria(entry: ProfileAuditEntry) {
+  return Object.entries(entry.changed_fields ?? {}).map(([field, change]) => ({
+    key: field,
+    label: etiquetasAuditoria[field] ?? field,
+    oldValue: formatearValorAuditoria(field, change?.old),
+    newValue: formatearValorAuditoria(field, change?.new),
+  }))
+}
+
+async function cargarAuditoriaUsuario(userId: string, page = 1) {
+  auditoriaLoadingPorUsuario.value = {
+    ...auditoriaLoadingPorUsuario.value,
+    [userId]: true,
+  }
+  auditoriaErrorPorUsuario.value = {
+    ...auditoriaErrorPorUsuario.value,
+    [userId]: '',
+  }
+
+  try {
+    const response = await adminFetch<ProfileAuditResponse>(`/api/admin/users/${userId}/audit`, {
+      query: {
+        page,
+        perPage: AUDITORIA_POR_PAGINA,
+      },
+    })
+
+    auditoriaPorUsuario.value = {
+      ...auditoriaPorUsuario.value,
+      [userId]: response.items,
+    }
+    auditoriaPaginaPorUsuario.value = {
+      ...auditoriaPaginaPorUsuario.value,
+      [userId]: response.page,
+    }
+    auditoriaTotalPorUsuario.value = {
+      ...auditoriaTotalPorUsuario.value,
+      [userId]: response.total,
+    }
+  } catch (error) {
+    auditoriaErrorPorUsuario.value = {
+      ...auditoriaErrorPorUsuario.value,
+      [userId]: obtenerMensajeError(error),
+    }
+  } finally {
+    auditoriaLoadingPorUsuario.value = {
+      ...auditoriaLoadingPorUsuario.value,
+      [userId]: false,
+    }
+  }
+}
+
+function cambiarPaginaAuditoria(userId: string, page: number) {
+  void cargarAuditoriaUsuario(userId, page)
+}
+
 async function cargarUsuarios() {
   loading.value = true
   errorMsg.value = ''
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('user_id, created_at, display_name, contact_email, contact_phone, personal_address, role, office_address, is_active, deactivated_at')
+    .select('user_id, created_at, display_name, contact_email, contact_phone, personal_address, role, office_address, professional_license_number, professional_license_expires_at, availability_status, is_active, deactivated_at')
     .order('is_active', { ascending: false })
     .order('role')
     .order('display_name')
@@ -248,6 +470,7 @@ async function cargarUsuarios() {
   }
 
   usuarios.value = (data ?? []) as Usuario[]
+  sincronizarCedulasProfesionales(usuarios.value)
 }
 
 async function crearUsuario() {
@@ -265,6 +488,7 @@ async function crearUsuario() {
         displayName: nuevoNombre.value.trim(),
         role: nuevoRol.value,
         officeAddress: mostrarDireccionOficina.value ? nuevaDireccionOficina.value.trim() : '',
+        professionalLicenseNumber: mostrarCamposAbogado.value ? nuevaCedulaProfesional.value.trim().toUpperCase() : '',
       },
     })
 
@@ -274,6 +498,7 @@ async function crearUsuario() {
     nuevoRol.value = 'abogado'
     nuevaPassword.value = ''
     nuevaDireccionOficina.value = ''
+    nuevaCedulaProfesional.value = ''
     mostrarFormulario.value = false
     await cargarUsuarios()
   } catch (error) {
@@ -283,7 +508,14 @@ async function crearUsuario() {
   }
 }
 
-async function actualizarUsuario(usuario: Usuario, payload: { role?: UserRole, isActive?: boolean }) {
+async function actualizarUsuario(
+  usuario: Usuario,
+  payload: {
+    role?: ManageableUserRole
+    isActive?: boolean
+    professionalLicenseNumber?: string | null
+  },
+) {
   savingUserId.value = usuario.user_id
   errorMsg.value = ''
   successMsg.value = ''
@@ -294,13 +526,18 @@ async function actualizarUsuario(usuario: Usuario, payload: { role?: UserRole, i
       body: payload,
     })
 
-    successMsg.value = payload.isActive === false
+    successMsg.value = payload.professionalLicenseNumber !== undefined
+      ? 'Credencial profesional actualizada correctamente.'
+      : payload.isActive === false
       ? 'Usuario desactivado correctamente.'
       : payload.isActive === true
         ? 'Usuario reactivado correctamente.'
         : 'Rol actualizado correctamente.'
 
     await cargarUsuarios()
+    if (filaExpandida.value === usuario.user_id) {
+      await cargarAuditoriaUsuario(usuario.user_id, obtenerPaginaAuditoria(usuario.user_id))
+    }
   } catch (error) {
     errorMsg.value = obtenerMensajeError(error)
   } finally {
@@ -310,7 +547,13 @@ async function actualizarUsuario(usuario: Usuario, payload: { role?: UserRole, i
 
 async function cambiarRol(usuario: Usuario, role: UserRole) {
   if (usuario.role === role) return
-  await actualizarUsuario(usuario, { role })
+  await actualizarUsuario(usuario, { role: role as ManageableUserRole })
+}
+
+async function guardarCedulaProfesional(usuario: Usuario) {
+  await actualizarUsuario(usuario, {
+    professionalLicenseNumber: obtenerCedulaProfesional(usuario).trim().toUpperCase() || null,
+  })
 }
 
 async function toggleActivo(usuario: Usuario) {
@@ -327,6 +570,12 @@ watch([busqueda, rolesSeleccionados, estadosSeleccionados, cantidadPorPagina], (
   filaExpandida.value = null
 })
 
+watch(nuevoRol, (role) => {
+  if (role !== 'abogado') {
+    nuevaCedulaProfesional.value = ''
+  }
+})
+
 watch(totalPaginas, (total) => {
   if (paginaActual.value > total) paginaActual.value = total
 })
@@ -339,7 +588,7 @@ watch(usuariosPaginados, (lista) => {
 })
 
 onMounted(() => {
-  cargarUsuarios()
+  void Promise.all([cargarPerfil(), cargarUsuarios()])
 })
 </script>
 
@@ -451,6 +700,17 @@ onMounted(() => {
           />
         </UFormField>
 
+        <UFormField
+          v-if="mostrarCamposAbogado"
+          label="Cédula profesional"
+          help="Se guarda única en la plataforma y su vigencia inicial se extiende por 5 años."
+        >
+          <UInput
+            v-model="nuevaCedulaProfesional"
+            placeholder="Ejemplo: CP-001245"
+          />
+        </UFormField>
+
         <div class="flex flex-wrap gap-3">
           <UButton :loading="creatingUser" @click="crearUsuario">
             Crear usuario
@@ -503,7 +763,7 @@ onMounted(() => {
                   :variant="rolesSeleccionados.includes(rol) ? 'solid' : 'outline'"
                   @click="toggleFiltroRol(rol)"
                 >
-                  {{ etiquetaRol[rol] }}
+                  {{ roleLabels[rol] }}
                 </UButton>
               </div>
             </div>
@@ -613,7 +873,7 @@ onMounted(() => {
 
                     <div class="flex items-start">
                       <UBadge :color="colorRol[usuario.role]" variant="subtle">
-                        {{ etiquetaRol[usuario.role] }}
+                        {{ roleLabels[usuario.role] }}
                       </UBadge>
                     </div>
 
@@ -649,10 +909,10 @@ onMounted(() => {
                         <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
                           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Acceso</p>
                           <p class="mt-2 font-semibold text-highlighted">
-                            {{ etiquetaRol[usuario.role] }}
+                            {{ roleLabels[usuario.role] }}
                           </p>
                           <p class="mt-2 text-sm text-muted">
-                            {{ descripcionAcceso[usuario.role] }}
+                            {{ roleDescriptions[usuario.role] }}
                           </p>
                           <p class="mt-3 text-xs text-muted">
                             Alta {{ formatearFechaHora(usuario.created_at) }}
@@ -678,6 +938,32 @@ onMounted(() => {
                             {{ usuario.personal_address || 'Sin dirección personal registrada' }}
                           </p>
                         </div>
+
+                        <div
+                          v-if="usuario.role === 'abogado'"
+                          class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm"
+                        >
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Credencial profesional</p>
+                          <p class="mt-2 text-sm font-medium text-highlighted">
+                            {{ usuario.professional_license_number || 'Sin cédula profesional' }}
+                          </p>
+                          <p class="mt-2 text-sm text-muted">
+                            {{ formatearVigenciaProfesional(usuario.professional_license_expires_at) }}
+                          </p>
+                        </div>
+
+                        <div
+                          v-if="usuario.role === 'abogado'"
+                          class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm"
+                        >
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Disponibilidad</p>
+                          <p class="mt-2 text-sm font-medium text-highlighted">
+                            {{ lawyerAvailabilityLabels[isLawyerAvailabilityStatus(usuario.availability_status) ? usuario.availability_status : 'available'] }}
+                          </p>
+                          <p class="mt-2 text-sm text-muted">
+                            {{ isLawyerAvailabilityStatus(usuario.availability_status) ? 'Este estado impacta la autoasignación de nuevos tickets.' : 'Se tomará como disponible hasta que el abogado lo cambie.' }}
+                          </p>
+                        </div>
                       </div>
 
                       <div class="grid gap-3 rounded-[1.5rem] border border-default/80 bg-default/90 p-4 shadow-sm">
@@ -692,17 +978,42 @@ onMounted(() => {
                           <USelect
                             :model-value="usuario.role"
                             value-key="value"
-                            :disabled="savingUserId === usuario.user_id || esMismoUsuario(usuario)"
-                            :items="opcionesRol"
+                            :disabled="savingUserId === usuario.user_id || !puedeEditarUsuario(usuario)"
+                            :items="obtenerOpcionesRolUsuario(usuario)"
                             @update:model-value="(value) => cambiarRol(usuario, value as UserRole)"
                           />
+                        </UFormField>
+
+                        <UFormField
+                          v-if="usuario.role === 'abogado'"
+                          label="Cédula profesional"
+                          help="Al guardarla o actualizarla, la vigencia se renueva por 5 años."
+                        >
+                          <div class="flex gap-2">
+                            <UInput
+                              :model-value="obtenerCedulaProfesional(usuario)"
+                              :disabled="savingUserId === usuario.user_id || !puedeEditarUsuario(usuario)"
+                              placeholder="Ejemplo: CP-001245"
+                              class="flex-1"
+                              @update:model-value="(value) => actualizarCedulaProfesionalLocal(usuario.user_id, String(value ?? ''))"
+                            />
+                            <UButton
+                              color="neutral"
+                              variant="outline"
+                              :loading="savingUserId === usuario.user_id"
+                              :disabled="savingUserId === usuario.user_id || !puedeEditarUsuario(usuario) || !hayCambioCedulaProfesional(usuario)"
+                              @click="guardarCedulaProfesional(usuario)"
+                            >
+                              Guardar
+                            </UButton>
+                          </div>
                         </UFormField>
 
                         <UButton
                           :color="usuario.is_active ? 'error' : 'success'"
                           :variant="usuario.is_active ? 'soft' : 'solid'"
                           :loading="savingUserId === usuario.user_id"
-                          :disabled="savingUserId === usuario.user_id || esMismoUsuario(usuario)"
+                          :disabled="savingUserId === usuario.user_id || !puedeEditarUsuario(usuario)"
                           class="justify-center"
                           @click="toggleActivo(usuario)"
                         >
@@ -710,8 +1021,105 @@ onMounted(() => {
                         </UButton>
 
                         <p class="text-xs text-muted">
-                          {{ esMismoUsuario(usuario) ? 'Tu cuenta no se puede editar desde este panel.' : 'Los cambios se guardan inmediatamente.' }}
+                          {{
+                            esMismoUsuario(usuario)
+                              ? 'Tu cuenta no se puede editar desde este panel.'
+                              : !puedeEditarUsuario(usuario)
+                                ? 'Solo una cuenta superadmin puede editar roles administrativos.'
+                                : 'Los cambios se guardan inmediatamente.'
+                          }}
                         </p>
+                      </div>
+                    </div>
+
+                    <div class="mt-4 rounded-[1.5rem] border border-default/80 bg-default/90 p-4 shadow-sm">
+                      <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Auditoría del perfil</p>
+                          <p class="mt-2 text-sm text-muted">
+                            Historial de cambios sensibles y operativos aplicados a esta cuenta.
+                          </p>
+                        </div>
+
+                        <UBadge color="neutral" variant="outline">
+                          {{ obtenerTotalAuditoria(usuario.user_id) }} registro(s)
+                        </UBadge>
+                      </div>
+
+                      <div v-if="auditoriaLoadingPorUsuario[usuario.user_id] && !obtenerEntradasAuditoria(usuario.user_id).length" class="mt-4 rounded-2xl border border-dashed border-default px-4 py-8 text-center text-sm text-muted">
+                        Cargando historial de auditoría...
+                      </div>
+
+                      <div v-else-if="obtenerErrorAuditoria(usuario.user_id)" class="mt-4 rounded-2xl border border-error/20 bg-error/5 px-4 py-4 text-sm text-error">
+                        {{ obtenerErrorAuditoria(usuario.user_id) }}
+                      </div>
+
+                      <div v-else-if="obtenerEntradasAuditoria(usuario.user_id).length" class="mt-4 grid gap-3">
+                        <div
+                          v-for="entry in obtenerEntradasAuditoria(usuario.user_id)"
+                          :key="entry.id"
+                          class="rounded-[1.25rem] border border-default/80 bg-elevated/45 p-4"
+                        >
+                          <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p class="font-medium text-highlighted">
+                                {{ entry.actor_name }}
+                              </p>
+                              <p class="mt-1 text-xs text-muted">
+                                {{ formatearFechaHora(entry.created_at) }}
+                              </p>
+                            </div>
+
+                            <UBadge color="primary" variant="soft">
+                              {{ obtenerCambiosAuditoria(entry).length }} cambio(s)
+                            </UBadge>
+                          </div>
+
+                          <div class="mt-4 grid gap-3 lg:grid-cols-2">
+                            <div
+                              v-for="change in obtenerCambiosAuditoria(entry)"
+                              :key="`${entry.id}-${change.key}`"
+                              class="rounded-2xl border border-default/80 bg-default/85 p-3"
+                            >
+                              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                                {{ change.label }}
+                              </p>
+                              <p class="mt-3 text-xs font-medium uppercase tracking-[0.16em] text-muted">
+                                Antes
+                              </p>
+                              <p class="mt-1 text-sm text-highlighted">
+                                {{ change.oldValue }}
+                              </p>
+                              <p class="mt-3 text-xs font-medium uppercase tracking-[0.16em] text-muted">
+                                Ahora
+                              </p>
+                              <p class="mt-1 text-sm text-highlighted">
+                                {{ change.newValue }}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div v-else class="mt-4 rounded-2xl border border-dashed border-default px-4 py-8 text-center text-sm text-muted">
+                        No hay cambios auditados para esta cuenta todavía.
+                      </div>
+
+                      <div v-if="obtenerTotalAuditoria(usuario.user_id) > AUDITORIA_POR_PAGINA" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p class="text-xs text-muted">
+                          Página {{ obtenerPaginaAuditoria(usuario.user_id) }} de {{ obtenerTotalPaginasAuditoria(usuario.user_id) }}
+                        </p>
+
+                        <UPagination
+                          :page="obtenerPaginaAuditoria(usuario.user_id)"
+                          :total="obtenerTotalAuditoria(usuario.user_id)"
+                          :items-per-page="AUDITORIA_POR_PAGINA"
+                          size="sm"
+                          show-edges
+                          active-color="primary"
+                          active-variant="solid"
+                          @update:page="(page) => cambiarPaginaAuditoria(usuario.user_id, page)"
+                        />
                       </div>
                     </div>
                   </div>

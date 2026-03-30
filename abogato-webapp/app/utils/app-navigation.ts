@@ -1,6 +1,10 @@
 import type { NavigationMenuItem } from '#ui/types'
+import {
+  normalizeAppRole as normalizeSharedAppRole,
+  roleLabels,
+  type AppRole,
+} from '~~/shared/roles'
 
-export type AppRole = 'cliente' | 'abogado' | 'admin'
 export type NavigationSection = {
   id: string
   label: string
@@ -75,6 +79,7 @@ const adminSections: NavigationSection[] = [
       { label: 'Tickets', icon: 'i-lucide-ticket', to: '/admin/tickets' },
       { label: 'Plantillas', icon: 'i-lucide-file-text', to: '/admin/plantillas' },
       { label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/usuarios' },
+      { label: 'Auditoría', icon: 'i-lucide-history', to: '/admin/auditoria' },
     ],
   },
   {
@@ -87,24 +92,19 @@ const adminSections: NavigationSection[] = [
 ]
 
 export function normalizeAppRole(role: string | null | undefined): AppRole {
-  if (role === 'admin' || role === 'abogado') return role
-  return 'cliente'
+  return normalizeSharedAppRole(role)
 }
 
 export function getDashboardPathForRole(role: string | null | undefined) {
-  const normalizedRole = normalizeAppRole(role)
+  const normalizedRole = normalizeSharedAppRole(role)
 
-  if (normalizedRole === 'admin') return '/admin/dashboard'
+  if (normalizedRole === 'admin' || normalizedRole === 'superadmin') return '/admin/dashboard'
   if (normalizedRole === 'abogado') return '/lawyer/dashboard'
   return '/client/dashboard'
 }
 
 export function getRoleLabel(role: string | null | undefined) {
-  const normalizedRole = normalizeAppRole(role)
-
-  if (normalizedRole === 'admin') return 'Administrador'
-  if (normalizedRole === 'abogado') return 'Abogado'
-  return 'Cliente'
+  return roleLabels[normalizeSharedAppRole(role)]
 }
 
 export function getNavigationItems(role: string | null | undefined): NavigationMenuItem[] {
@@ -112,9 +112,9 @@ export function getNavigationItems(role: string | null | undefined): NavigationM
 }
 
 export function getNavigationSections(role: string | null | undefined): NavigationSection[] {
-  const normalizedRole = normalizeAppRole(role)
+  const normalizedRole = normalizeSharedAppRole(role)
 
-  if (normalizedRole === 'admin') return adminSections
+  if (normalizedRole === 'admin' || normalizedRole === 'superadmin') return adminSections
   if (normalizedRole === 'abogado') return lawyerSections
   return clientSections
 }

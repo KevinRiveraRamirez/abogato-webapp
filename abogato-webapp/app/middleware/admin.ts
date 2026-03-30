@@ -1,3 +1,5 @@
+import { isAdminLikeRole } from '~~/shared/roles'
+
 export default defineNuxtRouteMiddleware(async () => {
   const supabase = useSupabaseClient()
 
@@ -29,7 +31,7 @@ export default defineNuxtRouteMiddleware(async () => {
     return navigateTo('/lawyer/dashboard', { replace: true })
   }
 
-  if (data.role !== 'admin') {
+  if (!isAdminLikeRole(data.role)) {
     return navigateTo('/client/dashboard', { replace: true })
   }
 })

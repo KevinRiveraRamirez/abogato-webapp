@@ -1,6 +1,9 @@
 import type { H3Event } from 'h3'
-
-type AppRole = 'cliente' | 'abogado' | 'admin'
+import {
+  canManageAdminAccounts,
+  isAdminLikeRole,
+  type AppRole,
+} from '~~/shared/roles'
 
 type AdminProfile = {
   user_id: string
@@ -13,6 +16,7 @@ type SelectOptions = {
   filters?: Record<string, string>
   orderBy?: { column: string, ascending?: boolean }
   limit?: number
+  offset?: number
 }
 
 type UpdateOptions = {
@@ -82,6 +86,10 @@ function buildParams(options: SelectOptions = {}) {
 
   if (options.limit !== undefined) {
     params.set('limit', String(options.limit))
+  }
+
+  if (options.offset !== undefined) {
+    params.set('offset', String(options.offset))
   }
 
   return params
@@ -237,7 +245,7 @@ export function createSupabaseAdminApi(event: H3Event) {
   }
 }
 
-export async function requireAdminAccess(event: H3Event) {
+export async function requireAdminAccess(event: H3Event, options: { requireSuperadmin?: boolean } = {}) {
   const authorization = getHeader(event, 'authorization') ?? ''
   const accessToken = authorization.replace(/^Bearer\s+/i, '').trim()
 
@@ -267,11 +275,11 @@ export async function requireAdminAccess(event: H3Event) {
     },
   })
 
-  if (!currentProfile?.user_id || currentProfile.role !== 'admin') {
+  if (!currentProfile?.user_id || !isAdminLikeRole(currentProfile.role)) {
     throw createError({
       statusCode: 403,
       statusMessage: 'Forbidden',
-      message: 'Solo las cuentas admin pueden usar este recurso.',
+      message: 'Solo las cuentas admin o superadmin pueden usar este recurso.',
     })
   }
 
@@ -280,6 +288,14 @@ export async function requireAdminAccess(event: H3Event) {
       statusCode: 403,
       statusMessage: 'Forbidden',
       message: 'Tu cuenta está desactivada.',
+    })
+  }
+
+  if (options.requireSuperadmin && !canManageAdminAccounts(currentProfile.role)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Forbidden',
+      message: 'Solo una cuenta superadmin puede completar esta acción.',
     })
   }
 

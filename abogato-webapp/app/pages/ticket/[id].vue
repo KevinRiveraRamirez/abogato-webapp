@@ -7,6 +7,7 @@ import {
   ticketDisplayStatusLabels,
   type TicketDisplayStatus,
 } from '~/utils/dashboard'
+import { isAdminLikeRole } from '~~/shared/roles'
 import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
 
 definePageMeta({ layout: 'app', middleware: 'auth' })
@@ -16,6 +17,7 @@ const user = useSupabaseUser()
 const route = useRoute()
 const { profile, cargarPerfil } = useUsuario()
 type DocumentRow = Database['public']['Tables']['documents']['Row']
+type TicketFileRow = Database['public']['Tables']['ticket_files']['Row']
 
 type Ticket = {
   id: string
@@ -40,8 +42,9 @@ type Historial = {
 }
 
 type Adjunto = {
-  name: string
   id: string
+  name: string
+  path: string
 }
 
 type Comentario = {
@@ -109,7 +112,7 @@ const etiquetaEstadoDocumento: Record<string, string> = {
 }
 
 const esCliente = computed(() => profile.value?.role === 'cliente')
-const esAdmin = computed(() => profile.value?.role === 'admin')
+const esAdmin = computed(() => isAdminLikeRole(profile.value?.role))
 const esAbogado = computed(() => profile.value?.role === 'abogado')
 const visibleTicketStatus = computed<TicketDisplayStatus>(() => {
   if (!ticket.value) return 'open'
@@ -157,7 +160,7 @@ async function cargarTicket() {
   const t = data as Ticket
   const esAbogado = profile.value?.role === 'abogado'
   const puedeVerComoAbogado = esAbogado && (t.assigned_to === authUser.id || (t.status === 'open' && !t.assigned_to))
-  const tieneAcceso = profile.value?.role === 'admin' || t.created_by === authUser.id || puedeVerComoAbogado
+  const tieneAcceso = isAdminLikeRole(profile.value?.role) || t.created_by === authUser.id || puedeVerComoAbogado
 
   if (!tieneAcceso) {
     errorMsg.value = 'No tenés acceso a este ticket.'
@@ -198,18 +201,55 @@ async function cargarHistorial() {
 }
 
 async function cargarAdjuntos() {
-  const { data } = await supabase.storage
+  const { data: filesData, error } = await supabase
+    .from('ticket_files')
+    .select('id, file_name, file_path, created_at')
+    .eq('ticket_id', route.params.id as string)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  if ((filesData ?? []).length) {
+    adjuntos.value = await Promise.all(
+      ((filesData ?? []) as Pick<TicketFileRow, 'id' | 'file_name' | 'file_path'>[]).map(async (file) => {
+        const { data: signed } = await supabase.storage
+          .from('ticket-adjuntos')
+          .createSignedUrl(file.file_path, 60)
+
+        return {
+          id: file.id,
+          name: file.file_name,
+          path: file.file_path,
+          url: signed?.signedUrl ?? '',
+        }
+      })
+    )
+
+    return
+  }
+
+  const { data: storageFiles } = await supabase.storage
     .from('ticket-adjuntos')
     .list(route.params.id as string)
 
-  const archivos = (data ?? []) as Adjunto[]
+  const archivos = (storageFiles ?? []) as Array<{ id: string; name: string }>
 
   adjuntos.value = await Promise.all(
     archivos.map(async (a) => {
+      const filePath = `${ticket.value!.id}/${a.name}`
       const { data: signed } = await supabase.storage
         .from('ticket-adjuntos')
-        .createSignedUrl(`${ticket.value!.id}/${a.name}`, 60)
-      return { ...a, url: signed?.signedUrl ?? '' }
+        .createSignedUrl(filePath, 60)
+
+      return {
+        id: a.id,
+        name: a.name,
+        path: filePath,
+        url: signed?.signedUrl ?? '',
+      }
     })
   )
 }
@@ -343,6 +383,12 @@ async function subirArchivo(event: Event) {
     return
   }
 
+  const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+  if (authError || !authUser?.id) {
+    errorMsg.value = authError?.message || 'Sesión no válida.'
+    return
+  }
+
   if (file.size > 10 * 1024 * 1024) {
     errorMsg.value = 'El archivo no puede superar 10MB.'
     return
@@ -362,10 +408,31 @@ async function subirArchivo(event: Event) {
     .from('ticket-adjuntos')
     .upload(ruta, file)
 
+  if (error) {
+    loading.value = false
+    input.value = ''
+    errorMsg.value = error.message
+    return
+  }
+
+  const { error: fileInsertError } = await supabase
+    .from('ticket_files')
+    .insert([{
+      ticket_id: ticket.value.id,
+      file_name: file.name,
+      file_path: ruta,
+      file_size: file.size,
+      file_type: file.type || null,
+      uploaded_by: authUser.id,
+    }])
+
   loading.value = false
   input.value = ''
 
-  if (error) { errorMsg.value = error.message; return }
+  if (fileInsertError) {
+    errorMsg.value = fileInsertError.message
+    return
+  }
 
   successMsg.value = 'Archivo subido correctamente.'
   await cargarAdjuntos()
@@ -566,7 +633,7 @@ watch(user, async (newUser) => {
       >
         <template #leading>
           <UButton
-            :to="profile?.role === 'admin' ? '/admin/tickets' : profile?.role === 'abogado' ? '/lawyer/tickets' : '/tickets'"
+            :to="isAdminLikeRole(profile?.role) ? '/admin/tickets' : profile?.role === 'abogado' ? '/lawyer/tickets' : '/tickets'"
             color="neutral"
             variant="ghost"
             leading-icon="i-lucide-arrow-left"

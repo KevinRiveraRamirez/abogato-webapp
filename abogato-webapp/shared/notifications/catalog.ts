@@ -54,6 +54,14 @@ const notificationCatalog: Record<NotificationType, NotificationMeta> = {
     previewTitle: 'Nuevo comentario en tu caso',
     previewBody: 'Recibiste una actualización del equipo en el ticket "Contrato de divorcio".',
   },
+  ticket_file_from_client: {
+    label: 'Archivo del cliente',
+    icon: 'i-lucide-paperclip',
+    tone: 'warning',
+    group: 'tickets',
+    previewTitle: 'Nuevo archivo del cliente',
+    previewBody: 'El cliente adjuntó un nuevo respaldo en el ticket "Cambio de municipalidad".',
+  },
   ticket_reopen_requested: {
     label: 'Reapertura',
     icon: 'i-lucide-rotate-ccw',
@@ -93,6 +101,14 @@ const notificationCatalog: Record<NotificationType, NotificationMeta> = {
     group: 'tickets',
     previewTitle: 'Cambio en tu caso',
     previewBody: 'El ticket "Contrato de divorcio" cambió de Pendiente a En revisión.',
+  },
+  ticket_unassigned_alert: {
+    label: 'Sin responsable',
+    icon: 'i-lucide-siren',
+    tone: 'error',
+    group: 'tickets',
+    previewTitle: 'Ticket sin abogado disponible',
+    previewBody: 'El ticket "Poder especial" quedó sin asignar porque no había abogados disponibles en la cola.',
   },
   document_approved: {
     label: 'Documento aprobado',

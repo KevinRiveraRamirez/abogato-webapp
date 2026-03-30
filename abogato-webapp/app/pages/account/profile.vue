@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import {
+  hasProfessionalContext,
+  isLawyerRole,
+  lawyerAvailabilityDescriptions,
+  lawyerAvailabilityLabels,
+  roleLabels,
+  type LawyerAvailabilityStatus,
+} from '~~/shared/roles'
+
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
 const supabase = useSupabaseClient()
@@ -6,9 +15,13 @@ const { profile, cargarPerfil } = useUsuario()
 
 const firstName = ref('')
 const lastName = ref('')
+const contactEmail = ref('')
 const contactPhone = ref('')
 const personalAddress = ref('')
 const officeAddress = ref('')
+const professionalLicenseNumber = ref('')
+const professionalLicenseExpiresAt = ref<string | null>(null)
+const availabilityStatus = ref<LawyerAvailabilityStatus>('available')
 const authEmail = ref('')
 const pageLoading = ref(true)
 const loading = ref(false)
@@ -16,17 +29,15 @@ const errorMsg = ref('')
 const successMsg = ref('')
 
 const showOfficeAddressField = computed(
-  () => profile.value?.role === 'abogado' || profile.value?.role === 'admin'
+  () => hasProfessionalContext(profile.value?.role)
+)
+
+const showAvailabilityField = computed(
+  () => isLawyerRole(profile.value?.role)
 )
 
 const roleLabel = computed(() => {
-  const labels = {
-    cliente: 'Cliente',
-    abogado: 'Abogado',
-    admin: 'Administrador'
-  } as const
-
-  return labels[profile.value?.role ?? 'cliente']
+  return roleLabels[profile.value?.role ?? 'cliente']
 })
 
 const roleDescription = computed(() => {
@@ -48,7 +59,7 @@ const visibleName = computed(
 const profileName = computed(() => visibleName.value || 'Nombre pendiente')
 
 const contactChannelsCount = computed(
-  () => [authEmail.value, contactPhone.value].filter(value => value.trim()).length
+  () => [contactEmail.value, contactPhone.value].filter(value => value.trim()).length
 )
 
 const addressFieldsTotal = computed(() => (showOfficeAddressField.value ? 2 : 1))
@@ -67,7 +78,7 @@ const completionChecks = computed(() => {
   const checks = [
     Boolean(firstName.value.trim()),
     Boolean(lastName.value.trim()),
-    Boolean(authEmail.value.trim()),
+    Boolean(contactEmail.value.trim()),
     Boolean(contactPhone.value.trim()),
     Boolean(personalAddress.value.trim())
   ]
@@ -124,7 +135,7 @@ const quickStats = computed(() => [
     value: `${contactChannelsCount.value}/2`,
     description: contactChannelsCount.value === 2
       ? 'Correo y teléfono disponibles para contacto directo.'
-      : 'Sumá tu teléfono para dejar ambos canales listos.',
+      : 'Completá correo y teléfono para dejar ambos canales listos.',
     icon: 'i-lucide-phone-call'
   },
   {
@@ -205,11 +216,11 @@ const checklistItems = computed(() => {
         : 'Completá ambos campos para mostrar una ficha más confiable.'
     },
     {
-      label: 'Correo de acceso',
-      complete: Boolean(authEmail.value.trim()),
-      description: authEmail.value.trim()
-        ? 'Tu cuenta ya tiene un correo asociado desde el acceso.'
-        : 'Todavía no encontramos un correo sincronizado.'
+      label: 'Correo de contacto',
+      complete: Boolean(contactEmail.value.trim()),
+      description: contactEmail.value.trim()
+        ? 'Ya contás con un correo visible para seguimiento dentro de la plataforma.'
+        : 'Agregalo para completar mejor tus canales de contacto.'
     },
     {
       label: 'Teléfono de contacto',
@@ -240,6 +251,40 @@ const checklistItems = computed(() => {
   return items
 })
 
+const availabilityOptions = [
+  { label: lawyerAvailabilityLabels.available, value: 'available' },
+  { label: lawyerAvailabilityLabels.busy, value: 'busy' },
+  { label: lawyerAvailabilityLabels.offline, value: 'offline' },
+] as const
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, '')
+}
+
+function formatCostaRicaPhone(value: string) {
+  const digits = normalizePhone(value)
+
+  if (digits.length !== 8) {
+    return value.trim()
+  }
+
+  return `${digits.slice(0, 4)}-${digits.slice(4)}`
+}
+
+function formatProfessionalLicenseExpiry(value: string | null) {
+  if (!value) return 'Sin vigencia registrada'
+
+  return new Date(value).toLocaleDateString('es-CR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
 onMounted(async () => {
   await cargarDatosPerfil(true)
 })
@@ -262,7 +307,7 @@ async function cargarDatosPerfil(resetFeedback = false) {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('display_name, first_name, last_name, contact_email, contact_phone, personal_address, office_address')
+    .select('display_name, first_name, last_name, contact_email, contact_phone, personal_address, office_address, professional_license_number, professional_license_expires_at, availability_status')
     .eq('user_id', authUser.id)
     .maybeSingle()
 
@@ -276,10 +321,14 @@ async function cargarDatosPerfil(resetFeedback = false) {
 
   firstName.value = data?.first_name ?? fallbackName.firstName
   lastName.value = data?.last_name ?? fallbackName.lastName
-  authEmail.value = authUser.email ?? data?.contact_email ?? ''
+  authEmail.value = authUser.email ?? ''
+  contactEmail.value = data?.contact_email ?? authUser.email ?? ''
   contactPhone.value = data?.contact_phone ?? authUser.phone ?? ''
   personalAddress.value = data?.personal_address ?? ''
   officeAddress.value = data?.office_address ?? ''
+  professionalLicenseNumber.value = data?.professional_license_number ?? ''
+  professionalLicenseExpiresAt.value = data?.professional_license_expires_at ?? null
+  availabilityStatus.value = data?.availability_status ?? 'available'
   pageLoading.value = false
 }
 
@@ -296,10 +345,23 @@ async function guardarCambios() {
 
   const cleanedFirstName = firstName.value.trim()
   const cleanedLastName = lastName.value.trim()
-  const cleanedPhone = contactPhone.value.trim()
+  const cleanedContactEmail = contactEmail.value.trim().toLowerCase()
+  const cleanedPhoneDigits = normalizePhone(contactPhone.value)
   const cleanedPersonalAddress = personalAddress.value.trim()
   const cleanedOfficeAddress = officeAddress.value.trim()
   const displayName = [cleanedFirstName, cleanedLastName].filter(Boolean).join(' ').trim()
+
+  if (cleanedContactEmail && !isValidEmail(cleanedContactEmail)) {
+    errorMsg.value = 'Ingresá un correo de contacto válido.'
+    return
+  }
+
+  if (cleanedPhoneDigits && !/^\d{8}$/.test(cleanedPhoneDigits)) {
+    errorMsg.value = 'El teléfono debe tener 8 dígitos.'
+    return
+  }
+
+  const formattedPhone = cleanedPhoneDigits ? formatCostaRicaPhone(cleanedPhoneDigits) : ''
 
   loading.value = true
 
@@ -309,9 +371,11 @@ async function guardarCambios() {
       first_name: cleanedFirstName || null,
       last_name: cleanedLastName || null,
       display_name: displayName || null,
-      contact_phone: cleanedPhone || null,
+      contact_email: cleanedContactEmail || authEmail.value.trim() || null,
+      contact_phone: formattedPhone || null,
       personal_address: cleanedPersonalAddress || null,
-      office_address: cleanedOfficeAddress || null
+      office_address: cleanedOfficeAddress || null,
+      availability_status: showAvailabilityField.value ? availabilityStatus.value : null
     })
     .eq('user_id', authUser.id)
 
@@ -553,7 +617,7 @@ function getInitials(value: string) {
             color="neutral"
             variant="soft"
             title="Dato importante"
-            description="El correo mostrado proviene de tu cuenta de acceso. Este formulario actualiza únicamente los datos del perfil dentro de la app."
+            description="Tu correo de acceso sigue siendo de solo lectura. Abajo podés ajustar el correo de contacto visible, el teléfono y el resto de tu ficha."
           />
 
           <UAlert
@@ -590,7 +654,7 @@ function getInitials(value: string) {
 
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField
-              label="Correo de contacto"
+              label="Correo de acceso"
               help="Se administra desde tu cuenta de acceso y no se puede editar aquí."
             >
               <UInput
@@ -603,6 +667,19 @@ function getInitials(value: string) {
             </UFormField>
 
             <UFormField
+              label="Correo de contacto"
+              help="Este correo visible se usa dentro de la plataforma para referencia y seguimiento."
+            >
+              <UInput
+                v-model="contactEmail"
+                type="email"
+                placeholder="contacto@ejemplo.com"
+              />
+            </UFormField>
+          </div>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField
               label="Teléfono de contacto"
               help="Úsalo para dejar un canal rápido disponible dentro de la plataforma."
             >
@@ -610,6 +687,18 @@ function getInitials(value: string) {
                 v-model="contactPhone"
                 type="tel"
                 placeholder="8888-8888"
+              />
+            </UFormField>
+
+            <UFormField
+              v-if="showAvailabilityField"
+              label="Disponibilidad operativa"
+              :help="lawyerAvailabilityDescriptions[availabilityStatus]"
+            >
+              <USelect
+                v-model="availabilityStatus"
+                value-key="value"
+                :items="availabilityOptions"
               />
             </UFormField>
           </div>
@@ -659,6 +748,41 @@ function getInitials(value: string) {
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div
+            v-if="showAvailabilityField || professionalLicenseNumber"
+            class="grid gap-4 lg:grid-cols-2"
+          >
+            <div
+              v-if="professionalLicenseNumber"
+              class="rounded-[1.6rem] border border-default/80 bg-elevated/40 p-5"
+            >
+              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                Cédula profesional
+              </p>
+              <p class="mt-3 text-lg font-semibold text-highlighted">
+                {{ professionalLicenseNumber }}
+              </p>
+              <p class="mt-2 text-sm text-muted">
+                Vigente hasta {{ formatProfessionalLicenseExpiry(professionalLicenseExpiresAt) }}.
+              </p>
+            </div>
+
+            <div
+              v-if="showAvailabilityField"
+              class="rounded-[1.6rem] border border-default/80 bg-elevated/40 p-5"
+            >
+              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                Estado actual
+              </p>
+              <p class="mt-3 text-lg font-semibold text-highlighted">
+                {{ lawyerAvailabilityLabels[availabilityStatus] }}
+              </p>
+              <p class="mt-2 text-sm text-muted">
+                {{ lawyerAvailabilityDescriptions[availabilityStatus] }}
+              </p>
             </div>
           </div>
 

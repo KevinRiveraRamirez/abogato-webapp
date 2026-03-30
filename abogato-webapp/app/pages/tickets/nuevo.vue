@@ -554,6 +554,23 @@ async function crearTicket() {
         errorMsg.value = `Error subiendo archivo: ${uploadError.message}`
         return
       }
+
+      const { error: ticketFileError } = await supabase
+        .from('ticket_files')
+        .insert([{
+          ticket_id: ticketCreado.id,
+          file_name: file.name,
+          file_path: filePath,
+          file_size: file.size,
+          file_type: file.type || null,
+          uploaded_by: authUser.id,
+        }])
+
+      if (ticketFileError) {
+        loading.value = false
+        errorMsg.value = `Error registrando archivo: ${ticketFileError.message}`
+        return
+      }
     }
   }
 

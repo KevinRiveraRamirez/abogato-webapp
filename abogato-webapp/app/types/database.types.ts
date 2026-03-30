@@ -498,6 +498,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          availability_status: string | null
           contact_email: string | null
           contact_phone: string | null
           created_at: string
@@ -508,10 +509,13 @@ export type Database = {
           last_name: string | null
           office_address: string | null
           personal_address: string | null
+          professional_license_expires_at: string | null
+          professional_license_number: string | null
           role: string
           user_id: string
         }
         Insert: {
+          availability_status?: string | null
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -522,10 +526,13 @@ export type Database = {
           last_name?: string | null
           office_address?: string | null
           personal_address?: string | null
+          professional_license_expires_at?: string | null
+          professional_license_number?: string | null
           role: string
           user_id: string
         }
         Update: {
+          availability_status?: string | null
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -536,10 +543,51 @@ export type Database = {
           last_name?: string | null
           office_address?: string | null
           personal_address?: string | null
+          professional_license_expires_at?: string | null
+          professional_license_number?: string | null
           role?: string
           user_id?: string
         }
         Relationships: []
+      }
+      profile_audit_logs: {
+        Row: {
+          actor_user_id: string | null
+          changed_fields: Json
+          created_at: string
+          id: string
+          profile_user_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          changed_fields?: Json
+          created_at?: string
+          id?: string
+          profile_user_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          changed_fields?: Json
+          created_at?: string
+          id?: string
+          profile_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_audit_logs_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "profile_audit_logs_profile_user_id_fkey"
+            columns: ["profile_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       roles: {
         Row: {
@@ -617,6 +665,68 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "ticket_comments_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_assignment_history: {
+        Row: {
+          assigned_by: string | null
+          assigned_to: string | null
+          assignment_source: string
+          created_at: string
+          id: string
+          notes: string | null
+          previous_assigned_to: string | null
+          ticket_id: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          assigned_to?: string | null
+          assignment_source: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          previous_assigned_to?: string | null
+          ticket_id: string
+        }
+        Update: {
+          assigned_by?: string | null
+          assigned_to?: string | null
+          assignment_source?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          previous_assigned_to?: string | null
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_assignment_history_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "ticket_assignment_history_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "ticket_assignment_history_previous_assigned_to_fkey"
+            columns: ["previous_assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "ticket_assignment_history_ticket_id_fkey"
             columns: ["ticket_id"]
             isOneToOne: false
             referencedRelation: "tickets"
