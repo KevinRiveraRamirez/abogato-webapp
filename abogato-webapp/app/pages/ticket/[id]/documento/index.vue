@@ -234,6 +234,25 @@ async function guardarCorreccion(payload: TicketDocumentFlowSubmission) {
     fallbackCreatedBy: authUser.id,
   })
 
+  const version = await createNextDocumentVersion({
+    document: {
+      id: documento.value.id,
+      ticket_id: documento.value.ticket_id,
+      template_id: documento.value.template_id,
+      status: documento.value.status,
+      field_values: documento.value.field_values,
+      created_at: documento.value.created_at,
+      updated_at: documento.value.updated_at,
+      created_by: documento.value.created_by,
+      reviewed_by: documento.value.reviewed_by,
+      rejection_reason: documento.value.rejection_reason,
+    },
+    fieldValues: payload.fieldValues,
+    renderedContent: payload.renderedContent,
+    createdBy: authUser.id,
+    source: 'correction',
+  })
+
   const { data: documentoActualizado, error: documentUpdateError } = await supabase
     .from('documents')
     .update({
@@ -258,25 +277,6 @@ async function guardarCorreccion(payload: TicketDocumentFlowSubmission) {
   if (!documentoActualizado) {
     throw new Error('La base de datos no devolvió el documento corregido. Revisá la policy de UPDATE sobre public.documents para clientes.')
   }
-
-  const version = await createNextDocumentVersion({
-    document: {
-      id: documentoActualizado.id,
-      ticket_id: documentoActualizado.ticket_id,
-      template_id: documentoActualizado.template_id,
-      status: documentoActualizado.status,
-      field_values: documentoActualizado.field_values,
-      created_at: documentoActualizado.created_at,
-      updated_at: documentoActualizado.updated_at,
-      created_by: documentoActualizado.created_by,
-      reviewed_by: documentoActualizado.reviewed_by,
-      rejection_reason: documentoActualizado.rejection_reason,
-    },
-    fieldValues: payload.fieldValues,
-    renderedContent: payload.renderedContent,
-    createdBy: authUser.id,
-    source: 'correction',
-  })
 
   documento.value = {
     ...documento.value,

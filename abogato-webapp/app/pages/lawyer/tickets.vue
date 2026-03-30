@@ -18,7 +18,6 @@ definePageMeta({ layout: 'app', middleware: ['auth', 'lawyer'] })
 const supabase = useSupabaseClient()
 const authUser = useSupabaseUser()
 const { profile, cargarPerfil } = useUsuario()
-const { syncLatestDocumentVersionReview } = useDocumentWorkflow()
 type FieldValue = string | number | null | undefined
 type TicketRow = Database['public']['Tables']['tickets']['Row']
 type DocumentRow = Database['public']['Tables']['documents']['Row']
@@ -1013,17 +1012,6 @@ async function aprobarDocumento(docId: string, ticket: Ticket) {
     .eq('id', docId)
 
   if (error) { errorMsg.value = error.message; return }
-  try {
-    await syncLatestDocumentVersionReview({
-      documentId: docId,
-      status: 'approved',
-      reviewedBy: currentUser.id,
-      rejectionReason: null,
-    })
-  } catch (error) {
-    errorMsg.value = error instanceof Error ? error.message : 'No se pudo actualizar el historial de versiones.'
-    return
-  }
   await cargarDocumentosTicket(ticket.id)
 }
 
@@ -1075,13 +1063,6 @@ async function rechazarDocumento() {
     if (documentError) {
       throw new Error(documentError.message)
     }
-
-    await syncLatestDocumentVersionReview({
-      documentId: payload.docId,
-      status: 'rejected',
-      reviewedBy: currentUser.id,
-      rejectionReason: razon,
-    })
 
     const { error: ticketError } = await supabase
       .from('tickets')

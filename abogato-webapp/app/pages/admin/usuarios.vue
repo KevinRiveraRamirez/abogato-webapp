@@ -80,6 +80,8 @@ const nuevaDireccionOficina = ref('')
 const nuevaCedulaProfesional = ref('')
 const creatingUser = ref(false)
 const cedulasProfesionales = ref<Record<string, string>>({})
+const cedulaCambioPendiente = ref<{ userId: string } | null>(null)
+const cedulaCambioValue = ref('')
 const auditoriaPorUsuario = ref<Record<string, ProfileAuditEntry[]>>({})
 const auditoriaLoadingPorUsuario = ref<Record<string, boolean>>({})
 const auditoriaErrorPorUsuario = ref<Record<string, string>>({})
@@ -515,7 +517,7 @@ async function actualizarUsuario(
     isActive?: boolean
     professionalLicenseNumber?: string | null
   },
-) {
+) : Promise<boolean> {
   savingUserId.value = usuario.user_id
   errorMsg.value = ''
   successMsg.value = ''
@@ -538,8 +540,11 @@ async function actualizarUsuario(
     if (filaExpandida.value === usuario.user_id) {
       await cargarAuditoriaUsuario(usuario.user_id, obtenerPaginaAuditoria(usuario.user_id))
     }
+
+    return true
   } catch (error) {
     errorMsg.value = obtenerMensajeError(error)
+    return false
   } finally {
     savingUserId.value = null
   }
@@ -547,6 +552,14 @@ async function actualizarUsuario(
 
 async function cambiarRol(usuario: Usuario, role: UserRole) {
   if (usuario.role === role) return
+
+  // Si el rol pasa de cliente -> abogado, antes mostramos/verificamos la cédula profesional.
+  if (usuario.role === 'cliente' && role === 'abogado') {
+    cedulaCambioPendiente.value = { userId: usuario.user_id }
+    cedulaCambioValue.value = obtenerCedulaProfesional(usuario)
+    return
+  }
+
   await actualizarUsuario(usuario, { role: role as ManageableUserRole })
 }
 
@@ -554,6 +567,36 @@ async function guardarCedulaProfesional(usuario: Usuario) {
   await actualizarUsuario(usuario, {
     professionalLicenseNumber: obtenerCedulaProfesional(usuario).trim().toUpperCase() || null,
   })
+}
+
+async function confirmarCambioRolClienteAAbogado(usuario: Usuario) {
+  if (!cedulaCambioPendiente.value || cedulaCambioPendiente.value.userId !== usuario.user_id) return
+
+  const existente = (usuario.professional_license_number ?? '').trim().toUpperCase()
+  const ingresada = cedulaCambioValue.value.trim().toUpperCase()
+
+  if (!existente && !ingresada) {
+    errorMsg.value = 'La cédula profesional es obligatoria para cuentas con rol abogado.'
+    return
+  }
+
+  // Solo enviamos la cédula si NO existe ya en la base, para evitar renovar vigencia innecesariamente.
+  const payload: { role: ManageableUserRole; professionalLicenseNumber?: string | null } = {
+    role: 'abogado',
+  }
+  if (!existente) payload.professionalLicenseNumber = ingresada || null
+
+  const ok = await actualizarUsuario(usuario, payload)
+  if (!ok) return
+
+  cedulaCambioPendiente.value = null
+  cedulaCambioValue.value = ''
+}
+
+function cancelarCambioRolClienteAAbogado() {
+  cedulaCambioPendiente.value = null
+  cedulaCambioValue.value = ''
+  errorMsg.value = ''
 }
 
 async function toggleActivo(usuario: Usuario) {
@@ -978,11 +1021,60 @@ onMounted(() => {
                           <USelect
                             :model-value="usuario.role"
                             value-key="value"
-                            :disabled="savingUserId === usuario.user_id || !puedeEditarUsuario(usuario)"
+                            :disabled="savingUserId === usuario.user_id || !puedeEditarUsuario(usuario) || cedulaCambioPendiente?.userId === usuario.user_id"
                             :items="obtenerOpcionesRolUsuario(usuario)"
                             @update:model-value="(value) => cambiarRol(usuario, value as UserRole)"
                           />
                         </UFormField>
+
+                        <div
+                          v-if="cedulaCambioPendiente?.userId === usuario.user_id"
+                          class="mt-2 rounded-[1.25rem] border border-default/80 bg-default/90 p-4 shadow-sm"
+                        >
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                            Verificación de cédula profesional
+                          </p>
+
+                          <p v-if="usuario.professional_license_number" class="mt-2 text-sm text-highlighted">
+                            Cédula registrada en la base: {{ usuario.professional_license_number }}
+                          </p>
+                          <p v-else class="mt-2 text-sm text-muted">
+                            Este usuario no tiene cédula registrada. Tenés que ingresarla para habilitar el rol `abogado`.
+                          </p>
+
+                          <UFormField
+                            v-if="!usuario.professional_license_number"
+                            class="mt-3"
+                            label="Cédula profesional"
+                            help="Se validará al guardar el cambio de rol."
+                          >
+                            <UInput
+                              :model-value="cedulaCambioValue"
+                              placeholder="Ejemplo: CP-001245"
+                              class="flex-1"
+                              @update:model-value="cedulaCambioValue = String($event ?? '')"
+                              :disabled="savingUserId === usuario.user_id"
+                            />
+                          </UFormField>
+
+                          <div class="mt-4 flex flex-wrap gap-2">
+                            <UButton
+                              color="neutral"
+                              :loading="savingUserId === usuario.user_id"
+                              :disabled="savingUserId === usuario.user_id"
+                              @click="confirmarCambioRolClienteAAbogado(usuario)"
+                            >
+                              Confirmar rol `abogado`
+                            </UButton>
+                            <UButton
+                              variant="ghost"
+                              :disabled="savingUserId === usuario.user_id"
+                              @click="cancelarCambioRolClienteAAbogado()"
+                            >
+                              Cancelar
+                            </UButton>
+                          </div>
+                        </div>
 
                         <UFormField
                           v-if="usuario.role === 'abogado'"
