@@ -480,7 +480,13 @@ onMounted(async () => {
       description="Revisá el estado de tus trámites y creá nuevas solicitudes desde una página dedicada."
     >
       <template #actions>
-        <UButton color="neutral" variant="outline" :loading="loading" @click="cargarTickets">
+        <UButton
+          color="neutral"
+          variant="outline"
+          class="w-full justify-center sm:w-auto"
+          :loading="loading"
+          @click="cargarTickets"
+        >
           Actualizar
         </UButton>
         <UButton
@@ -489,7 +495,7 @@ onMounted(async () => {
           color="primary"
           variant="solid"
           leading-icon="i-lucide-plus"
-          class="shadow-[0_18px_40px_-24px_rgba(37,99,235,0.72)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_48px_-24px_rgba(37,99,235,0.78)]"
+          class="w-full justify-center shadow-[0_18px_40px_-24px_rgba(37,99,235,0.72)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_48px_-24px_rgba(37,99,235,0.78)] sm:w-auto"
         >
           Nuevo ticket
         </UButton>
@@ -579,9 +585,9 @@ onMounted(async () => {
         v-else
         class="overflow-hidden rounded-[1.75rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] shadow-[0_24px_70px_-42px_rgba(15,23,42,0.3)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))]"
       >
-        <div class="overflow-x-auto pb-1">
-          <div class="min-w-[52rem] w-full">
-            <div class="grid grid-cols-[10rem_minmax(18rem,2fr)_11rem_9rem] gap-4 border-b border-default/70 bg-elevated/70 pl-5 pr-9 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted sm:pr-10">
+        <div class="max-lg:overflow-visible lg:overflow-x-auto lg:pb-1">
+          <div class="w-full lg:min-w-[52rem]">
+            <div class="hidden grid-cols-[10rem_minmax(18rem,2fr)_11rem_9rem] gap-4 border-b border-default/70 bg-elevated/70 py-4 pl-5 pr-9 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted lg:grid sm:pr-10">
               <p>Ticket</p>
               <p>Asunto</p>
               <p>Estado</p>
@@ -599,7 +605,7 @@ onMounted(async () => {
                 <template #default="{ open }">
                   <button
                     type="button"
-                    class="grid w-full grid-cols-[10rem_minmax(18rem,2fr)_11rem_9rem] gap-4 pl-5 pr-9 py-4 text-left transition hover:bg-primary/5 sm:pr-10"
+                    class="grid w-full min-w-0 grid-cols-1 gap-3 px-4 py-4 text-left transition hover:bg-primary/5 lg:grid-cols-[10rem_minmax(18rem,2fr)_11rem_9rem] lg:gap-4 lg:py-4 lg:pl-5 lg:pr-10"
                     :class="open ? 'bg-primary/6' : ''"
                     :aria-label="open ? `Minimizar ticket ${ticket.id}` : `Expandir ticket ${ticket.id}`"
                   >
@@ -627,14 +633,14 @@ onMounted(async () => {
                       </UBadge>
                     </div>
 
-                    <div class="whitespace-nowrap text-sm text-muted">
+                    <div class="text-sm text-muted lg:whitespace-nowrap">
                       {{ formatearFecha(ticket.created_at) }}
                     </div>
                   </button>
                 </template>
 
                 <template #content>
-                  <div class="border-t border-default/60 bg-elevated/35 px-5 py-5">
+                  <div class="border-t border-default/60 bg-elevated/35 px-4 py-4 sm:px-5 sm:py-5">
                     <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_19rem]">
                       <div class="grid gap-4 md:grid-cols-2">
                         <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
@@ -726,19 +732,22 @@ onMounted(async () => {
       <template v-if="totalTicketsFiltrados">
         <USeparator />
 
-        <div class="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+        <div class="flex min-w-0 flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
           <p class="text-sm text-muted">
             Página {{ paginaActual }} de {{ totalPaginas }}
           </p>
 
-          <UPagination
-            v-model:page="paginaActual"
-            :total="totalTicketsFiltrados"
-            :items-per-page="cantidadPorPagina"
-            show-edges
-            active-color="primary"
-            active-variant="solid"
-          />
+          <div class="w-full min-w-0 overflow-x-auto sm:w-auto sm:overflow-visible sm:pb-0 [-webkit-overflow-scrolling:touch]">
+            <UPagination
+              v-model:page="paginaActual"
+              class="flex w-max min-w-0 justify-center sm:w-auto sm:justify-end"
+              :total="totalTicketsFiltrados"
+              :items-per-page="cantidadPorPagina"
+              show-edges
+              active-color="primary"
+              active-variant="solid"
+            />
+          </div>
         </div>
       </template>
     </UCard>

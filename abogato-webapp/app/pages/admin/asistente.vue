@@ -89,6 +89,16 @@ watch(tab, async (val) => {
 <template>
   <div class="mx-auto max-w-4xl p-6">
     <div class="mb-6">
+      <div class="mb-3">
+        <UButton
+          variant="ghost"
+          color="neutral"
+          icon="i-lucide-arrow-left"
+          to="/admin/dashboard"
+        >
+          Volver al dashboard
+        </UButton>
+      </div>
       <h1 class="text-2xl font-bold text-highlighted">Panel del Asistente Virtual</h1>
       <p class="mt-1 text-sm text-muted">Gestión de preguntas frecuentes, consultas y métricas</p>
     </div>
@@ -117,26 +127,35 @@ watch(tab, async (val) => {
         <template #header>
           <p class="font-semibold text-highlighted">Agregar nueva pregunta frecuente</p>
         </template>
-        <div class="space-y-3">
-          <UInput
-            v-model="nuevaPregunta"
-            placeholder="Pregunta frecuente..."
-            size="md"
-          />
-          <UTextarea
-            v-model="nuevaRespuesta"
-            placeholder="Respuesta..."
-            :rows="3"
-          />
-          <UButton
-            color="primary"
-            icon="i-lucide-plus"
-            :loading="guardando"
-            :disabled="!nuevaPregunta.trim() || !nuevaRespuesta.trim()"
-            @click="agregarFaq"
-          >
-            Agregar
-          </UButton>
+        <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium uppercase tracking-wide text-muted">Pregunta</label>
+            <UInput
+              v-model="nuevaPregunta"
+              placeholder="Escribe la pregunta frecuente..."
+              size="lg"
+            />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium uppercase tracking-wide text-muted">Respuesta</label>
+            <UTextarea
+              v-model="nuevaRespuesta"
+              placeholder="Escribe la respuesta completa..."
+              :rows="4"
+            />
+          </div>
+          <div class="flex justify-end pt-1">
+            <UButton
+              color="primary"
+              icon="i-lucide-plus"
+              size="md"
+              :loading="guardando"
+              :disabled="!nuevaPregunta.trim() || !nuevaRespuesta.trim()"
+              @click="agregarFaq"
+            >
+              Agregar pregunta
+            </UButton>
+          </div>
         </div>
       </UCard>
 

@@ -31,8 +31,38 @@ const emit = defineEmits<{
 }>()
 
 const root = ref<HTMLElement | null>(null)
+const filterTriggerRef = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
 const viewportPadding = 12
+const gap = 8
+
+function panelBesideTrigger(panelRect: DOMRect, trigger: DOMRect | undefined) {
+  const margin = viewportPadding
+  if (!trigger) {
+    return {
+      left: window.innerWidth - panelRect.width - margin,
+      top: window.innerWidth < 640 ? 72 : 88,
+    }
+  }
+
+  let left = trigger.left - gap - panelRect.width
+  let top = trigger.top
+
+  if (left < margin) {
+    left = Math.min(
+      Math.max(margin, trigger.right - panelRect.width),
+      window.innerWidth - panelRect.width - margin,
+    )
+    top = trigger.bottom + gap
+  }
+
+  const maxTop = window.innerHeight - panelRect.height - margin
+  return {
+    left,
+    top: Math.min(Math.max(top, margin), maxTop),
+  }
+}
+
 const {
   panel,
   panelStyle,
@@ -53,6 +83,8 @@ const {
       maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
     }
   },
+  getDefaultPosition: (panelRect) =>
+    panelBesideTrigger(panelRect, filterTriggerRef.value?.getBoundingClientRect()),
 })
 
 const searchModel = computed({
@@ -115,7 +147,10 @@ onBeforeUnmount(() => {
 watch(isOpen, async (open) => {
   if (!open) return
   await nextTick()
-  await updatePanelPosition()
+  updatePanelPosition()
+  requestAnimationFrame(() => {
+    updatePanelPosition()
+  })
 })
 </script>
 
@@ -142,7 +177,7 @@ watch(isOpen, async (open) => {
             :placeholder="searchPlaceholder"
           />
 
-          <div class="relative">
+          <div ref="filterTriggerRef" class="relative">
             <UButton
               icon="i-lucide-sliders-horizontal"
               color="neutral"

@@ -45,6 +45,35 @@ const {
 
 const root = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
+const gap = 8
+
+function panelBesideTrigger(panelRect: DOMRect, trigger: DOMRect | undefined) {
+  const margin = 16
+  if (!trigger) {
+    return {
+      left: window.innerWidth - panelRect.width - margin,
+      top: window.innerWidth < 640 ? 72 : 88,
+    }
+  }
+
+  let left = trigger.left - gap - panelRect.width
+  let top = trigger.top
+
+  if (left < margin) {
+    left = Math.min(
+      Math.max(margin, trigger.right - panelRect.width),
+      window.innerWidth - panelRect.width - margin,
+    )
+    top = trigger.bottom + gap
+  }
+
+  const maxTop = window.innerHeight - panelRect.height - margin
+  return {
+    left,
+    top: Math.min(Math.max(top, margin), maxTop),
+  }
+}
+
 const {
   panel,
   panelStyle,
@@ -53,6 +82,9 @@ const {
   shouldIgnoreOutsideClick,
 } = useFloatingPanel({
   storageKey: 'floating-panel:notifications',
+  viewportMargin: 16,
+  getDefaultPosition: (panelRect) =>
+    panelBesideTrigger(panelRect, root.value?.getBoundingClientRect()),
 })
 
 const unreadBadge = computed(() => {
@@ -63,6 +95,8 @@ const unreadBadge = computed(() => {
 const hasCustomSettings = computed(() =>
   hasCustomTabSettings.value || hasCustomPreferences.value
 )
+
+let ignoreOutsideClickUntil = 0
 
 watch(
   () => route.fullPath,
@@ -116,6 +150,9 @@ async function togglePanel() {
   isOpen.value = !isOpen.value
 
   if (isOpen.value) {
+    // No llamar closeMobile() aquí: la campana vive dentro del USlideover móvil;
+    // cerrar el menú desmonta el trigger y el panel parece “cerrarse” al instante.
+    ignoreOutsideClickUntil = Date.now() + 500
     await ensureNotificationPreferencesLoaded()
     await refresh()
   }
@@ -181,6 +218,7 @@ async function handleResetSettings() {
 function handleClickOutside(event: MouseEvent) {
   if (!isOpen.value || !root.value) return
   if (shouldIgnoreOutsideClick()) return
+  if (Date.now() < ignoreOutsideClickUntil) return
 
   const target = event.target
   if (!(target instanceof Node)) return
@@ -223,7 +261,7 @@ onBeforeUnmount(() => {
         class="rounded-xl border-default/80 bg-default/90 shadow-sm"
         :aria-expanded="isOpen"
         :aria-label="unreadCount ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'"
-        @click="togglePanel"
+        @click.stop="togglePanel"
       />
 
       <span
@@ -246,8 +284,9 @@ onBeforeUnmount(() => {
         <div
           v-if="isOpen"
           ref="panel"
-          class="fixed z-[240]"
+          class="fixed z-[520] touch-manipulation"
           :style="panelStyle"
+          @click.stop
         >
           <NotificationsNotificationPanel
             :notifications="notifications"

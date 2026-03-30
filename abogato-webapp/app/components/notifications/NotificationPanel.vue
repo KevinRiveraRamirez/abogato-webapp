@@ -229,10 +229,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <SkeletonNotificationPanel v-if="loading && !notifications.length && !error" />
-
   <UCard
-    v-else
     class="app-floating-panel app-panel-xl flex w-[clamp(20rem,32vw,30rem)] max-h-[calc(100vh-1.5rem)] max-w-[calc(100vw-1.5rem)] flex-col sm:max-h-[calc(100vh-2rem)] sm:max-w-[calc(100vw-2rem)]"
     :ui="{
       header: 'shrink-0 px-4 pb-4 pt-4 sm:px-5 sm:pt-5',

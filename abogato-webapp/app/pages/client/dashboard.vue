@@ -585,27 +585,27 @@ onMounted(() => {
       description="Un espacio para seguir tus tramites, entender en que punto estan tus documentos y detectar rapido cualquier accion pendiente sin mezclarlo con el trabajo interno del despacho."
     >
       <template #actions>
-        <UButton color="primary" to="/tickets">
+        <UButton color="primary" class="w-full justify-center sm:w-auto" to="/tickets">
           Ver mis tickets
         </UButton>
-        <UButton color="neutral" variant="outline" to="/traspaso-carro">
+        <UButton color="neutral" variant="outline" class="w-full justify-center sm:w-auto" to="/traspaso-carro">
           Nuevo tramite
         </UButton>
-        <UButton color="neutral" variant="ghost" :loading="loading" @click="cargarDashboard">
+        <UButton color="neutral" variant="ghost" class="w-full justify-center sm:w-auto" :loading="loading" @click="cargarDashboard">
           Actualizar
         </UButton>
       </template>
 
       <template #footer>
-        <div class="grid gap-4 md:grid-cols-3">
+        <div class="grid gap-3 sm:gap-4 md:grid-cols-3">
           <div
             v-for="item in heroHighlights"
             :key="item.label"
-            class="rounded-[1.5rem] border border-white/50 bg-white/65 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5"
+            class="rounded-2xl border border-white/50 bg-white/65 p-3 shadow-sm backdrop-blur sm:rounded-[1.5rem] sm:p-4 dark:border-white/10 dark:bg-white/5"
           >
             <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">{{ item.label }}</p>
-            <p class="mt-3 text-3xl font-semibold text-highlighted">{{ item.value }}</p>
-            <p class="mt-2 text-sm text-muted">{{ item.helper }}</p>
+            <p class="mt-2 text-2xl font-semibold text-highlighted sm:mt-3 sm:text-3xl">{{ item.value }}</p>
+            <p class="mt-1.5 text-xs text-muted sm:mt-2 sm:text-sm">{{ item.helper }}</p>
           </div>
         </div>
       </template>

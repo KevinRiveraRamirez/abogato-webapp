@@ -11,6 +11,7 @@ import {
 } from '~/utils/dashboard'
 import { isAdminLikeRole } from '~~/shared/roles'
 import { renderDocumentTemplate } from '~~/shared/utils/render-document-template'
+import { downloadPlainTextAsPdf } from '~/utils/download-plain-text-as-pdf'
 
 definePageMeta({ layout: 'app', middleware: 'auth' })
 
@@ -709,13 +710,8 @@ function descargarDocumento(doc: Documento) {
     obtenerVariablesSistemaDocumento()
   )
 
-  const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${template.title ?? 'documento'}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
+  const titulo = template.title ?? 'documento'
+  downloadPlainTextAsPdf(titulo, contenido)
 }
 
 async function abrirCorreccionDocumento(documentId?: string | null) {

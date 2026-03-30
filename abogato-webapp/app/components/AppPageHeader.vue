@@ -19,11 +19,15 @@ withDefaults(defineProps<{
     variant="glass"
     radius="xl"
     :class="[
-      sticky ? 'sticky top-0 z-20' : '',
-      compact ? 'px-5 py-4 lg:px-8' : 'px-5 py-5 lg:px-8',
+      sticky
+        ? 'max-md:static max-md:z-10 md:sticky md:top-0 md:z-20 md:pt-[env(safe-area-inset-top,0px)]'
+        : '',
+      compact ? 'px-4 py-4 sm:px-5 lg:px-8' : 'px-4 py-4 sm:px-5 sm:py-5 lg:px-8',
     ]"
   >
-    <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-6">
+    <div
+      class="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between lg:gap-6"
+    >
       <div class="min-w-0 flex flex-1 items-start gap-3">
         <div v-if="$slots.leading" class="shrink-0 pt-0.5">
           <slot name="leading" />
@@ -44,8 +48,8 @@ withDefaults(defineProps<{
             <slot name="eyebrowExtra" />
           </div>
 
-          <div class="mt-2 flex flex-wrap items-center gap-3">
-            <h1 class="text-2xl font-semibold text-highlighted sm:text-3xl">
+          <div class="mt-2 flex flex-wrap items-center gap-2 sm:gap-3">
+            <h1 class="text-pretty text-xl font-semibold text-highlighted sm:text-2xl md:text-3xl">
               {{ title }}
             </h1>
 
@@ -67,13 +71,13 @@ withDefaults(defineProps<{
 
       <div
         v-if="$slots.actions"
-        class="flex shrink-0 flex-wrap items-center justify-end gap-2"
+        class="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end"
       >
         <slot name="actions" />
       </div>
     </div>
 
-    <div v-if="$slots.footer" class="mt-6">
+    <div v-if="$slots.footer" class="mt-4 sm:mt-6">
       <slot name="footer" />
     </div>
   </AppSurface>
