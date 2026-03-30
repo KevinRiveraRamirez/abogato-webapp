@@ -24,6 +24,7 @@ const {
   refresh,
   markAsRead,
   markAllAsRead,
+  deleteAllRead,
   setPage,
   setActiveTab,
 } = useNotifications()
@@ -131,6 +132,11 @@ async function handleSelect(notification: NotificationRecord) {
 
 async function handleMarkAll() {
   await markAllAsRead()
+}
+
+async function handleDeleteReadAll() {
+  if (!confirm('¿Querés eliminar todas las notificaciones leídas?')) return
+  await deleteAllRead()
 }
 
 async function handlePageChange(nextPage: number) {
@@ -258,6 +264,7 @@ onBeforeUnmount(() => {
             @drag-start="startDragging"
             @select="handleSelect"
             @mark-all="handleMarkAll"
+            @delete-read-all="handleDeleteReadAll"
             @update:page="handlePageChange"
             @update:active-tab="handleTabChange"
             @toggle:type="handleToggleType"

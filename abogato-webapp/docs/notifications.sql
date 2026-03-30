@@ -142,6 +142,18 @@ using (recipient_user_id = auth.uid());
 
 grant select on public.notifications to authenticated;
 
+grant delete on public.notifications to authenticated;
+
+drop policy if exists "notifications_delete_read_only_own" on public.notifications;
+create policy "notifications_delete_read_only_own"
+on public.notifications
+for delete
+to authenticated
+using (
+  recipient_user_id = auth.uid()
+  and read_at is not null
+);
+
 create or replace function public.notification_type_enabled(p_user_id uuid, p_type text)
 returns boolean
 language sql
@@ -358,12 +370,26 @@ begin
 end;
 $$;
 
+create or replace function public.delete_all_notifications_read()
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+  delete from public.notifications
+  where recipient_user_id = auth.uid()
+    and read_at is not null;
+end;
+$$;
+
 revoke all on function public.notification_insert(uuid, uuid, text, text, text, text, uuid, text, uuid, jsonb) from public, anon, authenticated;
 revoke all on function public.notification_notify_admins(uuid, text, text, text, text, uuid, text, uuid, jsonb) from public, anon, authenticated;
 revoke all on function public.notification_notify_ticket_team(uuid, uuid, text, text, text, text, text, uuid, jsonb) from public, anon, authenticated;
 
 grant execute on function public.mark_notification_read(uuid) to authenticated;
 grant execute on function public.mark_all_notifications_read() to authenticated;
+grant execute on function public.delete_all_notifications_read() to authenticated;
 
 create or replace function public.notifications_handle_ticket_insert()
 returns trigger

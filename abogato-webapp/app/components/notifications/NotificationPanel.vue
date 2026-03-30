@@ -31,6 +31,7 @@ const emit = defineEmits<{
   dragStart: [event: PointerEvent]
   select: [notification: NotificationRecord]
   markAll: []
+  deleteReadAll: []
   refresh: []
   'update:page': [page: number]
   'update:active-tab': [tab: NotificationCenterTab]
@@ -177,6 +178,13 @@ function isTypeEnabled(type: NotificationType) {
 
 function isLastVisibleTab(tab: NotificationCenterTab) {
   return props.visibleTabs.length === 1 && props.visibleTabs.includes(tab)
+}
+
+function isTabToggleDisabled(tab: NotificationCenterTab) {
+  const isVisible = props.visibleTabs.includes(tab)
+
+  if (isVisible) return isLastVisibleTab(tab)
+  return props.visibleTabs.length >= 3
 }
 
 function closeSettings() {
@@ -330,7 +338,7 @@ onBeforeUnmount(() => {
                       :class="visibleTabs.includes(filter.key)
                         ? 'border-primary/20 bg-primary/10 text-primary shadow-sm'
                         : 'border-default/70 bg-default/75 text-muted hover:border-primary/15 hover:text-highlighted'"
-                      :disabled="isLastVisibleTab(filter.key)"
+                      :disabled="isTabToggleDisabled(filter.key)"
                       @click="emit('toggle:visible-tab', filter.key)"
                     >
                       <UIcon
@@ -518,6 +526,15 @@ onBeforeUnmount(() => {
               @click="emit('markAll')"
             >
               Marcar todas como leidas
+            </button>
+
+            <button
+              type="button"
+              class="text-left text-sm font-medium text-highlighted underline decoration-default underline-offset-4 transition hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+              :disabled="loading"
+              @click="emit('deleteReadAll')"
+            >
+              Eliminar leidas
             </button>
           </div>
 

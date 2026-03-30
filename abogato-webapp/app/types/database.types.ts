@@ -1138,6 +1138,7 @@ export type Database = {
     Functions: {
       current_role: { Args: never; Returns: string }
       mark_all_notifications_read: { Args: never; Returns: undefined }
+      delete_all_notifications_read: { Args: never; Returns: undefined }
       mark_notification_read: {
         Args: { p_notification_id: string }
         Returns: undefined

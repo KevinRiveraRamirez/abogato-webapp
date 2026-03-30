@@ -8,13 +8,19 @@ type NotificationCenterSettings = {
 }
 
 const DEFAULT_VISIBLE_TABS = notificationTabOptions.map(option => option.key)
+const MAX_VISIBLE_TABS = 3 as const
 
 let settingsWatchersInitialized = false
 
 function createDefaultSettings(): NotificationCenterSettings {
   return {
-    visibleTabs: [...DEFAULT_VISIBLE_TABS],
+    visibleTabs: [...DEFAULT_VISIBLE_TABS].slice(0, MAX_VISIBLE_TABS),
   }
+}
+
+function clampVisibleTabs(value: NotificationCenterTab[]): NotificationCenterTab[] {
+  if (value.length <= MAX_VISIBLE_TABS) return value
+  return value.slice(0, MAX_VISIBLE_TABS)
 }
 
 function normalizeVisibleTabs(value: unknown): NotificationCenterTab[] {
@@ -26,7 +32,8 @@ function normalizeVisibleTabs(value: unknown): NotificationCenterTab[] {
   )
 
   const normalized = DEFAULT_VISIBLE_TABS.filter(tab => unique.has(tab))
-  return normalized.length ? normalized : [...DEFAULT_VISIBLE_TABS]
+  const clamped = clampVisibleTabs(normalized)
+  return clamped.length ? clamped : clampVisibleTabs([...DEFAULT_VISIBLE_TABS])
 }
 
 function normalizeSettings(value: unknown): NotificationCenterSettings {
@@ -83,13 +90,17 @@ export function useNotificationCenterSettings() {
       return
     }
 
+    if (!isVisible && settings.value.visibleTabs.length >= MAX_VISIBLE_TABS) {
+      return
+    }
+
     const nextVisibleTabs = isVisible
       ? settings.value.visibleTabs.filter(item => item !== tab)
       : DEFAULT_VISIBLE_TABS.filter(item => item === tab || settings.value.visibleTabs.includes(item))
 
     settings.value = {
       ...settings.value,
-      visibleTabs: nextVisibleTabs,
+      visibleTabs: clampVisibleTabs(nextVisibleTabs),
     }
   }
 
@@ -100,7 +111,7 @@ export function useNotificationCenterSettings() {
   const visibleTabs = computed(() => settings.value.visibleTabs)
 
   const hasCustomSettings = computed(() =>
-    !sameStringArray(settings.value.visibleTabs, DEFAULT_VISIBLE_TABS)
+    !sameStringArray(settings.value.visibleTabs, clampVisibleTabs(DEFAULT_VISIBLE_TABS))
   )
 
   if (import.meta.client && !settingsWatchersInitialized) {

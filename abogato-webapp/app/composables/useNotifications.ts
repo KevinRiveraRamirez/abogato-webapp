@@ -262,6 +262,27 @@ export function useNotifications() {
     unreadCount.value = 0
   }
 
+  async function deleteAllRead() {
+    const userId = await resolveCurrentUserId()
+
+    if (!userId) {
+      reset()
+      return
+    }
+
+    // Evita problemas por RLS/policies: borramos via función security definer.
+    const { error } = await supabase.rpc('delete_all_notifications_read')
+
+    if (error) {
+      lastError.value = error.message
+      return
+    }
+
+    // Reload to update pagination + counters consistently.
+    setPage(1)
+    await refresh()
+  }
+
   function upsertFromRealtime(row: Partial<NotificationRecord>) {
     const notification = normalizeNotification(row)
     const visibleTypes = getActiveQueryTypes()
@@ -334,6 +355,7 @@ export function useNotifications() {
     ensureLoaded,
     markAsRead,
     markAllAsRead,
+    deleteAllRead,
     upsertFromRealtime,
     reset,
     setPage,
