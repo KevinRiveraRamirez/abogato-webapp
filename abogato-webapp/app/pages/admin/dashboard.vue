@@ -372,6 +372,37 @@ onMounted(() => {
           </div>
         </DashboardCollapsibleCard>
       </div>
+
+      <DashboardCollapsibleCard
+        title="Accesos rapidos"
+        description="Entradas directas a los modulos de administracion."
+      >
+        <div class="grid gap-3 sm:grid-cols-2">
+          <NuxtLink
+            v-for="item in [
+              { title: 'Tickets', description: 'Ver y gestionar todos los tickets del sistema.', to: '/admin/tickets', icon: 'i-lucide-ticket' },
+              { title: 'Usuarios', description: 'Administrar cuentas, roles y estado de acceso.', to: '/admin/usuarios', icon: 'i-lucide-users' },
+              { title: 'Plantillas', description: 'Crear y editar plantillas de documentos legales.', to: '/admin/plantillas', icon: 'i-lucide-file-text' },
+              { title: 'Auditoria', description: 'Revisar el historial de cambios en el sistema.', to: '/admin/auditoria', icon: 'i-lucide-history' },
+              { title: 'Mi perfil', description: 'Actualizar datos personales y profesionales.', to: '/account/profile', icon: 'i-lucide-user-round' },
+              { title: 'Seguridad', description: 'Cambiar contrasena y gestionar acceso a la cuenta.', to: '/account/security', icon: 'i-lucide-shield' },
+            ]"
+            :key="item.title"
+            :to="item.to"
+            class="rounded-2xl border border-default/80 bg-elevated/50 p-4 transition hover:border-primary/40 hover:bg-primary/5"
+          >
+            <div class="flex items-start gap-3">
+              <div class="mt-0.5 flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <UIcon :name="item.icon" class="size-5" />
+              </div>
+              <div>
+                <p class="font-medium text-highlighted">{{ item.title }}</p>
+                <p class="mt-1 text-sm text-muted">{{ item.description }}</p>
+              </div>
+            </div>
+          </NuxtLink>
+        </div>
+      </DashboardCollapsibleCard>
     </template>
   </div>
 </template>

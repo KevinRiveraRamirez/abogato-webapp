@@ -33,6 +33,7 @@ const clientSections: NavigationSection[] = [
     label: 'Cuenta',
     items: [
       { label: 'Mi perfil', icon: 'i-lucide-user-round', to: '/account/profile' },
+      { label: 'Seguridad', icon: 'i-lucide-shield', to: '/account/security' },
     ],
   },
 ]
@@ -59,6 +60,7 @@ const lawyerSections: NavigationSection[] = [
     label: 'Cuenta',
     items: [
       { label: 'Mi perfil', icon: 'i-lucide-user-round', to: '/account/profile' },
+      { label: 'Seguridad', icon: 'i-lucide-shield', to: '/account/security' },
     ],
   },
 ]
@@ -87,6 +89,7 @@ const adminSections: NavigationSection[] = [
     label: 'Cuenta',
     items: [
       { label: 'Mi perfil', icon: 'i-lucide-user-round', to: '/account/profile' },
+      { label: 'Seguridad', icon: 'i-lucide-shield', to: '/account/security' },
     ],
   },
 ]
