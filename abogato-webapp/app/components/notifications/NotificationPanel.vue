@@ -57,20 +57,41 @@ const visibleFilters = computed(() =>
   notificationTabOptions.filter(option => props.visibleTabs.includes(option.key))
 )
 
-const notificationTypeGroups = computed(() => [
-  {
-    key: 'tickets',
+const groupMeta = {
+  tickets: {
     label: 'Casos',
     description: 'Avisos sobre tickets, comentarios y cambios de estado.',
-    options: notificationTypeOptions.filter(option => option.group === 'tickets'),
+    emptyTitle: 'Sin actividad de casos',
+    emptyDescription: 'Todavía no hay movimiento de casos en esta bandeja.',
   },
-  {
-    key: 'documents',
+  documents: {
     label: 'Documentos',
-    description: 'Aprobaciones o rechazos de archivos vinculados al caso.',
-    options: notificationTypeOptions.filter(option => option.group === 'documents'),
+    description: 'Aprobaciones, rechazos y alertas del flujo documental.',
+    emptyTitle: 'Sin actividad documental',
+    emptyDescription: 'Todavía no hay actividad documental en esta bandeja.',
   },
-])
+  system: {
+    label: 'Operación',
+    description: 'Alertas internas para supervisar problemas o desvíos operativos.',
+    emptyTitle: 'Sin alertas operativas',
+    emptyDescription: 'Todavía no hay alertas operativas nuevas en esta bandeja.',
+  },
+} satisfies Record<Exclude<NotificationCenterTab, 'all'>, {
+  label: string
+  description: string
+  emptyTitle: string
+  emptyDescription: string
+}>
+
+const notificationTypeGroups = computed(() =>
+  (Object.entries(groupMeta) as Array<[Exclude<NotificationCenterTab, 'all'>, typeof groupMeta[keyof typeof groupMeta]]>)
+    .map(([key, meta]) => ({
+      key,
+      label: meta.label,
+      description: meta.description,
+      options: notificationTypeOptions.filter(option => option.group === key),
+    }))
+)
 
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(props.totalCount / Math.max(1, props.perPage)))
@@ -112,7 +133,11 @@ const emptyStateTitle = computed(() => {
   }
 
   if (props.activeTab === 'documents') {
-    return 'Sin actividad documental'
+    return groupMeta.documents.emptyTitle
+  }
+
+  if (props.activeTab === 'system') {
+    return groupMeta.system.emptyTitle
   }
 
   return 'No hay notificaciones por ahora'
@@ -128,11 +153,15 @@ const emptyStateDescription = computed(() => {
   }
 
   if (props.activeTab === 'tickets') {
-    return 'Todavía no hay movimiento de casos en esta bandeja.'
+    return groupMeta.tickets.emptyDescription
   }
 
   if (props.activeTab === 'documents') {
-    return 'Todavía no hay actividad documental en esta bandeja.'
+    return groupMeta.documents.emptyDescription
+  }
+
+  if (props.activeTab === 'system') {
+    return groupMeta.system.emptyDescription
   }
 
   return 'Cuando ocurra algo importante en tus casos, lo vas a ver acá.'

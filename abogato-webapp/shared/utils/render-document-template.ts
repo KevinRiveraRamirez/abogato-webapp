@@ -1,4 +1,4 @@
-type TemplateValue = string | number | null | undefined
+type TemplateValue = string | number | boolean | null | undefined
 
 export function renderDocumentTemplate(
   content: string,

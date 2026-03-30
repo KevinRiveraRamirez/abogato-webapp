@@ -21,6 +21,7 @@ type Template = {
   servicio_id: number | null
   activo: boolean
   created_at: string
+  usedCount: number
 }
 
 type TemplateRow = Database['public']['Tables']['document_templates']['Row']
@@ -61,6 +62,7 @@ function normalizarPlantilla(row: TemplateRow): Template {
     servicio_id: row.servicio_id ?? null,
     activo: row.activo ?? true,
     created_at: row.created_at ?? new Date().toISOString(),
+    usedCount: 0,
   }
 }
 
@@ -131,6 +133,7 @@ const resumen = computed(() => ({
   activas: plantillas.value.filter(template => template.activo).length,
   inactivas: plantillas.value.filter(template => !template.activo).length,
   manuales: plantillas.value.filter(template => template.servicio_id == null).length,
+  usadas: plantillas.value.filter(template => template.usedCount > 0).length,
 }))
 
 const hayFiltrosActivos = computed(() =>
@@ -167,17 +170,41 @@ function formatearFecha(fecha: string) {
 }
 
 async function cargarPlantillas() {
-  const { data, error } = await supabase
-    .from('document_templates')
-    .select('*')
-    .order('created_at', { ascending: false })
+  const [templatesResult, documentsResult] = await Promise.all([
+    supabase
+      .from('document_templates')
+      .select('*')
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('documents')
+      .select('template_id')
+      .not('template_id', 'is', null),
+  ])
 
-  if (error) {
-    errorMsg.value = error.message
+  if (templatesResult.error) {
+    errorMsg.value = templatesResult.error.message
     return
   }
 
-  plantillas.value = (data ?? []).map(normalizarPlantilla)
+  if (documentsResult.error) {
+    errorMsg.value = documentsResult.error.message
+    return
+  }
+
+  const usedCountByTemplate = new Map<string, number>()
+
+  for (const row of (documentsResult.data ?? []) as Array<{ template_id: string | null }>) {
+    if (!row.template_id) continue
+    usedCountByTemplate.set(row.template_id, (usedCountByTemplate.get(row.template_id) ?? 0) + 1)
+  }
+
+  plantillas.value = (templatesResult.data ?? []).map((row) => {
+    const template = normalizarPlantilla(row as TemplateRow)
+    return {
+      ...template,
+      usedCount: usedCountByTemplate.get(template.id) ?? 0,
+    }
+  })
 }
 
 async function toggleActivo(template: Template) {
@@ -200,6 +227,30 @@ async function toggleActivo(template: Template) {
   successMsg.value = template.activo
     ? 'Plantilla desactivada correctamente.'
     : 'Plantilla activada correctamente.'
+}
+
+async function eliminarPlantilla(template: Template) {
+  if (template.usedCount > 0) {
+    errorMsg.value = 'No podés eliminar una plantilla que ya fue usada en documentos reales.'
+    return
+  }
+
+  if (!confirm(`¿Querés eliminar la plantilla "${template.title}"? Esta acción no se puede deshacer.`)) return
+
+  errorMsg.value = ''
+
+  const { error } = await supabase
+    .from('document_templates')
+    .delete()
+    .eq('id', template.id)
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  await cargarPlantillas()
+  successMsg.value = 'Plantilla eliminada correctamente.'
 }
 
 watch([busqueda, filtrosEstadoSeleccionados, filtrosOrigenSeleccionados, cantidadPorPagina], () => {
@@ -257,7 +308,7 @@ onMounted(async () => {
     />
 
     <div v-if="plantillas.length" class="mb-6 space-y-4">
-      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <UCard>
           <p class="text-xs uppercase tracking-[0.22em] text-toned">Total</p>
           <p class="mt-3 text-3xl font-semibold text-highlighted">{{ resumen.total }}</p>
@@ -280,6 +331,12 @@ onMounted(async () => {
           <p class="text-xs uppercase tracking-[0.22em] text-toned">Sin servicio</p>
           <p class="mt-3 text-3xl font-semibold text-primary">{{ resumen.manuales }}</p>
           <p class="mt-2 text-sm text-muted">Plantillas nuevas creadas con título manual.</p>
+        </UCard>
+
+        <UCard>
+          <p class="text-xs uppercase tracking-[0.22em] text-toned">Con historial</p>
+          <p class="mt-3 text-3xl font-semibold text-highlighted">{{ resumen.usadas }}</p>
+          <p class="mt-2 text-sm text-muted">Plantillas que ya generaron al menos un documento.</p>
         </UCard>
       </div>
 
@@ -407,6 +464,12 @@ onMounted(async () => {
                 <UBadge color="primary" variant="soft">
                   {{ template.fields.length }} campos
                 </UBadge>
+                <UBadge
+                  :color="template.usedCount > 0 ? 'primary' : 'neutral'"
+                  :variant="template.usedCount > 0 ? 'soft' : 'outline'"
+                >
+                  {{ template.usedCount > 0 ? `Usada ${template.usedCount} vez${template.usedCount === 1 ? '' : 'es'}` : 'Sin uso' }}
+                </UBadge>
               </div>
 
               <p class="mt-3 text-xs text-toned">{{ formatearFecha(template.created_at) }}</p>
@@ -428,6 +491,15 @@ onMounted(async () => {
                 @click="toggleActivo(template)"
               >
                 {{ template.activo ? 'Desactivar' : 'Activar' }}
+              </UButton>
+              <UButton
+                v-if="template.usedCount === 0"
+                size="sm"
+                color="error"
+                variant="ghost"
+                @click="eliminarPlantilla(template)"
+              >
+                Eliminar
               </UButton>
             </div>
           </div>

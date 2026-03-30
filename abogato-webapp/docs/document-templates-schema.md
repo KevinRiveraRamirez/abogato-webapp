@@ -25,4 +25,6 @@ Schema actual de la tabla `public.document_templates` en Supabase.
 - Los campos que se autocompletan desde esa cédula guardan `padron_source_key` con la clave del campo cédula y `padron_value` con el dato a copiar (`nombre_completo`, `nombre`, `apellido_1`, `apellido_2`).
 - `activo` controla si la plantilla aparece disponible en el selector de tramites.
 - El modulo de admin permite crear, editar, activar y desactivar registros existentes en `document_templates`.
+- Las plantillas que ya fueron usadas por al menos un documento se marcan como `usadas` en la UI y no se eliminan físicamente.
+- Solo las plantillas sin uso pueden borrarse desde el catálogo de admin.
 - En tickets, el selector de tramites usa `title` como etiqueta visible y solo carga plantillas activas.

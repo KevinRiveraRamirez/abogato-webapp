@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Database } from '~/types/database.types'
 import {
+  getEffectiveDocumentStatus,
+  getDocumentWorkflowPhase,
   getTicketDisplayStatus,
   isReopenedHistoryEntry,
   ticketDisplayStatusColors,
@@ -17,6 +19,7 @@ const user = useSupabaseUser()
 const route = useRoute()
 const { profile, cargarPerfil } = useUsuario()
 type DocumentRow = Database['public']['Tables']['documents']['Row']
+type DocumentVersionRow = Database['public']['Tables']['document_versions']['Row']
 type TicketFileRow = Database['public']['Tables']['ticket_files']['Row']
 
 type Ticket = {
@@ -56,11 +59,17 @@ type Comentario = {
   created_at: string
 }
 
+type VersionDocumento = Pick<
+  DocumentVersionRow,
+  'id' | 'document_id' | 'version_number' | 'status' | 'source' | 'created_at' | 'updated_at' | 'rejection_reason'
+>
+
 const ticket = ref<Ticket | null>(null)
 const abogadoAsignado = ref<{ display_name: string | null; office_address: string | null } | null>(null)
 const historial = ref<Historial[]>([])
 const adjuntos = ref<(Adjunto & { url: string })[]>([])
 const comentarios = ref<Comentario[]>([])
+const versionesDocumento = ref<VersionDocumento[]>([])
 
 const nuevoComentario = ref('')
 const comentarioInterno = ref(false)
@@ -124,8 +133,10 @@ const visibleTicketStatus = computed<TicketDisplayStatus>(() => {
   })
 })
 
-const puedeEditar = computed(() =>
-  esCliente.value && ticket.value?.status === 'open'
+const puedeEditarTicket = computed(() =>
+  esCliente.value
+  && ticket.value?.status === 'open'
+  && !primerDocumentoRechazado.value
 )
 
 const puedeReabrir = computed(() =>
@@ -252,6 +263,21 @@ async function cargarAdjuntos() {
       }
     })
   )
+}
+
+async function cargarVersionesDocumento() {
+  const { data, error } = await supabase
+    .from('document_versions')
+    .select('id, document_id, version_number, status, source, created_at, updated_at, rejection_reason')
+    .eq('ticket_id', route.params.id as string)
+    .order('version_number', { ascending: false })
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  versionesDocumento.value = (data ?? []) as VersionDocumento[]
 }
 
 async function cargarComentarios() {
@@ -443,17 +469,67 @@ type Documento = {
   field_values: Record<string, string | number | null | undefined>
   template_id: string
   created_at: string
+  updated_at: string | null
   rejection_reason?: string | null
   document_templates?: { title: string | null; content: string | null } | null
 }
 const documentos = ref<Documento[]>([])
+
+const documentoActual = computed(() => documentos.value[0] ?? null)
+
+function obtenerVersionesPorDocumento(documentId: string) {
+  return versionesDocumento.value.filter(version => version.document_id === documentId)
+}
+
+function obtenerUltimaVersionDocumento(documentId: string | null | undefined) {
+  if (!documentId) return null
+  return obtenerVersionesPorDocumento(documentId)[0] ?? null
+}
+
+function obtenerEstadoWorkflowDocumento(documento: Documento | null | undefined) {
+  return getEffectiveDocumentStatus({
+    documentStatus: documento?.status,
+    latestVersionStatus: obtenerUltimaVersionDocumento(documento?.id)?.status,
+  })
+}
+
+function obtenerMotivoRechazoDocumento(documento: Documento | null | undefined) {
+  const ultimaVersion = obtenerUltimaVersionDocumento(documento?.id)
+
+  if (ultimaVersion?.status === 'rejected' && ultimaVersion.rejection_reason) {
+    return ultimaVersion.rejection_reason
+  }
+
+  return documento?.rejection_reason ?? null
+}
+
+const primerDocumentoRechazado = computed(() =>
+  obtenerEstadoWorkflowDocumento(documentoActual.value) === 'rejected' ? documentoActual.value : null
+)
+
+const audienciaFlujoDocumento = computed(() => {
+  if (esAbogado.value) return 'lawyer'
+  if (esAdmin.value) return 'admin'
+  return 'client'
+})
+
+const faseDocumentoActual = computed(() =>
+  getDocumentWorkflowPhase({
+    documentStatus: documentoActual.value?.status,
+    latestVersionStatus: ultimaVersionDocumentoActual.value?.status,
+    ticketStatus: ticket.value?.status,
+    assignedTo: ticket.value?.assigned_to,
+    audience: audienciaFlujoDocumento.value,
+    latestVersionSource: ultimaVersionDocumentoActual.value?.source,
+  })
+)
 
 function esRegistroDocumento(value: unknown): value is Record<string, string | number | null | undefined> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function normalizarDocumento(
-  row: Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'rejection_reason'> & {
+  row: Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'updated_at' | 'rejection_reason'> & {
     document_templates?: { title: string | null; content: string | null } | null
   }
 ): Documento | null {
@@ -465,6 +541,7 @@ function normalizarDocumento(
     field_values: esRegistroDocumento(row.field_values) ? row.field_values : {},
     template_id: row.template_id,
     created_at: row.created_at,
+    updated_at: row.updated_at,
     rejection_reason: row.rejection_reason,
     document_templates: row.document_templates ?? null,
   }
@@ -481,10 +558,10 @@ async function cargarDocumentos() {
   const { data } = await supabase
     .from('documents')
     .select('*, document_templates(title, content)')
-    .order('created_at', { ascending: false })
+    .order('updated_at', { ascending: false })
     .eq('ticket_id', route.params.id as string)
   documentos.value = (data ?? [])
-    .map((row) => normalizarDocumento(row as Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'rejection_reason'> & {
+    .map((row) => normalizarDocumento(row as Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'updated_at' | 'rejection_reason'> & {
       document_templates?: { title: string | null; content: string | null } | null
     }))
     .filter((documento): documento is Documento => documento !== null)
@@ -565,11 +642,61 @@ async function cargarDetalleInicial() {
   pageLoading.value = true
 
   try {
-    await Promise.all([cargarTicket(), cargarDocumentos()])
+    await Promise.all([cargarTicket(), cargarDocumentos(), cargarVersionesDocumento()])
     await cargarSilencioTicket()
   } finally {
     pageLoading.value = false
   }
+}
+
+const ultimaVersionDocumentoActual = computed(() =>
+  documentoActual.value ? obtenerUltimaVersionDocumento(documentoActual.value.id) : null
+)
+
+const puedeCorregirDocumentoActual = computed(() =>
+  esCliente.value
+  && obtenerEstadoWorkflowDocumento(documentoActual.value) === 'rejected'
+  && !['resolved', 'closed', 'cancelled'].includes(ticket.value?.status ?? '')
+)
+
+const clienteTieneCorreccionEnRevision = computed(() =>
+  esCliente.value
+  && obtenerEstadoWorkflowDocumento(documentoActual.value) === 'submitted'
+  && ultimaVersionDocumentoActual.value?.source === 'correction'
+)
+
+const abogadoRecibioCorreccion = computed(() =>
+  esAbogado.value
+  && obtenerEstadoWorkflowDocumento(documentoActual.value) === 'submitted'
+  && ultimaVersionDocumentoActual.value?.source === 'correction'
+)
+
+function obtenerVisualEstadoDocumento(documento: Documento) {
+  if (documentoActual.value?.id === documento.id) {
+    return {
+      label: faseDocumentoActual.value.label,
+      color: faseDocumentoActual.value.color,
+    }
+  }
+
+  const estadoWorkflow = obtenerEstadoWorkflowDocumento(documento)
+
+  return {
+    label: etiquetaEstadoDocumento[estadoWorkflow] ?? 'Borrador',
+    color: colorEstadoDocumento[estadoWorkflow] ?? 'neutral',
+  }
+}
+
+function etiquetaFuenteVersion(source: string) {
+  if (source === 'correction') return 'Corrección del cliente'
+  if (source === 'manual') return 'Ajuste manual'
+  return 'Versión inicial'
+}
+
+function obtenerMensajeExitoDesdeRuta(status: string) {
+  if (status === 'document-corrected') return 'Documento corregido en espera de aprobación.'
+  if (status === 'document-updated') return 'Se guardó una nueva versión del documento para continuar con la revisión.'
+  return ''
 }
 
 function descargarDocumento(doc: Documento) {
@@ -590,9 +717,33 @@ function descargarDocumento(doc: Documento) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+async function abrirCorreccionDocumento(documentId?: string | null) {
+  if (!ticket.value) return
+
+  errorMsg.value = ''
+  await navigateTo({
+    path: `/ticket/${ticket.value.id}/documento`,
+    query: documentId ? { document: documentId } : {},
+  })
+}
+
 onMounted(async () => {
   await cargarPerfil()
   await cargarDetalleInicial()
+
+  const status = typeof route.query.status === 'string' ? route.query.status : ''
+  const message = obtenerMensajeExitoDesdeRuta(status)
+
+  if (message) {
+    successMsg.value = message
+    await navigateTo({
+      path: route.path,
+      query: Object.fromEntries(
+        Object.entries(route.query).filter(([key]) => key !== 'status')
+      ),
+    }, { replace: true })
+  }
 })
 
 watch(user, async (newUser) => {
@@ -668,7 +819,16 @@ watch(user, async (newUser) => {
             {{ ticketSilenciado ? 'Activar notificaciones' : 'Silenciar notificaciones' }}
           </UButton>
           <UButton
-            v-if="puedeEditar && !editando"
+            v-if="puedeCorregirDocumentoActual"
+            color="warning"
+            variant="soft"
+            icon="i-lucide-file-warning"
+            @click="void abrirCorreccionDocumento(primerDocumentoRechazado?.id)"
+          >
+            Corregir documento
+          </UButton>
+          <UButton
+            v-else-if="puedeEditarTicket && !editando"
             color="neutral"
             variant="outline"
             @click="editando = true"
@@ -701,6 +861,41 @@ watch(user, async (newUser) => {
         variant="soft"
         title="Notificaciones silenciadas en este ticket"
         description="No vas a recibir avisos nuevos de este trámite en la campana hasta que las vuelvas a activar."
+      />
+
+      <UAlert
+        v-if="puedeCorregirDocumentoActual"
+        color="warning"
+        variant="soft"
+        :title="faseDocumentoActual.label"
+        :description="obtenerMotivoRechazoDocumento(primerDocumentoRechazado) || faseDocumentoActual.description"
+      >
+        <template #actions>
+          <UButton
+            size="sm"
+            color="warning"
+            variant="solid"
+            @click="void abrirCorreccionDocumento(primerDocumentoRechazado?.id)"
+          >
+            Abrir corrección
+          </UButton>
+        </template>
+      </UAlert>
+
+      <UAlert
+        v-else-if="clienteTieneCorreccionEnRevision && !successMsg"
+        color="info"
+        variant="soft"
+        :title="faseDocumentoActual.label"
+        :description="faseDocumentoActual.description"
+      />
+
+      <UAlert
+        v-else-if="abogadoRecibioCorreccion"
+        color="info"
+        variant="soft"
+        :title="faseDocumentoActual.label"
+        :description="faseDocumentoActual.description"
       />
 
       <UCard v-if="editando">
@@ -752,29 +947,81 @@ watch(user, async (newUser) => {
           <UCard v-for="d in documentos" :key="d.id">
             <div class="flex justify-between items-center gap-3">
               <span class="text-sm text-highlighted">{{ d.document_templates?.title ?? 'Documento generado' }}</span>
-              <UBadge :color="colorEstadoDocumento[d.status] ?? 'neutral'" variant="subtle">
-                {{ etiquetaEstadoDocumento[d.status] ?? 'Borrador' }}
+              <UBadge :color="obtenerVisualEstadoDocumento(d).color" variant="subtle">
+                {{ obtenerVisualEstadoDocumento(d).label }}
               </UBadge>
             </div>
             <p class="mt-2 text-xs text-muted">
-              {{ new Date(d.created_at).toLocaleString('es-CR') }}
+              {{ new Date(d.updated_at ?? d.created_at).toLocaleString('es-CR') }}
             </p>
             <UAlert
-              v-if="d.status === 'rejected' && d.rejection_reason"
+              v-if="obtenerEstadoWorkflowDocumento(d) === 'rejected' && obtenerMotivoRechazoDocumento(d) && documentoActual?.id === d.id"
               color="error"
               variant="soft"
               title="Motivo del rechazo"
-              :description="d.rejection_reason"
+              :description="obtenerMotivoRechazoDocumento(d)"
               class="mt-3"
             />
+            <div v-if="esCliente && obtenerEstadoWorkflowDocumento(d) === 'submitted' && documentoActual?.id === d.id" class="mt-3 rounded-2xl border border-default/80 bg-elevated/50 px-4 py-3 text-sm text-muted">
+              {{ faseDocumentoActual.description }}
+            </div>
+            <div v-if="esAbogado && obtenerEstadoWorkflowDocumento(d) === 'submitted' && documentoActual?.id === d.id && ultimaVersionDocumentoActual?.source === 'correction'" class="mt-3 rounded-2xl border border-info/20 bg-info/5 px-4 py-3 text-sm text-info">
+              {{ faseDocumentoActual.description }}
+            </div>
+            <div v-if="esCliente && obtenerEstadoWorkflowDocumento(d) === 'approved' && documentoActual?.id === d.id" class="mt-3 rounded-2xl border border-success/20 bg-success/5 px-4 py-3 text-sm text-success">
+              {{ faseDocumentoActual.description }}
+            </div>
+            <div v-if="puedeCorregirDocumentoActual && documentoActual?.id === d.id" class="mt-3 rounded-2xl border border-warning/20 bg-warning/5 px-4 py-3 text-sm text-warning">
+              {{ faseDocumentoActual.description }}
+            </div>
+            <div v-else-if="esCliente && obtenerEstadoWorkflowDocumento(d) === 'rejected' && documentoActual?.id === d.id" class="mt-3 rounded-2xl border border-default/80 bg-elevated/50 px-4 py-3 text-sm text-muted">
+              Este ticket ya no admite correcciones. La observación queda visible solo como referencia del historial.
+            </div>
             <UButton
-              v-if="d.status === 'approved'"
+              v-if="obtenerEstadoWorkflowDocumento(d) === 'approved'"
               size="sm"
               class="mt-3"
               @click="descargarDocumento(d)"
             >
               Descargar documento
             </UButton>
+            <UButton
+              v-if="puedeCorregirDocumentoActual && documentoActual?.id === d.id"
+              size="sm"
+              color="warning"
+              variant="solid"
+              class="mt-3"
+              @click="void abrirCorreccionDocumento(d.id)"
+            >
+              Corregir documento
+            </UButton>
+
+            <div v-if="obtenerVersionesPorDocumento(d.id).length" class="mt-5 rounded-[1.4rem] border border-default/70 bg-elevated/40 px-4 py-4">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">Historial de versiones</p>
+              <div class="mt-3 grid gap-3">
+                <div
+                  v-for="version in obtenerVersionesPorDocumento(d.id)"
+                  :key="version.id"
+                  class="rounded-2xl border border-default/70 bg-default/80 px-4 py-3"
+                >
+                  <div class="flex flex-wrap items-center gap-2">
+                    <UBadge color="primary" variant="soft">
+                      Versión {{ version.version_number }}
+                    </UBadge>
+                    <UBadge :color="colorEstadoDocumento[version.status] ?? 'neutral'" variant="subtle">
+                      {{ etiquetaEstadoDocumento[version.status] ?? 'Borrador' }}
+                    </UBadge>
+                    <span class="text-xs text-toned">{{ etiquetaFuenteVersion(version.source) }}</span>
+                  </div>
+                  <p class="mt-2 text-xs text-muted">
+                    {{ new Date(version.created_at).toLocaleString('es-CR') }}
+                  </p>
+                  <p v-if="version.rejection_reason" class="mt-2 text-sm text-error">
+                    {{ version.rejection_reason }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </UCard>
         </div>
         <div v-else>

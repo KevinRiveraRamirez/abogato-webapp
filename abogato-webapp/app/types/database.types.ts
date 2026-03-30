@@ -118,6 +118,143 @@ export type Database = {
           },
         ]
       }
+      document_generation_metrics: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          document_id: string
+          document_version_id: string | null
+          duration_ms: number
+          exceeded_sla: boolean
+          finished_at: string
+          id: string
+          operation_type: string
+          started_at: string
+          ticket_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          document_id: string
+          document_version_id?: string | null
+          duration_ms: number
+          exceeded_sla?: boolean
+          finished_at: string
+          id?: string
+          operation_type: string
+          started_at: string
+          ticket_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          document_id?: string
+          document_version_id?: string | null
+          duration_ms?: number
+          exceeded_sla?: boolean
+          finished_at?: string
+          id?: string
+          operation_type?: string
+          started_at?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_generation_metrics_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_generation_metrics_document_version_id_fkey"
+            columns: ["document_version_id"]
+            isOneToOne: false
+            referencedRelation: "document_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_generation_metrics_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          document_id: string
+          field_values: Json
+          id: string
+          rejection_reason: string | null
+          rendered_content: string
+          reviewed_by: string | null
+          source: string
+          status: string
+          template_id: string
+          ticket_id: string
+          updated_at: string
+          version_number: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          document_id: string
+          field_values?: Json
+          id?: string
+          rejection_reason?: string | null
+          rendered_content?: string
+          reviewed_by?: string | null
+          source?: string
+          status?: string
+          template_id: string
+          ticket_id: string
+          updated_at?: string
+          version_number: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          document_id?: string
+          field_values?: Json
+          id?: string
+          rejection_reason?: string | null
+          rendered_content?: string
+          reviewed_by?: string | null
+          source?: string
+          status?: string
+          template_id?: string
+          ticket_id?: string
+          updated_at?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_versions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_versions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "document_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_versions_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       instruments: {
         Row: {
           created_at: string | null
@@ -636,6 +773,47 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      system_lookup_failures: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          failure_kind: string
+          id: string
+          query_value: string
+          source: string
+          ticket_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          failure_kind: string
+          id?: string
+          query_value: string
+          source: string
+          ticket_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          failure_kind?: string
+          id?: string
+          query_value?: string
+          source?: string
+          ticket_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_lookup_failures_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ticket_comments: {
         Row: {

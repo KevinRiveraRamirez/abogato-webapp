@@ -5,6 +5,14 @@ export type TicketDisplayStatus = TicketStatus | 'reopened'
 export type TicketPriority = 'low' | 'normal' | 'high'
 export type DocumentStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 export type TicketStatusColor = 'primary' | 'warning' | 'info' | 'success' | 'neutral' | 'error'
+export type DocumentWorkflowAudience = 'client' | 'lawyer' | 'admin'
+export type DocumentWorkflowPhaseKey =
+  | 'drafting'
+  | 'pending_lawyer'
+  | 'legal_review'
+  | 'returned_for_correction'
+  | 'approved'
+  | 'cancelled'
 
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
 type TicketHistoryRow = Database['public']['Tables']['ticket_historial']['Row']
@@ -71,6 +79,116 @@ export const documentStatusColors: Record<DocumentStatus, 'neutral' | 'warning' 
   submitted: 'warning',
   approved: 'success',
   rejected: 'error',
+}
+
+export function getDocumentWorkflowPhase(params: {
+  documentStatus?: string | null
+  latestVersionStatus?: string | null
+  ticketStatus?: string | null
+  assignedTo?: string | null
+  audience?: DocumentWorkflowAudience
+  latestVersionSource?: string | null
+}): {
+  key: DocumentWorkflowPhaseKey
+  label: string
+  description: string
+  color: TicketStatusColor
+} {
+  const audience = params.audience ?? 'client'
+  const documentStatus = getEffectiveDocumentStatus({
+    documentStatus: params.documentStatus,
+    latestVersionStatus: params.latestVersionStatus,
+  })
+  const ticketStatus = normalizeTicketStatus(params.ticketStatus)
+
+  if (ticketStatus === 'cancelled') {
+    return {
+      key: 'cancelled',
+      label: 'Ticket cancelado',
+      description: audience === 'lawyer'
+        ? 'Este trámite fue cancelado y ya no requiere revisión documental.'
+        : 'Este trámite fue cancelado y ya no admite cambios sobre el documento.',
+      color: 'neutral',
+    }
+  }
+
+  if (documentStatus === 'approved') {
+    return {
+      key: 'approved',
+      label: 'Documento aprobado',
+      description: audience === 'lawyer'
+        ? 'La última versión ya quedó aprobada y lista para cerrar el siguiente paso del caso.'
+        : 'La última versión ya fue aprobada por el equipo legal y queda lista para tu seguimiento.',
+      color: 'success',
+    }
+  }
+
+  if (documentStatus === 'rejected') {
+    return {
+      key: 'returned_for_correction',
+      label: 'Devuelto para corrección',
+      description: audience === 'lawyer'
+        ? 'Ya registraste observaciones. Ahora el cliente debe corregir y reenviar la última versión.'
+        : 'El abogado dejó observaciones en la última versión. Corregí el documento y reenviá una nueva versión.',
+      color: 'warning',
+    }
+  }
+
+  if (documentStatus === 'submitted') {
+    if (params.latestVersionSource === 'correction') {
+      if (audience === 'lawyer') {
+        return {
+          key: 'legal_review',
+          label: 'Corrección recibida',
+          description: 'El cliente ya reenviò una versión corregida. Revisala para aprobarla o devolverla con nuevas observaciones.',
+          color: 'info',
+        }
+      }
+
+      return {
+        key: 'legal_review',
+        label: 'Documento corregido en espera de aprobación',
+        description: 'Ya enviaste una versión corregida. Ahora el abogado debe revisarla antes de aprobarla o devolverla nuevamente.',
+        color: 'info',
+      }
+    }
+
+    if (!params.assignedTo || ticketStatus === 'open') {
+      return {
+        key: 'pending_lawyer',
+        label: 'Pendiente de abogado',
+        description: audience === 'lawyer'
+          ? 'La versión más reciente ya está lista. Tomá el caso para comenzar la revisión legal.'
+          : 'Tu documento ya fue enviado. Ahora queda pendiente de que un abogado tome el caso.',
+        color: 'warning',
+      }
+    }
+
+    return {
+      key: 'legal_review',
+      label: 'En revisión legal',
+      description: audience === 'lawyer'
+        ? 'La versión más reciente está en tus manos para revisar, aprobar o devolver con observaciones.'
+        : 'El abogado asignado está revisando la última versión del documento.',
+      color: 'info',
+    }
+  }
+
+  return {
+    key: 'drafting',
+    label: 'Preparando documento',
+    description: audience === 'lawyer'
+      ? 'Todavía no hay una versión enviada a revisión en este ticket.'
+      : 'Todavía no hay una versión enviada a revisión en este ticket.',
+    color: 'neutral',
+  }
+}
+
+export function getEffectiveDocumentStatus(params: {
+  documentStatus?: string | null
+  latestVersionStatus?: string | null
+}): DocumentStatus {
+  return normalizeDocumentStatus(params.latestVersionStatus ?? params.documentStatus)
 }
 
 export function normalizeTicketStatus(value: string | null | undefined): TicketStatus {

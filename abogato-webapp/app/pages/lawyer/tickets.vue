@@ -3,6 +3,8 @@ import { h, resolveComponent } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '#ui/types'
 import type { Database } from '~/types/database.types'
 import {
+  getEffectiveDocumentStatus,
+  getDocumentWorkflowPhase,
   getReopenedTicketIds,
   getTicketDisplayStatus,
   ticketDisplayStatusColors,
@@ -14,10 +16,13 @@ import { renderDocumentTemplate } from '~~/shared/utils/render-document-template
 definePageMeta({ layout: 'app', middleware: ['auth', 'lawyer'] })
 
 const supabase = useSupabaseClient()
+const authUser = useSupabaseUser()
 const { profile, cargarPerfil } = useUsuario()
+const { syncLatestDocumentVersionReview } = useDocumentWorkflow()
 type FieldValue = string | number | null | undefined
 type TicketRow = Database['public']['Tables']['tickets']['Row']
 type DocumentRow = Database['public']['Tables']['documents']['Row']
+type DocumentVersionRow = Database['public']['Tables']['document_versions']['Row']
 
 type Ticket = {
   id: string
@@ -38,6 +43,7 @@ type Documento = {
   field_values: Record<string, FieldValue>
   template_id: string
   created_at: string
+  updated_at: string | null
   ticket_id: string
   rejection_reason?: string | null
   document_templates?: {
@@ -62,6 +68,11 @@ type DocumentoModal = {
   created_at: string
 }
 
+type VersionDocumento = Pick<
+  DocumentVersionRow,
+  'id' | 'document_id' | 'version_number' | 'status' | 'source' | 'created_at' | 'updated_at' | 'rejection_reason'
+>
+
 const tickets = ref<Ticket[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
@@ -69,12 +80,21 @@ const filtrosEstadoSeleccionados = ref<Ticket['status'][]>([])
 const busqueda = ref('')
 const paginaActual = ref(1)
 const cantidadPorPagina = ref(10)
+const resumenDocumentoPorTicket = ref<Record<string, {
+  id: string
+  status: string
+  latestVersionStatus: string | null
+  latestVersionSource: string | null
+  rejectionReason: string | null
+}>>({})
 const documentosPorTicket = ref<Record<string, Documento[]>>({})
+const versionesPorDocumento = ref<Record<string, VersionDocumento[]>>({})
 const perfilesAbogados = ref<Record<string, PerfilAbogado>>({})
 const ticketExpandido = ref<string | null>(null)
 const documentoActivo = ref<DocumentoModal | null>(null)
 const rechazoDocumento = ref<{ docId: string, ticketId: string } | null>(null)
 const motivoRechazo = ref('')
+const rechazandoDocumento = ref(false)
 
 const UBadge = resolveComponent('UBadge')
 const UButton = resolveComponent('UButton')
@@ -165,7 +185,7 @@ function normalizarTicket(row: TicketRow): Ticket {
 }
 
 function normalizarDocumento(
-  row: Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'ticket_id' | 'rejection_reason'> & {
+  row: Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'updated_at' | 'ticket_id' | 'rejection_reason'> & {
     document_templates?: { title: string | null, content: string | null } | { title: string | null, content: string | null }[] | null
   }
 ): Documento | null {
@@ -177,6 +197,7 @@ function normalizarDocumento(
     field_values: esRegistroCampo(row.field_values) ? row.field_values : {},
     template_id: row.template_id,
     created_at: row.created_at,
+    updated_at: row.updated_at,
     ticket_id: row.ticket_id,
     rejection_reason: row.rejection_reason,
     document_templates: row.document_templates ?? null,
@@ -231,6 +252,10 @@ const hayFiltrosActivos = computed(() =>
   || filtrosEstadoSeleccionados.value.length > 0
 )
 
+const currentLawyerId = computed(() =>
+  profile.value?.user_id ?? authUser.value?.id ?? null
+)
+
 const filtrosAplicadosCount = computed(() =>
   filtrosEstadoSeleccionados.value.length
 )
@@ -246,6 +271,14 @@ const expandedRows = computed(() =>
 function limpiarFiltros() {
   busqueda.value = ''
   filtrosEstadoSeleccionados.value = []
+}
+
+function ticketAsignadoAlAbogado(ticket: Ticket) {
+  return Boolean(currentLawyerId.value && ticket.assigned_to === currentLawyerId.value)
+}
+
+function abogadoDebeTomarCaso(ticket: Ticket) {
+  return profile.value?.role === 'abogado' && !ticketAsignadoAlAbogado(ticket)
 }
 
 function toggleFiltroEstado(estado: Ticket['status']) {
@@ -326,20 +359,118 @@ async function cargarTickets() {
       }
     }
   }
+
+  await cargarResumenDocumentosTickets(tickets.value.map(ticket => ticket.id))
+}
+
+async function cargarResumenDocumentosTickets(ticketIds: string[]) {
+  if (!ticketIds.length) {
+    resumenDocumentoPorTicket.value = {}
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id, ticket_id, status, updated_at, rejection_reason')
+    .in('ticket_id', ticketIds)
+    .order('updated_at', { ascending: false })
+
+  if (error) {
+    errorMsg.value = error.message
+    return
+  }
+
+  const documentos = (data ?? []) as Array<Pick<DocumentRow, 'id' | 'ticket_id' | 'status' | 'updated_at' | 'rejection_reason'>>
+  const documentIds = documentos.map(documento => documento.id).filter(Boolean)
+  const latestVersionByDocumentId: Record<string, { status: string | null, source: string | null, rejectionReason: string | null }> = {}
+
+  if (documentIds.length) {
+    const { data: versionesData, error: versionesError } = await supabase
+      .from('document_versions')
+      .select('document_id, status, source, rejection_reason, version_number')
+      .in('document_id', documentIds)
+      .order('version_number', { ascending: false })
+
+    if (versionesError) {
+      errorMsg.value = versionesError.message
+      return
+    }
+
+    for (const version of (versionesData ?? []) as Array<Pick<DocumentVersionRow, 'document_id' | 'status' | 'source' | 'rejection_reason' | 'version_number'>>) {
+      if (!version.document_id || latestVersionByDocumentId[version.document_id]) continue
+
+      latestVersionByDocumentId[version.document_id] = {
+        status: version.status,
+        source: version.source,
+        rejectionReason: version.rejection_reason ?? null,
+      }
+    }
+  }
+
+  const siguienteResumen: Record<string, {
+    id: string
+    status: string
+    latestVersionStatus: string | null
+    latestVersionSource: string | null
+    rejectionReason: string | null
+  }> = {}
+
+  for (const documento of documentos) {
+    if (!documento.id || !documento.status || !documento.ticket_id || siguienteResumen[documento.ticket_id]) continue
+
+    const latestVersion = latestVersionByDocumentId[documento.id]
+    siguienteResumen[documento.ticket_id] = {
+      id: documento.id,
+      status: documento.status,
+      latestVersionStatus: latestVersion?.status ?? null,
+      latestVersionSource: latestVersion?.source ?? null,
+      rejectionReason: latestVersion?.rejectionReason ?? documento.rejection_reason ?? null,
+    }
+  }
+
+  resumenDocumentoPorTicket.value = siguienteResumen
 }
 
 async function cargarDocumentosTicket(ticketId: string) {
   const { data } = await supabase
     .from('documents')
-    .select('id, status, field_values, template_id, created_at, ticket_id, rejection_reason, document_templates(title, content)')
+    .select('id, status, field_values, template_id, created_at, updated_at, ticket_id, rejection_reason, document_templates(title, content)')
     .eq('ticket_id', ticketId)
-    .order('created_at', { ascending: false })
+    .order('updated_at', { ascending: false })
 
   documentosPorTicket.value[ticketId] = (data ?? [])
-    .map((row) => normalizarDocumento(row as Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'ticket_id' | 'rejection_reason'> & {
+    .map((row) => normalizarDocumento(row as Pick<DocumentRow, 'id' | 'status' | 'field_values' | 'template_id' | 'created_at' | 'updated_at' | 'ticket_id' | 'rejection_reason'> & {
       document_templates?: { title: string | null, content: string | null } | { title: string | null, content: string | null }[] | null
     }))
     .filter((documento): documento is Documento => documento !== null)
+
+  await cargarVersionesDocumentos(
+    documentosPorTicket.value[ticketId]?.map(documento => documento.id) ?? []
+  )
+
+  sincronizarResumenDocumento(ticketId)
+}
+
+async function cargarVersionesDocumentos(documentIds: string[]) {
+  if (!documentIds.length) return
+
+  const { data } = await supabase
+    .from('document_versions')
+    .select('id, document_id, version_number, status, source, created_at, updated_at, rejection_reason')
+    .in('document_id', documentIds)
+    .order('version_number', { ascending: false })
+
+  const grouped: Record<string, VersionDocumento[]> = {}
+
+  for (const version of (data ?? []) as VersionDocumento[]) {
+    if (!version.document_id) continue
+    grouped[version.document_id] = [...(grouped[version.document_id] ?? []), version]
+  }
+
+  versionesPorDocumento.value = {
+    ...versionesPorDocumento.value,
+    ...grouped,
+  }
 }
 
 async function cargarPerfilAbogado(userId: string | null) {
@@ -393,6 +524,142 @@ function obtenerPlantillaDocumento(documento: Documento) {
   return template ?? null
 }
 
+function obtenerDocumentoActual(ticketId: string) {
+  return documentosPorTicket.value[ticketId]?.[0] ?? null
+}
+
+function obtenerResumenDocumento(ticketId: string) {
+  const documentoActual = obtenerDocumentoActual(ticketId)
+
+  if (documentoActual) {
+    const ultimaVersion = obtenerUltimaVersionDocumento(documentoActual.id)
+    return {
+      id: documentoActual.id,
+      status: documentoActual.status,
+      latestVersionStatus: ultimaVersion?.status ?? null,
+      latestVersionSource: ultimaVersion?.source ?? null,
+      rejectionReason: ultimaVersion?.rejection_reason ?? documentoActual.rejection_reason ?? null,
+    }
+  }
+
+  return resumenDocumentoPorTicket.value[ticketId] ?? null
+}
+
+function obtenerEstadoWorkflowDocumento(documento: Documento | null | undefined, ticketId?: string) {
+  const resumen = documento ? null : (ticketId ? obtenerResumenDocumento(ticketId) : null)
+
+  return getEffectiveDocumentStatus({
+    documentStatus: documento?.status ?? resumen?.status,
+    latestVersionStatus: documento ? obtenerUltimaVersionDocumento(documento.id)?.status : resumen?.latestVersionStatus,
+  })
+}
+
+function obtenerMotivoRechazoDocumento(documento: Documento | null | undefined, ticketId?: string) {
+  if (documento) {
+    const ultimaVersion = obtenerUltimaVersionDocumento(documento.id)
+
+    if (ultimaVersion?.status === 'rejected' && ultimaVersion.rejection_reason) {
+      return ultimaVersion.rejection_reason
+    }
+
+    return documento.rejection_reason ?? null
+  }
+
+  return ticketId ? (obtenerResumenDocumento(ticketId)?.rejectionReason ?? null) : null
+}
+
+function sincronizarResumenDocumento(ticketId: string) {
+  const documentoActual = obtenerDocumentoActual(ticketId)
+
+  if (!documentoActual) return
+
+  const ultimaVersion = obtenerUltimaVersionDocumento(documentoActual.id)
+
+  resumenDocumentoPorTicket.value = {
+    ...resumenDocumentoPorTicket.value,
+    [ticketId]: {
+      id: documentoActual.id,
+      status: documentoActual.status,
+      latestVersionStatus: ultimaVersion?.status ?? null,
+      latestVersionSource: ultimaVersion?.source ?? null,
+      rejectionReason: ultimaVersion?.rejection_reason ?? documentoActual.rejection_reason ?? null,
+    },
+  }
+}
+
+function ticketEnEsperaDeCorreccionCliente(ticket: Ticket) {
+  return obtenerEstadoWorkflowDocumento(obtenerDocumentoActual(ticket.id), ticket.id) === 'rejected'
+}
+
+function obtenerVersionesDocumento(documentId: string) {
+  return versionesPorDocumento.value[documentId] ?? []
+}
+
+function obtenerUltimaVersionDocumento(documentId: string | null | undefined) {
+  if (!documentId) return null
+  return obtenerVersionesDocumento(documentId)[0] ?? null
+}
+
+function obtenerMarcaTiempoDocumento(documento: Pick<Documento, 'updated_at' | 'created_at'>) {
+  return new Date(documento.updated_at ?? documento.created_at).getTime()
+}
+
+function actualizarDocumentoEnMemoria(
+  ticketId: string,
+  documentId: string,
+  changes: Partial<Pick<Documento, 'status' | 'updated_at' | 'rejection_reason'>>
+) {
+  const documentos = documentosPorTicket.value[ticketId]
+  if (!documentos?.length) return
+
+  documentosPorTicket.value[ticketId] = documentos
+    .map(documento => documento.id === documentId ? { ...documento, ...changes } : documento)
+    .sort((a, b) => obtenerMarcaTiempoDocumento(b) - obtenerMarcaTiempoDocumento(a))
+}
+
+function actualizarVersionRecienteEnMemoria(
+  documentId: string,
+  changes: Partial<Pick<VersionDocumento, 'status' | 'updated_at' | 'rejection_reason'>>
+) {
+  const versiones = versionesPorDocumento.value[documentId]
+  if (!versiones?.length) return
+
+  versionesPorDocumento.value = {
+    ...versionesPorDocumento.value,
+    [documentId]: versiones.map((version, index) => index === 0 ? { ...version, ...changes } : version),
+  }
+}
+
+function obtenerFaseDocumento(ticket: Ticket, documento = obtenerDocumentoActual(ticket.id)) {
+  const resumen = documento ? null : obtenerResumenDocumento(ticket.id)
+
+  return getDocumentWorkflowPhase({
+    documentStatus: documento?.status ?? resumen?.status,
+    latestVersionStatus: documento ? obtenerUltimaVersionDocumento(documento.id)?.status : resumen?.latestVersionStatus,
+    ticketStatus: ticket.status,
+    assignedTo: ticket.assigned_to,
+    audience: 'lawyer',
+    latestVersionSource: documento ? obtenerUltimaVersionDocumento(documento.id)?.source : resumen?.latestVersionSource,
+  })
+}
+
+function obtenerVisualEstadoDocumento(ticket: Ticket, documento: Documento) {
+  if (obtenerDocumentoActual(ticket.id)?.id === documento.id) {
+    const fase = obtenerFaseDocumento(ticket, documento)
+    return {
+      label: fase.label,
+      color: fase.color,
+    }
+  }
+
+  const estadoWorkflow = obtenerEstadoWorkflowDocumento(documento)
+
+  return {
+    label: etiquetaEstadoDocumento[estadoWorkflow] ?? 'Borrador',
+    color: colorEstadoDocumento[estadoWorkflow] ?? 'neutral',
+  }
+}
+
 function obtenerValoresSistema(ticket: Ticket) {
   const abogadoAsignado = ticket.assigned_to
     ? perfilesAbogados.value[ticket.assigned_to]
@@ -414,6 +681,11 @@ function obtenerValoresSistema(ticket: Ticket) {
 }
 
 function abrirDocumento(documento: Documento, ticket: Ticket) {
+  if (abogadoDebeTomarCaso(ticket)) {
+    errorMsg.value = 'Tomá el caso antes de abrir o revisar el documento.'
+    return
+  }
+
   const plantilla = obtenerPlantillaDocumento(documento)
 
   if (!plantilla?.content) {
@@ -437,6 +709,11 @@ function abrirDocumento(documento: Documento, ticket: Ticket) {
 }
 
 async function abrirDocumentoDesdeTicket(ticket: Ticket) {
+  if (abogadoDebeTomarCaso(ticket)) {
+    errorMsg.value = 'Tomá el caso antes de abrir o revisar el documento.'
+    return
+  }
+
   await Promise.all([
     cargarPerfilAbogado(ticket.assigned_to),
     cargarDocumentosTicket(ticket.id),
@@ -484,12 +761,34 @@ function obtenerColorEstadoVisible(ticket: Ticket) {
   return ticketDisplayStatusColors[obtenerEstadoVisible(ticket)]
 }
 
+function obtenerEtiquetaEstadoOperacion(ticket: Ticket) {
+  return obtenerEtiquetaEstadoVisible(ticket)
+}
+
+function obtenerColorEstadoOperacion(ticket: Ticket) {
+  return obtenerColorEstadoVisible(ticket)
+}
+
 function obtenerEtiquetaAccion(ticket: Ticket) {
+  if (ticketEnEsperaDeCorreccionCliente(ticket)) {
+    return 'Esperando corrección del cliente'
+  }
+
   if (ticket.status === 'open') {
     return ticket.assigned_to ? 'Iniciar revision' : 'Tomar caso'
   }
 
   return etiquetaAccion[ticket.status] ?? 'Cambiar estado'
+}
+
+function obtenerResumenCompactoTicket(ticket: Ticket) {
+  if (ticket.reopen_requested) return 'Reapertura solicitada'
+  if (obtenerResumenDocumento(ticket.id) || obtenerDocumentoActual(ticket.id)) {
+    return obtenerFaseDocumento(ticket).label
+  }
+  if (ticket.wasReopened) return 'Reabierto'
+
+  return 'Bandeja legal'
 }
 
 function obtenerMenuEstado(ticket: Ticket): DropdownMenuItem[][] {
@@ -511,7 +810,7 @@ function obtenerMenuEstado(ticket: Ticket): DropdownMenuItem[][] {
     ])
   }
 
-  if (siguienteEstado[ticket.status]) {
+  if (siguienteEstado[ticket.status] && !ticketEnEsperaDeCorreccionCliente(ticket)) {
     items.push([
       {
         label: obtenerEtiquetaAccion(ticket),
@@ -524,7 +823,7 @@ function obtenerMenuEstado(ticket: Ticket): DropdownMenuItem[][] {
   if (!items.length) {
     items.push([
       {
-        label: obtenerEtiquetaEstadoVisible(ticket),
+        label: obtenerEtiquetaEstadoOperacion(ticket),
         icon: 'i-lucide-check',
         disabled: true,
       },
@@ -541,12 +840,15 @@ function obtenerMenuAcciones(ticket: Ticket): DropdownMenuItem[][] {
       icon: 'i-lucide-external-link',
       to: `/ticket/${ticket.id}`,
     },
-    {
+  ]]
+
+  if (ticketAsignadoAlAbogado(ticket)) {
+    items[0]?.push({
       label: 'Ver documento',
       icon: 'i-lucide-file-text',
       onSelect: () => abrirDocumentoDesdeTicket(ticket),
-    },
-  ]]
+    })
+  }
 
   if (ticket.reopen_requested) {
     items.push([
@@ -564,7 +866,7 @@ function obtenerMenuAcciones(ticket: Ticket): DropdownMenuItem[][] {
     ])
   }
 
-  if (siguienteEstado[ticket.status]) {
+  if (siguienteEstado[ticket.status] && !ticketEnEsperaDeCorreccionCliente(ticket)) {
     items.push([
       {
         label: obtenerEtiquetaAccion(ticket),
@@ -696,17 +998,33 @@ const columns = computed<TableColumn<Ticket>[]>(() => [
   },
 ])
 
-async function aprobarDocumento(docId: string, ticketId: string) {
-  const { data: { user: authUser } } = await supabase.auth.getUser()
-  if (!authUser) return
+async function aprobarDocumento(docId: string, ticket: Ticket) {
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  if (!currentUser) return
+
+  if (ticket.assigned_to !== currentUser.id) {
+    errorMsg.value = 'Tomá el caso antes de aprobar el documento.'
+    return
+  }
 
   const { error } = await supabase
     .from('documents')
-    .update({ status: 'approved', reviewed_by: authUser.id })
+    .update({ status: 'approved', reviewed_by: currentUser.id, updated_at: new Date().toISOString() })
     .eq('id', docId)
 
   if (error) { errorMsg.value = error.message; return }
-  await cargarDocumentosTicket(ticketId)
+  try {
+    await syncLatestDocumentVersionReview({
+      documentId: docId,
+      status: 'approved',
+      reviewedBy: currentUser.id,
+      rejectionReason: null,
+    })
+  } catch (error) {
+    errorMsg.value = error instanceof Error ? error.message : 'No se pudo actualizar el historial de versiones.'
+    return
+  }
+  await cargarDocumentosTicket(ticket.id)
 }
 
 function abrirModalRechazo(docId: string, ticketId: string) {
@@ -720,7 +1038,9 @@ function cerrarModalRechazo() {
 }
 
 async function rechazarDocumento() {
-  if (!rechazoDocumento.value) return
+  if (!rechazoDocumento.value || rechazandoDocumento.value) return
+
+  const payload = { ...rechazoDocumento.value }
 
   const razon = motivoRechazo.value.trim()
   if (!razon) {
@@ -728,17 +1048,89 @@ async function rechazarDocumento() {
     return
   }
 
-  const { data: { user: authUser } } = await supabase.auth.getUser()
-  if (!authUser) return
+  const ticket = tickets.value.find(item => item.id === payload.ticketId)
+  if (!ticket) {
+    errorMsg.value = 'No se encontró el ticket asociado al documento.'
+    return
+  }
 
-  const { error } = await supabase
-    .from('documents')
-    .update({ status: 'rejected', reviewed_by: authUser.id, rejection_reason: razon })
-    .eq('id', rechazoDocumento.value.docId)
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  if (!currentUser) return
 
-  if (error) { errorMsg.value = error.message; return }
-  await cargarDocumentosTicket(rechazoDocumento.value.ticketId)
-  cerrarModalRechazo()
+  if (ticket.assigned_to !== currentUser.id) {
+    errorMsg.value = 'Tomá el caso antes de rechazar el documento.'
+    return
+  }
+
+  const marcaTiempo = new Date().toISOString()
+  errorMsg.value = ''
+  rechazandoDocumento.value = true
+
+  try {
+    const { error: documentError } = await supabase
+      .from('documents')
+      .update({ status: 'rejected', reviewed_by: currentUser.id, rejection_reason: razon, updated_at: marcaTiempo })
+      .eq('id', payload.docId)
+
+    if (documentError) {
+      throw new Error(documentError.message)
+    }
+
+    await syncLatestDocumentVersionReview({
+      documentId: payload.docId,
+      status: 'rejected',
+      reviewedBy: currentUser.id,
+      rejectionReason: razon,
+    })
+
+    const { error: ticketError } = await supabase
+      .from('tickets')
+      .update({
+        status: 'open',
+        assigned_to: currentUser.id,
+      })
+      .eq('id', ticket.id)
+
+    if (ticketError) {
+      throw new Error(ticketError.message)
+    }
+
+    const { error: historialError } = await supabase.from('ticket_historial').insert([{
+      ticket_id: ticket.id,
+      changed_by: currentUser.id,
+      old_status: ticket.status,
+      new_status: 'open',
+      notes: 'Documento rechazado para corrección del cliente',
+    }])
+
+    if (historialError) {
+      throw new Error(historialError.message)
+    }
+
+    ticket.status = 'open'
+    ticket.assigned_to = currentUser.id
+    actualizarDocumentoEnMemoria(payload.ticketId, payload.docId, {
+      status: 'rejected',
+      updated_at: marcaTiempo,
+      rejection_reason: razon,
+    })
+    actualizarVersionRecienteEnMemoria(payload.docId, {
+      status: 'rejected',
+      updated_at: marcaTiempo,
+      rejection_reason: razon,
+    })
+    sincronizarResumenDocumento(payload.ticketId)
+
+    cerrarModalRechazo()
+    void Promise.allSettled([
+      cargarDocumentosTicket(payload.ticketId),
+      cargarTickets(),
+    ])
+  } catch (error) {
+    errorMsg.value = error instanceof Error ? error.message : 'No se pudo rechazar el documento.'
+  } finally {
+    rechazandoDocumento.value = false
+  }
 }
 
 async function avanzarEstado(t: Ticket) {
@@ -968,27 +1360,26 @@ watch(ticketsPaginados, (lista) => {
                 @update:open="(open) => actualizarFilaExpandida(ticket, open)"
               >
                 <template #default="{ open }">
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabindex="0"
                     class="grid w-full grid-cols-[10rem_minmax(18rem,2fr)_11rem_9rem] gap-4 pl-5 pr-9 py-4 text-left transition hover:bg-primary/5 sm:pr-10"
                     :class="[
                       open ? 'bg-primary/6' : '',
                       ticket.reopen_requested ? 'bg-warning/5 hover:bg-warning/8' : ''
                     ]"
                     :aria-label="open ? `Minimizar ticket ${ticket.id}` : `Expandir ticket ${ticket.id}`"
+                    :aria-expanded="open"
+                    @click="void actualizarFilaExpandida(ticket, !open)"
+                    @keydown.enter.prevent="void actualizarFilaExpandida(ticket, !open)"
+                    @keydown.space.prevent="void actualizarFilaExpandida(ticket, !open)"
                   >
                     <div class="min-w-0">
                       <p class="font-semibold text-highlighted">
                         #{{ String(ticket.id).slice(0, 8) }}
                       </p>
                       <p class="mt-1 text-xs text-muted">
-                        {{
-                          ticket.reopen_requested
-                            ? 'Reapertura solicitada'
-                            : ticket.wasReopened
-                              ? 'Reabierto'
-                              : 'Bandeja legal'
-                        }}
+                        {{ obtenerResumenCompactoTicket(ticket) }}
                       </p>
                     </div>
 
@@ -1002,15 +1393,15 @@ watch(ticketsPaginados, (lista) => {
                     </div>
 
                     <div class="flex min-w-0 flex-col items-start gap-2">
-                      <UBadge class="self-start" :color="obtenerColorEstadoVisible(ticket)" variant="subtle">
-                        {{ obtenerEtiquetaEstadoVisible(ticket) }}
+                      <UBadge class="self-start" :color="obtenerColorEstadoOperacion(ticket)" variant="subtle">
+                        {{ obtenerEtiquetaEstadoOperacion(ticket) }}
                       </UBadge>
                     </div>
 
                     <div class="whitespace-nowrap text-sm text-muted">
                       {{ formatearFecha(ticket.created_at) }}
                     </div>
-                  </button>
+                  </div>
                 </template>
 
                 <template #content>
@@ -1020,8 +1411,8 @@ watch(ticketsPaginados, (lista) => {
                         <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
                           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Estado</p>
                           <div class="mt-2 flex flex-wrap gap-2">
-                            <UBadge :color="obtenerColorEstadoVisible(ticket)" variant="subtle">
-                              {{ obtenerEtiquetaEstadoVisible(ticket) }}
+                            <UBadge :color="obtenerColorEstadoOperacion(ticket)" variant="subtle">
+                              {{ obtenerEtiquetaEstadoOperacion(ticket) }}
                             </UBadge>
                             <UBadge :color="colorPrioridad[ticket.priority]" variant="outline">
                               {{ etiquetaPrioridad[ticket.priority] }}
@@ -1031,7 +1422,7 @@ watch(ticketsPaginados, (lista) => {
                             {{
                               ticket.reopen_requested
                                 ? 'Hay una solicitud de reapertura esperando tu decisión.'
-                                : 'Gestioná el siguiente paso del caso desde esta bandeja.'
+                                : obtenerFaseDocumento(ticket).description
                             }}
                           </p>
                         </div>
@@ -1061,7 +1452,11 @@ watch(ticketsPaginados, (lista) => {
                         <div>
                           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Acciones rápidas</p>
                           <p class="mt-2 text-sm text-muted">
-                            Abrí el detalle completo, revisá el documento más reciente o avanzá el estado del caso.
+                            {{
+                              ticketEnEsperaDeCorreccionCliente(ticket)
+                                ? obtenerFaseDocumento(ticket).description
+                                : 'Entrá al detalle, abrí el documento vigente o cambiá el estado del caso desde un menú rápido.'
+                            }}
                           </p>
                         </div>
 
@@ -1079,20 +1474,22 @@ watch(ticketsPaginados, (lista) => {
                           variant="ghost"
                           icon="i-lucide-file-text"
                           class="justify-center"
+                          :disabled="abogadoDebeTomarCaso(ticket)"
                           @click="abrirDocumentoDesdeTicket(ticket)"
                         >
                           Abrir mas reciente
                         </UButton>
 
-                        <UButton
-                          v-if="siguienteEstado[ticket.status]"
-                          color="primary"
-                          variant="soft"
-                          class="justify-center"
-                          @click="avanzarEstado(ticket)"
-                        >
-                          {{ obtenerEtiquetaAccion(ticket) }}
-                        </UButton>
+                        <UDropdownMenu :items="obtenerMenuEstado(ticket)">
+                          <UButton
+                            color="primary"
+                            variant="soft"
+                            trailing-icon="i-lucide-chevron-down"
+                            class="justify-center"
+                          >
+                            Cambiar estado
+                          </UButton>
+                        </UDropdownMenu>
 
                         <template v-if="ticket.reopen_requested">
                           <UButton
@@ -1112,94 +1509,100 @@ watch(ticketsPaginados, (lista) => {
                             Rechazar reapertura
                           </UButton>
                         </template>
+
+                        <UAlert
+                          v-if="abogadoDebeTomarCaso(ticket)"
+                          color="warning"
+                          variant="soft"
+                          title="Documento bloqueado hasta tomar el caso"
+                          description="Primero asignate este ticket para poder abrir, aprobar o rechazar el documento."
+                        />
+
+                        <UAlert
+                          v-else-if="ticketEnEsperaDeCorreccionCliente(ticket)"
+                          color="warning"
+                          variant="soft"
+                          title="Esperando corrección del cliente"
+                          description="Ya registraste el rechazo. Cuando el cliente reenvíe una versión corregida, el ticket volverá a revisión."
+                        />
                       </div>
                     </div>
 
-                    <div class="mt-4 min-w-0 overflow-hidden rounded-3xl border border-default bg-gradient-to-br from-elevated/70 via-default to-elevated/30">
-                      <div class="border-b border-default/70 px-4 py-4 sm:px-5">
-                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div class="min-w-0">
-                            <div class="flex flex-wrap items-center gap-2">
-                              <UBadge color="neutral" variant="soft">Documentos</UBadge>
-                              <UBadge color="primary" variant="subtle">
-                                {{ documentosPorTicket[ticket.id]?.length ?? 0 }}
-                              </UBadge>
-                              <span class="text-xs text-muted">Ticket #{{ String(ticket.id).slice(0, 8) }}</span>
-                            </div>
-                            <h3 class="mt-3 text-base font-semibold text-highlighted">{{ ticket.title }}</h3>
-                            <p v-if="ticket.description" class="mt-1 max-w-3xl text-sm leading-6 text-muted">
-                              {{ ticket.description }}
-                            </p>
+                    <section class="mt-4 rounded-[1.75rem] border border-default/80 bg-default/90 p-4 shadow-sm sm:p-5">
+                      <div class="flex flex-col gap-4 border-b border-default/70 pb-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div class="min-w-0">
+                          <div class="flex flex-wrap items-center gap-2">
+                            <UBadge color="neutral" variant="soft">Documento legal</UBadge>
+                            <UBadge color="primary" variant="subtle">
+                              {{ documentosPorTicket[ticket.id]?.length ?? 0 }}
+                            </UBadge>
+                            <UBadge :color="obtenerFaseDocumento(ticket).color" variant="subtle">
+                              {{ obtenerFaseDocumento(ticket).label }}
+                            </UBadge>
                           </div>
-
-                          <div class="min-w-0">
-                            <UButton
-                              size="sm"
-                              color="neutral"
-                              variant="ghost"
-                              icon="i-lucide-file-text"
-                              @click="abrirDocumentoDesdeTicket(ticket)"
-                            >
-                              Abrir mas reciente
-                            </UButton>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="p-4 sm:p-5">
-                        <div
-                          v-if="!documentosPorTicket[ticket.id]?.length"
-                          class="rounded-2xl border border-dashed border-default bg-default/80 px-4 py-8 text-center"
-                        >
-                          <p class="font-medium text-highlighted">Todavia no hay documentos en este ticket.</p>
-                          <p class="mt-2 text-sm text-muted">
-                            Cuando el cliente genere un documento, lo vas a poder revisar y aprobar desde aqui.
+                          <p class="mt-3 text-sm text-muted">
+                            {{ obtenerFaseDocumento(ticket).description }}
                           </p>
                         </div>
 
-                        <div v-else class="grid gap-3 xl:grid-cols-2">
-                          <UCard
-                            v-for="d in documentosPorTicket[ticket.id]"
-                            :key="d.id"
-                            class="min-w-0 border border-default/80 bg-default/90 shadow-sm"
-                          >
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                              <div class="min-w-0">
+                        <p class="text-xs text-toned">
+                          Ticket #{{ String(ticket.id).slice(0, 8) }}
+                        </p>
+                      </div>
+
+                      <div
+                        v-if="!documentosPorTicket[ticket.id]?.length"
+                        class="mt-4 rounded-2xl border border-dashed border-default bg-elevated/40 px-4 py-8 text-center"
+                      >
+                        <p class="font-medium text-highlighted">Todavia no hay documentos en este ticket.</p>
+                        <p class="mt-2 text-sm text-muted">
+                          Cuando el cliente genere un documento, lo vas a poder revisar y aprobar desde aquí.
+                        </p>
+                      </div>
+
+                      <div v-else class="mt-4 grid gap-4">
+                        <article
+                          v-for="d in documentosPorTicket[ticket.id]"
+                          :key="d.id"
+                          class="rounded-[1.4rem] border border-default/80 bg-elevated/35 p-4"
+                        >
+                          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div class="min-w-0">
+                              <div class="flex flex-wrap items-center gap-2">
                                 <p class="truncate font-medium text-highlighted">
                                   {{ obtenerPlantillaDocumento(d)?.title ?? 'Documento legal' }}
                                 </p>
-                                <p class="mt-1 text-xs text-muted">
-                                  Generado {{ formatearFecha(d.created_at) }}
-                                </p>
+                                <UBadge :color="obtenerVisualEstadoDocumento(ticket, d).color" variant="subtle">
+                                  {{ obtenerVisualEstadoDocumento(ticket, d).label }}
+                                </UBadge>
                               </div>
 
-                              <UBadge :color="colorEstadoDocumento[d.status] ?? 'neutral'" variant="subtle">
-                                {{ etiquetaEstadoDocumento[d.status] ?? 'Borrador' }}
-                              </UBadge>
-                            </div>
+                              <div class="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs text-toned">
+                                <span>Última actualización: {{ formatearFecha(d.updated_at ?? d.created_at) }}</span>
+                                <span v-if="obtenerUltimaVersionDocumento(d.id)">
+                                  Versión {{ obtenerUltimaVersionDocumento(d.id)?.version_number }}
+                                  · {{ obtenerUltimaVersionDocumento(d.id)?.source === 'correction' ? 'Corrección del cliente' : obtenerUltimaVersionDocumento(d.id)?.source === 'manual' ? 'Ajuste manual' : 'Versión inicial' }}
+                                </span>
+                              </div>
 
-                            <div class="mt-4 min-w-0 rounded-2xl border border-default/70 bg-elevated/50 p-3">
-                              <p class="break-words text-sm leading-6 text-muted">
-                                Revisá el contenido legal completo con los datos ya integrados antes de aprobarlo o rechazarlo.
+                              <p class="mt-3 text-sm leading-6 text-muted">
+                                Revisá el contenido legal completo con los datos ya integrados antes de aprobarlo o devolverlo con observaciones.
                               </p>
                             </div>
 
-                            <UAlert
-                              v-if="d.status === 'rejected' && d.rejection_reason"
-                              color="error"
-                              variant="soft"
-                              title="Motivo del rechazo"
-                              :description="d.rejection_reason"
-                              class="mt-4"
-                            />
-
-                            <div class="mt-4 flex flex-wrap items-center gap-2">
-                              <UButton size="sm" color="neutral" variant="outline" @click="abrirDocumento(d, ticket)">
+                            <div class="flex flex-wrap items-center gap-2">
+                              <UButton
+                                size="sm"
+                                color="neutral"
+                                variant="outline"
+                                :disabled="abogadoDebeTomarCaso(ticket)"
+                                @click="abrirDocumento(d, ticket)"
+                              >
                                 Ver documento
                               </UButton>
 
-                              <template v-if="d.status === 'submitted'">
-                                <UButton size="sm" @click="aprobarDocumento(d.id, ticket.id)">
+                              <template v-if="obtenerEstadoWorkflowDocumento(d) === 'submitted' && ticketAsignadoAlAbogado(ticket)">
+                                <UButton size="sm" @click="aprobarDocumento(d.id, ticket)">
                                   Aprobar
                                 </UButton>
                                 <UButton size="sm" color="error" variant="outline" @click="abrirModalRechazo(d.id, ticket.id)">
@@ -1207,10 +1610,55 @@ watch(ticketsPaginados, (lista) => {
                                 </UButton>
                               </template>
                             </div>
-                          </UCard>
-                        </div>
+                          </div>
+
+                          <UAlert
+                            v-if="obtenerEstadoWorkflowDocumento(d) === 'rejected' && obtenerMotivoRechazoDocumento(d)"
+                            color="error"
+                            variant="soft"
+                            title="Motivo del rechazo"
+                            :description="obtenerMotivoRechazoDocumento(d)"
+                            class="mt-4"
+                          />
+
+                          <div
+                            v-if="obtenerVersionesDocumento(d.id).length"
+                            class="mt-4 rounded-[1.25rem] border border-default/70 bg-default/80 px-4 py-4"
+                          >
+                            <div class="flex items-center justify-between gap-3">
+                              <p class="text-xs font-medium uppercase tracking-[0.16em] text-muted">Historial de versiones</p>
+                              <span class="text-xs text-toned">{{ obtenerVersionesDocumento(d.id).length }} registro(s)</span>
+                            </div>
+
+                            <div class="mt-3 grid gap-2">
+                              <div
+                                v-for="version in obtenerVersionesDocumento(d.id)"
+                                :key="version.id"
+                                class="rounded-2xl border border-default/70 bg-elevated/35 px-4 py-3"
+                              >
+                                <div class="flex flex-wrap items-center gap-2">
+                                  <UBadge color="primary" variant="soft">
+                                    Versión {{ version.version_number }}
+                                  </UBadge>
+                                  <UBadge :color="colorEstadoDocumento[version.status] ?? 'neutral'" variant="subtle">
+                                    {{ etiquetaEstadoDocumento[version.status] ?? 'Borrador' }}
+                                  </UBadge>
+                                  <span class="text-xs text-toned">
+                                    {{ version.source === 'correction' ? 'Corrección del cliente' : version.source === 'manual' ? 'Ajuste manual' : 'Versión inicial' }}
+                                  </span>
+                                  <span class="text-xs text-toned">
+                                    {{ new Date(version.updated_at ?? version.created_at).toLocaleString('es-CR') }}
+                                  </span>
+                                </div>
+                                <p v-if="version.rejection_reason" class="mt-2 text-sm text-error">
+                                  {{ version.rejection_reason }}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
                       </div>
-                    </div>
+                    </section>
                   </div>
                 </template>
               </UCollapsible>
@@ -1241,22 +1689,34 @@ watch(ticketsPaginados, (lista) => {
 
     <UModal
       :open="!!documentoActivo"
-      fullscreen
       :title="documentoActivo?.titulo"
-      :description="documentoActivo ? new Date(documentoActivo.created_at).toLocaleString('es-CR') : ''"
-      @close="cerrarDocumento"
+      :description="documentoActivo ? new Date(documentoActivo.created_at).toLocaleString('es-CR') : 'Vista previa del documento legal'"
+      :close="{ color: 'neutral', variant: 'outline' }"
+      :ui="{
+        overlay: 'fixed inset-0 bg-slate-950/72 backdrop-blur-md',
+        content: 'w-[min(100vw-2rem,72rem)] max-w-5xl rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] shadow-[0_40px_120px_-36px_rgba(15,23,42,0.75)] backdrop-blur-2xl focus:outline-none dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))]',
+        header: 'min-h-0 items-start gap-4 border-b border-default/70 px-5 py-5 sm:px-6',
+        body: 'overflow-y-auto bg-slate-950/4 px-4 py-4 sm:px-6 sm:py-6 dark:bg-white/0',
+        footer: 'justify-end border-t border-default/70 px-5 py-4 sm:px-6',
+        wrapper: 'min-w-0 pr-12',
+        title: 'text-lg font-semibold text-highlighted',
+        description: 'mt-2 text-sm text-muted',
+        close: 'absolute top-5 end-5',
+      }"
+      @update:open="(open) => { if (!open) cerrarDocumento() }"
     >
-      <template #content>
-        <div class="bg-elevated/50 p-4 sm:p-6">
-          <div class="mx-auto mb-4 flex w-full max-w-3xl justify-end">
-            <UButton color="neutral" variant="outline" leading-icon="i-lucide-x" @click="cerrarDocumento">
-              Cerrar
-            </UButton>
-          </div>
-          <article class="mx-auto w-full max-w-3xl rounded-2xl border border-default bg-default px-6 py-8 shadow-sm">
-            <pre class="whitespace-pre-wrap font-serif text-sm leading-7 text-highlighted">{{ documentoActivo?.contenido }}</pre>
-          </article>
+      <template #actions>
+        <div class="flex flex-wrap items-center gap-2">
+          <UBadge color="neutral" variant="soft">Vista previa</UBadge>
+          <UBadge color="primary" variant="subtle">Documento legal</UBadge>
+          <UBadge color="neutral" variant="outline">Solo lectura</UBadge>
         </div>
+      </template>
+
+      <template #body>
+        <article class="mx-auto w-full max-w-3xl rounded-[1.75rem] border border-default/80 bg-default/96 px-6 py-8 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.45)] sm:px-8 sm:py-10">
+          <pre class="whitespace-pre-wrap font-serif text-[15px] leading-8 text-highlighted">{{ documentoActivo?.contenido }}</pre>
+        </article>
       </template>
     </UModal>
 
@@ -1264,7 +1724,7 @@ watch(ticketsPaginados, (lista) => {
       :open="!!rechazoDocumento"
       title="Rechazar documento"
       description="Explicá claramente qué debe corregir el cliente antes de reenviar el documento."
-      @close="cerrarModalRechazo"
+      @update:open="(open) => { if (!open) cerrarModalRechazo() }"
     >
       <template #body>
         <div class="grid gap-4">
@@ -1280,14 +1740,15 @@ watch(ticketsPaginados, (lista) => {
 
       <template #footer>
         <div class="flex flex-wrap justify-end gap-3">
-          <UButton color="neutral" variant="ghost" @click="cerrarModalRechazo">
+          <UButton color="neutral" variant="ghost" :disabled="rechazandoDocumento" @click="cerrarModalRechazo">
             Cancelar
           </UButton>
-          <UButton color="error" :disabled="!motivoRechazo.trim()" @click="rechazarDocumento">
+          <UButton color="error" :loading="rechazandoDocumento" :disabled="!motivoRechazo.trim() || rechazandoDocumento" @click="rechazarDocumento">
             Rechazar documento
           </UButton>
         </div>
       </template>
     </UModal>
+
   </div>
 </template>

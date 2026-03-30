@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import type { Database } from '~/types/database.types'
 import {
-  documentStatusColors,
-  documentStatusLabels,
   formatDateTime,
   formatShortDate,
+  getDocumentWorkflowPhase,
   getFriendlyFirstName,
   getProfileDisplayName,
   getReopenedTicketIds,
@@ -35,7 +34,7 @@ type TicketRow = Database['public']['Tables']['tickets']['Row']
 type NotificationRow = Database['public']['Tables']['notifications']['Row']
 type DocumentRow = Pick<
   Database['public']['Tables']['documents']['Row'],
-  'id' | 'status' | 'created_at' | 'ticket_id' | 'rejection_reason'
+  'id' | 'status' | 'created_at' | 'updated_at' | 'ticket_id' | 'rejection_reason'
 >
 type LawyerProfileRow = Pick<
   Database['public']['Tables']['profiles']['Row'],
@@ -59,6 +58,7 @@ type DocumentSummary = {
   ticket_id: string
   status: DocumentStatus
   created_at: string
+  updated_at: string | null
   rejection_reason: string | null
   templateTitle: string
 }
@@ -222,14 +222,18 @@ const recentTickets = computed(() =>
 
 const recentDocuments = computed(() =>
   [...documents.value]
-    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at))
     .slice(0, 5)
+)
+
+const ticketsById = computed(() =>
+  Object.fromEntries(tickets.value.map(ticket => [ticket.id, ticket]))
 )
 
 const recentNotifications = computed(() => notifications.value.slice(0, 4))
 
 const firstRejectedDocument = computed(() =>
-  documents.value.find(document => document.status === 'rejected')
+  documents.value.find(document => puedeCorregirDocumento(document))
 )
 
 const firstUnreadNotification = computed(() =>
@@ -261,13 +265,13 @@ const actionItems = computed(() => {
     })
   }
 
-  if (documentCounts.value.rejected) {
+  if (firstRejectedDocument.value) {
     items.push({
       title: 'Corregi documentos observados',
       description: firstRejectedDocument.value?.rejection_reason
         ?? `Tenes ${documentCounts.value.rejected} documento(s) con observaciones por corregir.`,
-      to: firstRejectedDocument.value ? `/ticket/${firstRejectedDocument.value.ticket_id}` : '/tickets',
-      button: 'Abrir ticket',
+      to: firstRejectedDocument.value ? `/ticket/${firstRejectedDocument.value.ticket_id}/documento?document=${firstRejectedDocument.value.id}` : '/tickets',
+      button: 'Corregir',
       color: 'error',
       icon: 'i-lucide-file-warning',
     })
@@ -341,6 +345,15 @@ const quickLinks = [
   },
 ]
 
+async function abrirDocumentoReciente(document: { id?: string, ticket_id: string, status: string }) {
+  const documentSummary = documents.value.find(item => item.id === document.id)
+  const path = documentSummary && puedeCorregirDocumento(documentSummary)
+    ? `/ticket/${document.ticket_id}/documento${document.id ? `?document=${document.id}` : ''}`
+    : `/ticket/${document.ticket_id}`
+
+  await navigateTo(path)
+}
+
 function getDocumentTemplateTitle(
   value: DashboardDocumentRow['document_templates']
 ) {
@@ -356,6 +369,24 @@ function getLawyerName(assignedTo: string | null) {
 function getLawyerOffice(assignedTo: string | null) {
   if (!assignedTo) return null
   return lawyersById.value[assignedTo]?.officeAddress ?? null
+}
+
+function getDocumentWorkflow(document: DocumentSummary) {
+  const ticket = ticketsById.value[document.ticket_id]
+
+  return getDocumentWorkflowPhase({
+    documentStatus: document.status,
+    ticketStatus: ticket?.status,
+    assignedTo: ticket?.assigned_to,
+    audience: 'client',
+  })
+}
+
+function puedeCorregirDocumento(document: DocumentSummary) {
+  const ticket = ticketsById.value[document.ticket_id]
+
+  return document.status === 'rejected'
+    && !['resolved', 'closed', 'cancelled'].includes(ticket?.status ?? '')
 }
 
 function getErrorMessage(error: unknown) {
@@ -464,9 +495,9 @@ async function cargarDashboard() {
       const [documentsResult, reopenHistoryResult] = await Promise.all([
         supabase
           .from('documents')
-          .select('id, status, created_at, ticket_id, rejection_reason, document_templates(title)')
+          .select('id, status, created_at, updated_at, ticket_id, rejection_reason, document_templates(title)')
           .in('ticket_id', ticketIds)
-          .order('created_at', { ascending: false }),
+          .order('updated_at', { ascending: false }),
         supabase
           .from('ticket_historial')
           .select('ticket_id, old_status, new_status')
@@ -485,7 +516,14 @@ async function cargarDashboard() {
         wasReopened: reopenedTicketIds.has(ticket.id),
       }))
 
-      documents.value = (documentsResult.data ?? []).flatMap((row) => {
+      const latestDocumentsByTicket = new Map<string, DashboardDocumentRow>()
+
+      for (const row of (documentsResult.data ?? []) as DashboardDocumentRow[]) {
+        if (!row.ticket_id || latestDocumentsByTicket.has(row.ticket_id)) continue
+        latestDocumentsByTicket.set(row.ticket_id, row)
+      }
+
+      documents.value = [...latestDocumentsByTicket.values()].flatMap((row) => {
         const document = row as DashboardDocumentRow
 
         if (!document.ticket_id || !document.created_at) return []
@@ -495,6 +533,7 @@ async function cargarDashboard() {
           ticket_id: document.ticket_id,
           status: normalizeDocumentStatus(document.status),
           created_at: document.created_at,
+          updated_at: document.updated_at,
           rejection_reason: document.rejection_reason,
           templateTitle: getDocumentTemplateTitle(document.document_templates),
         }]
@@ -752,7 +791,7 @@ onMounted(() => {
                       Ticket #{{ document.ticket_id.slice(0, 8) }}
                     </p>
                     <p class="mt-2 text-xs text-toned">
-                      {{ formatDateTime(document.created_at) }}
+                      {{ formatDateTime(document.updated_at ?? document.created_at) }}
                     </p>
                     <p v-if="document.rejection_reason" class="mt-2 text-sm text-error">
                       {{ document.rejection_reason }}
@@ -760,11 +799,15 @@ onMounted(() => {
                   </div>
 
                   <div class="flex flex-col items-end gap-2">
-                    <UBadge :color="documentStatusColors[document.status]" variant="subtle">
-                      {{ documentStatusLabels[document.status] }}
+                    <UBadge :color="getDocumentWorkflow(document).color" variant="subtle">
+                      {{ getDocumentWorkflow(document).label }}
                     </UBadge>
-                    <UButton :to="`/ticket/${document.ticket_id}`" color="neutral" variant="ghost">
-                      Ver ticket
+                    <UButton
+                      color="neutral"
+                      variant="ghost"
+                      @click="void abrirDocumentoReciente(document)"
+                    >
+                      {{ puedeCorregirDocumento(document) ? 'Corregir documento' : 'Ver ticket' }}
                     </UButton>
                   </div>
                 </div>

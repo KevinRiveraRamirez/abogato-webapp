@@ -33,3 +33,5 @@ export type NotificationType =
   | 'ticket_unassigned_alert'
   | 'document_approved'
   | 'document_rejected'
+  | 'document_generation_sla_alert'
+  | 'system_lookup_failure_alert'

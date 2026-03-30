@@ -1,7 +1,7 @@
 import type { NotificationRecord, NotificationType } from '~~/shared/types/notification'
 
 export type NotificationTone = 'primary' | 'success' | 'warning' | 'info' | 'error' | 'neutral'
-export type NotificationGroup = 'tickets' | 'documents'
+export type NotificationGroup = 'tickets' | 'documents' | 'system'
 export type NotificationCenterTab = 'all' | NotificationGroup
 
 export interface NotificationMeta {
@@ -126,6 +126,22 @@ const notificationCatalog: Record<NotificationType, NotificationMeta> = {
     previewTitle: 'Documento requiere correcciones',
     previewBody: 'El documento del ticket "Traspaso de vehículo" necesita ajustes. Revisá el detalle para ver el motivo.',
   },
+  document_generation_sla_alert: {
+    label: 'SLA documental',
+    icon: 'i-lucide-timer-off',
+    tone: 'warning',
+    group: 'system',
+    previewTitle: 'Generación documental fuera de SLA',
+    previewBody: 'El documento del ticket "Poder especial" tardó más de lo esperado en generarse.',
+  },
+  system_lookup_failure_alert: {
+    label: 'Consultas problemáticas',
+    icon: 'i-lucide-shield-alert',
+    tone: 'error',
+    group: 'system',
+    previewTitle: 'Se detectaron consultas problemáticas',
+    previewBody: 'Un usuario acumuló múltiples búsquedas sin resultado y conviene revisar la operación.',
+  },
 }
 
 const fallbackMeta: NotificationMeta = {
@@ -141,6 +157,7 @@ export const notificationTabOptions: Array<{ key: NotificationCenterTab, label: 
   { key: 'all', label: 'Todas' },
   { key: 'tickets', label: 'Casos' },
   { key: 'documents', label: 'Documentos' },
+  { key: 'system', label: 'Operación' },
 ]
 
 export const notificationTypeOptions = (Object.entries(notificationCatalog) as Array<[NotificationType, NotificationMeta]>)

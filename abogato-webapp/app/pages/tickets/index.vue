@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Database } from '~/types/database.types'
 import {
+  getDocumentWorkflowPhase,
   getReopenedTicketIds,
   getTicketDisplayStatus,
   ticketDisplayStatusColors,
@@ -15,6 +16,7 @@ const supabase = useSupabaseClient()
 
 type TicketRow = Database['public']['Tables']['tickets']['Row']
 type DocumentRow = Database['public']['Tables']['documents']['Row']
+type DocumentVersionRow = Database['public']['Tables']['document_versions']['Row']
 
 type Ticket = {
   id: string
@@ -55,7 +57,12 @@ function normalizarTicket(row: TicketRow): Ticket {
 }
 
 const tickets = ref<Ticket[]>([])
-const estadoDocumentoPorTicket = ref<Record<string, string>>({})
+const documentoActualPorTicket = ref<Record<string, {
+  id: string
+  status: string
+  latestVersionStatus: string | null
+  latestVersionSource: string | null
+}>>({})
 
 const loading = ref(false)
 const errorMsg = ref('')
@@ -94,20 +101,6 @@ const opcionesCantidadPorPagina = [
   { label: '50 por página', value: 50 },
 ] as const
 
-const etiquetaEstadoDocumento: Record<string, string> = {
-  submitted: 'En revisión',
-  approved: 'Aprobado',
-  rejected: 'Rechazado',
-  draft: 'Borrador',
-}
-
-const colorEstadoDocumento: Record<string, 'warning' | 'success' | 'error' | 'neutral'> = {
-  submitted: 'warning',
-  approved: 'success',
-  rejected: 'error',
-  draft: 'neutral',
-}
-
 const ticketsFiltrados = computed(() => {
   const termino = busqueda.value.trim().toLowerCase()
 
@@ -124,7 +117,8 @@ const ticketsFiltrados = computed(() => {
       ticket.description ?? '',
       obtenerEtiquetaEstadoVisible(ticket),
       etiquetaPrioridad[ticket.priority],
-      estadoDocumentoPorTicket.value[ticket.id] === 'rejected' ? 'documento rechazado' : '',
+      obtenerFaseDocumento(ticket).label,
+      obtenerFaseDocumento(ticket).description,
     ].some((value) => String(value).toLowerCase().includes(termino))
   })
 })
@@ -173,15 +167,33 @@ function obtenerColorEstadoVisible(ticket: Ticket) {
 }
 
 function obtenerEstadoDocumento(ticketId: string) {
-  return estadoDocumentoPorTicket.value[ticketId] ?? 'draft'
+  const documento = documentoActualPorTicket.value[ticketId]
+  return documento?.latestVersionStatus ?? documento?.status ?? 'draft'
 }
 
-function obtenerEtiquetaEstadoDocumento(ticketId: string) {
-  return etiquetaEstadoDocumento[obtenerEstadoDocumento(ticketId)] ?? 'Sin documento'
+function obtenerDocumentoActualId(ticketId: string) {
+  return documentoActualPorTicket.value[ticketId]?.id ?? null
 }
 
-function obtenerColorEstadoDocumento(ticketId: string) {
-  return colorEstadoDocumento[obtenerEstadoDocumento(ticketId)] ?? 'neutral'
+function obtenerFuenteVersionDocumento(ticketId: string) {
+  return documentoActualPorTicket.value[ticketId]?.latestVersionSource ?? null
+}
+
+function obtenerFaseDocumento(ticket: Ticket) {
+  const documento = documentoActualPorTicket.value[ticket.id]
+  return getDocumentWorkflowPhase({
+    ticketStatus: ticket.status,
+    documentStatus: documento?.status,
+    latestVersionStatus: documento?.latestVersionStatus,
+    assignedTo: ticket.assigned_to,
+    audience: 'client',
+    latestVersionSource: obtenerFuenteVersionDocumento(ticket.id),
+  })
+}
+
+function puedeCorregirDocumento(ticket: Ticket) {
+  return obtenerEstadoDocumento(ticket.id) === 'rejected'
+    && !['resolved', 'closed', 'cancelled'].includes(ticket.status)
 }
 
 function formatearFecha(fecha: string) {
@@ -201,6 +213,20 @@ function limpiarFiltros() {
   filtrosEstadoSeleccionados.value = []
 }
 
+async function abrirTicketOCorreccion(ticketId: string) {
+  if (obtenerEstadoDocumento(ticketId) === 'rejected') {
+    await navigateTo({
+      path: `/ticket/${ticketId}/documento`,
+      query: obtenerDocumentoActualId(ticketId)
+        ? { document: obtenerDocumentoActualId(ticketId)! }
+        : {},
+    })
+    return
+  }
+
+  await navigateTo(`/ticket/${ticketId}`)
+}
+
 function toggleFiltroEstado(estado: Ticket['status']) {
   filtrosEstadoSeleccionados.value = filtrosEstadoSeleccionados.value.includes(estado)
     ? filtrosEstadoSeleccionados.value.filter(item => item !== estado)
@@ -214,30 +240,69 @@ function obtenerMensajeExito(status: string) {
 
 async function cargarEstadosDocumento(ticketIds: string[]) {
   if (!ticketIds.length) {
-    estadoDocumentoPorTicket.value = {}
+    documentoActualPorTicket.value = {}
     return
   }
 
   const { data, error } = await supabase
     .from('documents')
-    .select('ticket_id, status, created_at')
+    .select('id, ticket_id, status, updated_at')
     .in('ticket_id', ticketIds)
-    .order('created_at', { ascending: false })
+    .order('updated_at', { ascending: false })
 
   if (error) {
     errorMsg.value = error.message
     return
   }
 
-  const siguienteEstado: Record<string, string> = {}
+  const documentos = (data ?? []) as Array<Pick<DocumentRow, 'id' | 'ticket_id' | 'status' | 'updated_at'>>
+  const documentIds = documentos.map(documento => documento.id).filter(Boolean)
+  const latestVersionByDocumentId: Record<string, { status: string | null, source: string | null }> = {}
 
-  for (const documento of (data ?? []) as Array<Pick<DocumentRow, 'ticket_id' | 'status' | 'created_at'>>) {
-    if (!documento.status || !documento.created_at) continue
-    if (!documento.ticket_id || siguienteEstado[documento.ticket_id]) continue
-    siguienteEstado[documento.ticket_id] = documento.status
+  if (documentIds.length) {
+    const { data: versionesData, error: versionesError } = await supabase
+      .from('document_versions')
+      .select('document_id, status, source, version_number')
+      .in('document_id', documentIds)
+      .order('version_number', { ascending: false })
+
+    if (versionesError) {
+      errorMsg.value = versionesError.message
+      return
+    }
+
+    for (const version of (versionesData ?? []) as Array<Pick<DocumentVersionRow, 'document_id' | 'status' | 'source' | 'version_number'>>) {
+      if (!version.document_id || latestVersionByDocumentId[version.document_id]) continue
+
+      latestVersionByDocumentId[version.document_id] = {
+        status: version.status,
+        source: version.source,
+      }
+    }
   }
 
-  estadoDocumentoPorTicket.value = siguienteEstado
+  const siguienteEstado: Record<string, {
+    id: string
+    status: string
+    latestVersionStatus: string | null
+    latestVersionSource: string | null
+  }> = {}
+
+  for (const documento of documentos) {
+    if (!documento.id || !documento.status) continue
+    if (!documento.ticket_id || siguienteEstado[documento.ticket_id]) continue
+
+    const latestVersion = latestVersionByDocumentId[documento.id]
+
+    siguienteEstado[documento.ticket_id] = {
+      id: documento.id,
+      status: documento.status,
+      latestVersionStatus: latestVersion?.status ?? null,
+      latestVersionSource: latestVersion?.source ?? null,
+    }
+  }
+
+  documentoActualPorTicket.value = siguienteEstado
 }
 
 async function cargarTickets() {
@@ -364,7 +429,17 @@ onMounted(async () => {
       description="Revisá el estado de tus trámites y creá nuevas solicitudes desde una página dedicada."
     >
       <template #actions>
-        <UButton to="/tickets/nuevo">
+        <UButton color="neutral" variant="outline" :loading="loading" @click="cargarTickets">
+          Actualizar
+        </UButton>
+        <UButton
+          to="/tickets/nuevo"
+          size="lg"
+          color="primary"
+          variant="solid"
+          leading-icon="i-lucide-plus"
+          class="shadow-[0_18px_40px_-24px_rgba(37,99,235,0.72)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_48px_-24px_rgba(37,99,235,0.78)]"
+        >
           Nuevo ticket
         </UButton>
       </template>
@@ -482,17 +557,7 @@ onMounted(async () => {
                         #{{ String(ticket.id).slice(0, 8) }}
                       </p>
                       <p class="mt-1 text-xs text-muted">
-                        {{
-                          obtenerEstadoDocumento(ticket.id) === 'approved'
-                            ? 'Documento aprobado'
-                            : obtenerEstadoDocumento(ticket.id) === 'submitted'
-                              ? 'Documento en revision'
-                              : obtenerEstadoDocumento(ticket.id) === 'rejected'
-                                ? 'Documento rechazado'
-                                : ticket.wasReopened
-                                  ? 'Reabierto'
-                                  : 'Seguimiento activo'
-                        }}
+                        {{ obtenerFaseDocumento(ticket).label }}
                       </p>
                     </div>
 
@@ -538,19 +603,13 @@ onMounted(async () => {
 
                         <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
                           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Documento legal</p>
-                          <p class="mt-2 font-semibold text-highlighted">
-                            {{ obtenerEtiquetaEstadoDocumento(ticket.id) }}
-                          </p>
+                          <div class="mt-2">
+                            <UBadge :color="obtenerFaseDocumento(ticket).color" variant="subtle">
+                              {{ obtenerFaseDocumento(ticket).label }}
+                            </UBadge>
+                          </div>
                           <p class="mt-2 text-sm text-muted">
-                            {{
-                              obtenerEstadoDocumento(ticket.id) === 'rejected'
-                                ? 'Tu documento requiere ajustes antes de continuar.'
-                                : obtenerEstadoDocumento(ticket.id) === 'approved'
-                                  ? 'El documento ya fue aprobado por el equipo legal.'
-                                  : obtenerEstadoDocumento(ticket.id) === 'submitted'
-                                    ? 'Está en revisión por el abogado asignado.'
-                                    : 'Todavía no hay un documento enviado en este ticket.'
-                            }}
+                            {{ obtenerFaseDocumento(ticket).description }}
                           </p>
                         </div>
 
@@ -577,6 +636,16 @@ onMounted(async () => {
                           :to="`/ticket/${ticket.id}`"
                         >
                           Ver detalle
+                        </UButton>
+
+                        <UButton
+                          v-if="puedeCorregirDocumento(ticket)"
+                          color="warning"
+                          variant="soft"
+                          class="justify-center"
+                          @click="void abrirTicketOCorreccion(ticket.id)"
+                        >
+                          Corregir documento
                         </UButton>
 
                         <UButton

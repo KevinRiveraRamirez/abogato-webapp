@@ -4,6 +4,7 @@ definePageMeta({ layout: 'app', middleware: 'auth' })
 const route = useRoute()
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
+const { registerLookupFailure, runLookupWithRetry } = useStateLookupMonitor()
 
 const ticketId = computed(() => route.params.id as string)
 
@@ -86,10 +87,10 @@ async function buscarPropietarioPorCedula(cedulaParam: string) {
     .from('padron_electores')
     .select('cedula, nombre_completo, provincia, canton, distrito, sexo')
     .eq('cedula', cedulaParam)
-    .single()
+    .maybeSingle()
 
   if (error) throw error
-  return data as PadronElector
+  return (data ?? null) as PadronElector | null
 }
 
 async function buscarDocumentosPorCedula(cedulaParam: string) {
@@ -124,13 +125,29 @@ async function consultar() {
   try {
     loadingConsulta.value = true
 
-    const persona = await buscarPropietarioPorCedula(cedulaLimpia)
+    const persona = await runLookupWithRetry(() => buscarPropietarioPorCedula(cedulaLimpia))
+
+    if (!persona) {
+      await registerLookupFailure({
+        source: 'vehicle_transfer_padron',
+        queryValue: cedulaLimpia,
+        ticketId: ticketId.value,
+        failureKind: 'not_found',
+        errorMessage: 'No se encontró la identificación consultada.',
+      })
+
+      errorMsg.value = 'No encontramos esa identificación en la fuente disponible.'
+      avisoInconsistencia.value =
+        'Puede existir una inconsistencia o ausencia de datos en la fuente oficial.'
+      return
+    }
+
     propietario.value = persona
 
     form.nombre_propietario = persona.nombre_completo
     form.calidades_propietario = construirCalidades(persona)
 
-    const docs = await buscarDocumentosPorCedula(cedulaLimpia)
+    const docs = await runLookupWithRetry(() => buscarDocumentosPorCedula(cedulaLimpia))
     documentosPrevios.value = docs
 
     if (docs.length > 0) {
@@ -149,6 +166,13 @@ async function consultar() {
     }
   } catch (error: any) {
     console.error(error)
+    await registerLookupFailure({
+      source: 'vehicle_transfer_padron',
+      queryValue: cedulaLimpia,
+      ticketId: ticketId.value,
+      failureKind: 'error',
+      errorMessage: error instanceof Error ? error.message : 'No se pudo consultar la información del padrón.',
+    })
     errorMsg.value = 'No se pudo consultar la información con esa identificación.'
     avisoInconsistencia.value =
       'Puede existir una inconsistencia o ausencia de datos en la fuente oficial.'
