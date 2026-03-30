@@ -188,23 +188,23 @@ onMounted(() => {
   <SkeletonDashboardPage v-if="isInitialLoading" />
 
   <div v-else class="mx-auto w-full max-w-7xl space-y-8">
-    <AppPageHeader
-      eyebrow="Admin"
-      title="Estado general del sistema"
-      description="Un panel operativo para ver carga de tickets, reaperturas, revisión documental y salud de usuarios sin mezclarlo con la vista del abogado."
-    >
-      <template #actions>
-        <UButton
-          color="neutral"
-          variant="outline"
-          class="w-full justify-center sm:w-auto"
-          :loading="loading"
-          @click="cargarDashboard"
-        >
-          Actualizar métricas
-        </UButton>
-      </template>
-    </AppPageHeader>
+<AppPageHeader
+  eyebrow="Admin"
+  title="Estado general del sistema"
+  description="Un panel operativo para ver carga de tickets, reaperturas, revisión documental y salud de usuarios sin mezclarlo con la vista del abogado."
+/>
+
+<div class="flex justify-end">
+  <UButton
+    color="neutral"
+    variant="outline"
+    icon="i-lucide-refresh-cw"
+    :loading="loading"
+    @click="cargarDashboard"
+  >
+    Actualizar métricas
+  </UButton>
+</div>
 
     <UAlert
       v-if="errorMsg"

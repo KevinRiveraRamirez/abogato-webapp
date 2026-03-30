@@ -17,6 +17,14 @@ const mensajes = ref<UiChatMessage[]>([])
 const status = ref<'ready' | 'submitted' | 'error'>('ready')
 const scrollViewport = ref<HTMLElement | null>(null)
 
+// ✅ HU-044: Preguntas sugeridas
+const preguntasSugeridas = [
+  '¿Cómo solicito un divorcio en Costa Rica?',
+  '¿Qué documentos necesito para iniciar mi trámite?',
+  '¿Cómo registro una empresa en Costa Rica?',
+  '¿Qué es una escritura pública?',
+]
+
 const { loading, error, sendMessage } = useAiChat()
 const {
   panel,
@@ -32,8 +40,6 @@ const {
     zIndex: '520',
   }),
   getDefaultPosition: (panelRect) => {
-    // Place the panel next to the AI bubble on first open.
-    // Bubble is fixed: bottom-5 right-5 with size 56px.
     const margin = 16
     const bubbleSize = 56
     const bubbleOffset = 20
@@ -42,23 +48,14 @@ const {
     const bubbleLeft = window.innerWidth - bubbleOffset - bubbleSize
     const bubbleBottom = window.innerHeight - bubbleOffset
 
-    // Prefer to the left of the bubble, aligned to bottom.
     const preferredLeft = bubbleLeft - gap - panelRect.width
     const preferredTop = bubbleBottom - panelRect.height
 
-    // Small screens: sheet-style (anchored top-left, card handles width).
     if (window.innerWidth < 640) {
-      const inset = margin
-      return {
-        left: inset,
-        top: inset,
-      }
+      return { left: margin, top: margin }
     }
 
-    return {
-      left: preferredLeft,
-      top: preferredTop,
-    }
+    return { left: preferredLeft, top: preferredTop }
   },
 })
 
@@ -70,12 +67,16 @@ const crearTicket = () => {
   navigateTo('/tickets')
 }
 
+// ✅ HU-044: Usar pregunta sugerida
+const usarPreguntaSugerida = (texto: string) => {
+  mensaje.value = texto
+}
+
 const newId = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     // @ts-expect-error - randomUUID exists in modern runtimes
     return crypto.randomUUID()
   }
-
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
@@ -90,7 +91,6 @@ const pushMessage = (role: ChatRole, content: string, meta?: UiChatMessage['meta
 
 function scrollToBottom() {
   if (!import.meta.client) return
-
   requestAnimationFrame(() => {
     const el = scrollViewport.value
     if (!el) return
@@ -102,10 +102,8 @@ const enviar = async () => {
   if (!mensaje.value.trim() || loading.value) return
 
   const texto = mensaje.value.trim()
-
   pushMessage('user', texto)
   scrollToBottom()
-
   mensaje.value = ''
   status.value = 'submitted'
 
@@ -204,14 +202,9 @@ onBeforeUnmount(() => {
             <template #header>
               <div class="flex items-center justify-between gap-3">
                 <div class="min-w-0">
-                  <p class="text-sm font-semibold text-highlighted">
-                    Asistente IA
-                  </p>
-                  <p class="text-xs text-muted">
-                    Podés mover este panel arrastrando el encabezado.
-                  </p>
+                  <p class="text-sm font-semibold text-highlighted">Asistente IA</p>
+                  <p class="text-xs text-muted">Podés mover este panel arrastrando el encabezado.</p>
                 </div>
-
                 <UButton
                   data-no-panel-drag
                   color="neutral"
@@ -226,16 +219,41 @@ onBeforeUnmount(() => {
 
             <div class="relative h-[min(22rem,calc(100dvh-14rem))] overflow-hidden sm:h-[546px]">
               <div ref="scrollViewport" class="absolute inset-0 overflow-y-auto px-1.5 py-2">
+
+                <!-- ✅ HU-044: Pantalla inicial con preguntas sugeridas -->
+                <div v-if="mensajes.length === 0 && !loading" class="flex h-full items-center justify-center px-4">
+                  <div class="w-full text-center">
+                    <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
+                      <UIcon name="i-lucide-sparkles" class="h-5 w-5 text-primary" />
+                    </div>
+                    <p class="text-base font-semibold text-highlighted">Hola, ¿en qué puedo ayudarte?</p>
+                    <p class="mt-2 text-sm text-muted">Consultá sobre trámites, requisitos o documentos legales en Costa Rica.</p>
+
+                    <div class="mt-5 text-left">
+                      <p class="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Ejemplos de preguntas</p>
+                      <div class="grid gap-2">
+                        <UButton
+                          v-for="pregunta in preguntasSugeridas"
+                          :key="pregunta"
+                          variant="soft"
+                          color="neutral"
+                          class="justify-start rounded-2xl px-4 py-3 text-left whitespace-normal"
+                          @click="usarPreguntaSugerida(pregunta)"
+                        >
+                          {{ pregunta }}
+                        </UButton>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <UChatMessages
+                  v-else
                   :messages="mensajes"
                   :status="loading ? 'submitted' : (status === 'error' ? 'error' : 'ready')"
-                  :should-auto-scroll="true"
-                  :should-scroll-to-bottom="true"
                   :auto-scroll="false"
-                  :spacing-offset="96"
                   :ui="{
-                    root: 'relative w-full flex flex-col gap-2 flex-1 px-3 pb-10 [&>article]:last-of-type:min-h-(--last-message-height)',
-                    autoScroll: 'rounded-full absolute left-1/2 -translate-x-1/2 bottom-3',
+                    root: 'relative w-full flex flex-col gap-2 flex-1 px-3 pb-10',
                   }"
                 >
                   <template #default>
@@ -246,10 +264,9 @@ onBeforeUnmount(() => {
                       :side="item.role === 'user' ? 'right' : 'left'"
                       variant="soft"
                       :ui="{
-                        content:
-                          item.role === 'user'
-                            ? 'bg-primary text-inverted whitespace-pre-wrap break-words leading-relaxed text-sm'
-                            : 'bg-elevated/40 ring ring-default/70 text-default whitespace-pre-wrap break-words leading-relaxed text-sm',
+                        content: item.role === 'user'
+                          ? 'bg-primary text-inverted whitespace-pre-wrap break-words leading-relaxed text-sm'
+                          : 'bg-elevated/40 ring ring-default/70 text-default whitespace-pre-wrap break-words leading-relaxed text-sm',
                       }"
                       :actions="item.role === 'assistant' && item.metadata?.suggestTicket ? [
                         {
@@ -276,18 +293,14 @@ onBeforeUnmount(() => {
                   </template>
                 </UChatMessages>
 
-              <div v-if="mensajes.length === 0" class="px-5 pb-5 pt-4 text-sm text-muted">
-                  Hola, ¿en qué puedo ayudarte?
-                </div>
-
-              <div v-if="error" class="px-5 pb-5">
+                <div v-if="error" class="px-5 pb-5">
                   <UAlert color="error" variant="soft" :title="error" icon="i-lucide-alert-triangle" />
                 </div>
               </div>
             </div>
 
             <template #footer>
-            <div class="border-t border-default bg-default/60 px-2 py-2 sm:px-3 sm:py-3">
+              <div class="border-t border-default bg-default/60 px-2 py-2 sm:px-3 sm:py-3">
                 <UChatPrompt
                   data-no-panel-drag
                   v-model="mensaje"
