@@ -82,6 +82,7 @@ const adminSections: NavigationSection[] = [
       { label: 'Plantillas', icon: 'i-lucide-file-text', to: '/admin/plantillas' },
       { label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/usuarios' },
       { label: 'Auditoría', icon: 'i-lucide-history', to: '/admin/auditoria' },
+      { label: 'Asistente IA', icon: 'i-lucide-bot', to: '/admin/asistente' },
     ],
   },
   {
