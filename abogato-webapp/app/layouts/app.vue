@@ -39,4 +39,5 @@ onMounted(() => {
       </main>
     </div>
   </div>
+  <AiChatPopup />
 </template>

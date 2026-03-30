@@ -18,6 +18,57 @@ type TicketRow = Database['public']['Tables']['tickets']['Row']
 type DocumentRow = Database['public']['Tables']['documents']['Row']
 type DocumentVersionRow = Database['public']['Tables']['document_versions']['Row']
 
+type TemplateField = {
+  name?: string
+  key?: string
+  label?: string
+  placeholder?: string
+  type?: string
+  required?: boolean
+  options?: Array<string | { label?: string; value?: string }>
+}
+
+type DocumentTemplate = {
+  id: string
+  title: string
+  servicio_id?: string | null
+  activo?: boolean
+  fields?: TemplateField[]
+}
+
+
+
+const templatesDisponibles = ref<DocumentTemplate[]>([])
+const templateIdSeleccionado = ref('')
+const selectedTemplate = ref<DocumentTemplate | null>(null)
+
+
+const cargarTemplates = async () => {
+  const { data, error } = await supabase
+    .from('document_templates')
+    .select('id, title, servicio_id, activo, fields')
+    .eq('activo', true)
+    .order('title', { ascending: true })
+
+  if (error) {
+    console.error('Error cargando templates:', error)
+    errorMsg.value = error.message
+    return
+  }
+
+  templatesDisponibles.value = (data || []) as DocumentTemplate[]
+}
+
+onMounted(async () => {
+  await cargarTemplates()
+})
+
+watch(templateIdSeleccionado, (nuevoId) => {
+  const template = templatesDisponibles.value.find(t => t.id === nuevoId) || null
+  selectedTemplate.value = template
+  console.log('Template seleccionado:', template)
+})
+
 type Ticket = {
   id: string
   title: string
