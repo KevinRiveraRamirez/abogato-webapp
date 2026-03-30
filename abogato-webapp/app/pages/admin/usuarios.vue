@@ -854,9 +854,9 @@ onMounted(() => {
         v-else
         class="overflow-hidden rounded-[1.75rem] border border-default/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] shadow-[0_24px_70px_-42px_rgba(15,23,42,0.3)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))]"
       >
-        <div class="overflow-x-auto pb-1 [scrollbar-gutter:stable_both-edges]">
-          <div class="min-w-[56rem]">
-            <div class="grid grid-cols-[minmax(15rem,1.7fr)_minmax(16rem,1.7fr)_10rem_10rem_9rem] gap-4 border-b border-default/70 bg-elevated/70 pl-5 pr-9 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted sm:pr-10">
+        <div class="max-lg:overflow-visible lg:overflow-x-auto lg:pb-1 [scrollbar-gutter:stable_both-edges]">
+          <div class="w-full lg:min-w-[56rem]">
+            <div class="hidden grid-cols-[minmax(15rem,1.7fr)_minmax(16rem,1.7fr)_10rem_10rem_9rem] gap-4 border-b border-default/70 bg-elevated/70 py-4 pl-5 pr-9 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted lg:grid sm:pr-10">
               <p>Usuario</p>
               <p>Correo</p>
               <p>Rol</p>
@@ -875,7 +875,7 @@ onMounted(() => {
                 <template #default="{ open }">
                   <button
                     type="button"
-                    class="grid w-full grid-cols-[minmax(15rem,1.7fr)_minmax(16rem,1.7fr)_10rem_10rem_9rem] gap-4 pl-5 pr-9 py-4 text-left transition hover:bg-primary/5 sm:pr-10"
+                    class="grid w-full min-w-0 grid-cols-1 gap-3 px-4 py-4 text-left transition hover:bg-primary/5 lg:grid-cols-[minmax(15rem,1.7fr)_minmax(16rem,1.7fr)_10rem_10rem_9rem] lg:gap-4 lg:py-4 lg:pl-5 lg:pr-10"
                     :class="[
                       open ? 'bg-primary/6' : '',
                       !usuario.is_active ? 'bg-error/5 hover:bg-error/8' : ''
@@ -914,13 +914,13 @@ onMounted(() => {
                       </p>
                     </div>
 
-                    <div class="flex items-start">
+                    <div class="flex min-w-0 items-start">
                       <UBadge :color="colorRol[usuario.role]" variant="subtle">
                         {{ roleLabels[usuario.role] }}
                       </UBadge>
                     </div>
 
-                    <div>
+                    <div class="min-w-0">
                       <UBadge :color="usuario.is_active ? 'success' : 'error'" variant="soft">
                         {{ usuario.is_active ? 'Activo' : 'Inactivo' }}
                       </UBadge>
@@ -929,14 +929,14 @@ onMounted(() => {
                       </p>
                     </div>
 
-                    <div class="text-sm text-muted">
+                    <div class="text-sm text-muted lg:whitespace-nowrap">
                       {{ formatearFechaCorta(usuario.created_at) }}
                     </div>
                   </button>
                 </template>
 
                 <template #content>
-                  <div class="border-t border-default/60 bg-elevated/35 px-5 py-5">
+                  <div class="border-t border-default/60 bg-elevated/35 px-4 py-4 sm:px-5 sm:py-5">
                     <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_19rem]">
                       <div class="grid gap-4 md:grid-cols-2">
                         <div class="rounded-[1.4rem] border border-default/80 bg-default/90 p-4 shadow-sm">
@@ -1221,19 +1221,22 @@ onMounted(() => {
           </div>
         </div>
 
-        <div class="flex flex-col gap-4 border-t border-default/70 bg-default/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex min-w-0 flex-col gap-4 border-t border-default/70 bg-default/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <p class="text-sm text-muted">
             Página {{ paginaActual }} de {{ totalPaginas }}
           </p>
 
-          <UPagination
-            v-model:page="paginaActual"
-            :total="totalUsuariosFiltrados"
-            :items-per-page="cantidadPorPagina"
-            show-edges
-            active-color="primary"
-            active-variant="solid"
-          />
+          <div class="w-full min-w-0 overflow-x-auto sm:w-auto sm:overflow-visible sm:pb-0 [-webkit-overflow-scrolling:touch]">
+            <UPagination
+              v-model:page="paginaActual"
+              class="flex w-max min-w-0 justify-center sm:w-auto sm:justify-end"
+              :total="totalUsuariosFiltrados"
+              :items-per-page="cantidadPorPagina"
+              show-edges
+              active-color="primary"
+              active-variant="solid"
+            />
+          </div>
         </div>
       </div>
     </UCard>

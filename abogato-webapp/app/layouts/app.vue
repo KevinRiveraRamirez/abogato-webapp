@@ -5,6 +5,10 @@ const { cargarPerfil } = useUsuario()
 const { toggleMobile } = useAppShell()
 const route = useRoute()
 
+// Inactividad: cerrar sesión automática en áreas protegidas (layout `app`).
+// Se inicializa una sola vez por layout y escucha eventos globales.
+useInactivityLogout()
+
 const isFullBleedBuilderPage = computed(() => route.path.startsWith('/admin/plantillas/'))
 
 onMounted(() => {

@@ -21,6 +21,13 @@ const clientSections: NavigationSection[] = [
     ],
   },
   {
+    id: 'assets',
+    label: 'Mis bienes',
+    items: [
+      { label: 'Bienes y muebles', icon: 'i-lucide-package', to: '/client/bienes' },
+    ],
+  },
+  {
     id: 'matters',
     label: 'Gestiones',
     items: [
@@ -80,6 +87,7 @@ const adminSections: NavigationSection[] = [
     items: [
       { label: 'Tickets', icon: 'i-lucide-ticket', to: '/admin/tickets' },
       { label: 'Plantillas', icon: 'i-lucide-file-text', to: '/admin/plantillas' },
+      { label: 'Plantillas de bienes', icon: 'i-lucide-package', to: '/admin/plantillas/bienes' },
       { label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/usuarios' },
       { label: 'Auditoría', icon: 'i-lucide-history', to: '/admin/auditoria' },
     ],
