@@ -290,6 +290,7 @@ export default defineNuxtConfig({
     padronTseZipUrl: process.env.PADRON_TSE_ZIP_URL ?? "",
     supabaseUrl: process.env.SUPABASE_URL ?? process.env.NUXT_PUBLIC_SUPABASE_URL,
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY ?? "",
+    groqApiKey: process.env.GROQ_API_KEY,
   },
   routeRules: {
     "/about/about": { redirect: "/about" },

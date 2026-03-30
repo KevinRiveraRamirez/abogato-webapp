@@ -325,6 +325,56 @@ async function guardarCorreccion(payload: TicketDocumentFlowSubmission) {
 onMounted(async () => {
   await cargarDatos()
 })
+
+type TemplateField = {
+  name?: string
+  key?: string
+  label?: string
+  placeholder?: string
+  type?: string
+  required?: boolean
+  options?: Array<string | { label?: string; value?: string }>
+}
+
+type DocumentTemplate = {
+  id: string
+  title: string | null
+  servicio_id?: string | null
+  activo?: boolean | null
+  fields?: TemplateField[] | null
+}
+
+const templatesDisponibles = ref<DocumentTemplate[]>([])
+const templateIdSeleccionado = ref('')
+const selectedTemplate = ref<DocumentTemplate | null>(null)
+const ticketRecienCreadoId = ref<string | null>(null)
+
+async function cargarTemplates() {
+  const { data, error } = await supabase
+    .from('document_templates')
+    .select('id, title, servicio_id, activo, fields')
+    .eq('activo', true)
+    .order('title', { ascending: true })
+
+  if (error) {
+    console.error('Error cargando templates:', error)
+    return
+  }
+
+  templatesDisponibles.value = (data || []) as DocumentTemplate[]
+}
+
+watch(templateIdSeleccionado, (nuevoId) => {
+  selectedTemplate.value =
+    templatesDisponibles.value.find(template => template.id === nuevoId) || null
+
+  console.log('Template seleccionado en nuevo ticket:', selectedTemplate.value)
+})
+
+onMounted(async () => {
+  await cargarTemplates()
+})
+
 </script>
 
 <template>
