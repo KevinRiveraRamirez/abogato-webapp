@@ -143,30 +143,37 @@ async function signOut() {
         </div>
 
         <div class="mt-4 grid gap-2" :class="collapsed ? 'justify-items-center' : ''">
-          <div :class="collapsed ? '' : 'flex items-center gap-2'">
-            <div class="relative z-[90]">
-              <NotificationsNotificationBell panel-placement="right-end" />
-            </div>
+          <div :class="collapsed ? 'grid gap-2' : 'flex items-center gap-2'">
+            <UTooltip text="Notificaciones" :disabled="!collapsed">
+              <div class="relative z-[90]">
+                <NotificationsNotificationBell panel-placement="right-end" />
+              </div>
+            </UTooltip>
 
-            <UColorModeButton
-              color="neutral"
-              variant="ghost"
-              :square="collapsed"
-              :class="collapsed ? '' : 'rounded-2xl'"
-            />
+            <UTooltip text="Cambiar tema" :disabled="!collapsed">
+              <UColorModeButton
+                color="neutral"
+                :variant="collapsed ? 'outline' : 'ghost'"
+                :square="collapsed"
+                class="rounded-2xl border-default/80 bg-default/90 shadow-sm"
+              />
+            </UTooltip>
           </div>
 
-          <UButton
-            icon="i-lucide-log-out"
-            color="error"
-            variant="soft"
-            :label="collapsed ? undefined : 'Cerrar sesión'"
-            :square="collapsed"
-            :loading="loading"
-            :disabled="loading"
-            :class="collapsed ? '' : 'justify-start rounded-2xl px-3'"
-            @click="signOut"
-          />
+          <UTooltip text="Cerrar sesión" :disabled="!collapsed">
+            <UButton
+              icon="i-lucide-log-out"
+              color="error"
+              :variant="collapsed ? 'outline' : 'soft'"
+              :label="collapsed ? undefined : 'Cerrar sesión'"
+              :square="collapsed"
+              :loading="loading"
+              :disabled="loading"
+              class="rounded-2xl border-default/80"
+              :class="collapsed ? 'h-11 w-11' : 'justify-start px-3'"
+              @click="signOut"
+            />
+          </UTooltip>
         </div>
       </AppSurface>
     </aside>
@@ -249,7 +256,11 @@ async function signOut() {
               <NotificationsNotificationBell panel-placement="top-start" />
             </div>
 
-            <UColorModeButton color="neutral" variant="ghost" class="justify-start rounded-2xl px-3" />
+            <UColorModeButton
+              color="neutral"
+              variant="ghost"
+              class="justify-start rounded-2xl px-3"
+            />
             <UButton
               icon="i-lucide-log-out"
               color="error"

@@ -1,4 +1,3 @@
-import Groq from 'groq-sdk'
 import { serverSupabaseClient } from '#supabase/server'
 
 export default defineEventHandler(async (event) => {
@@ -13,21 +12,33 @@ export default defineEventHandler(async (event) => {
     }
 
     const config = useRuntimeConfig()
-
-    const groq = new Groq({
-      apiKey: config.groqApiKey,
-    })
+    const groqApiKey = config.groqApiKey
+    if (!groqApiKey || typeof groqApiKey !== 'string') {
+      throw createError({
+        statusCode: 500,
+        statusMessage:
+          'Falta configurar GROQ_API_KEY (runtimeConfig.groqApiKey) en el servidor',
+      })
+    }
 
     const supabase = await serverSupabaseClient(event)
     const { data: userData } = await supabase.auth.getUser()
     const userId = userData.user?.id ?? null
 
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
-      messages: [
-        {
-          role: 'system',
-          content: `Eres un asistente legal dentro de una plataforma de tickets.
+    const completionRes = await fetch(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${groqApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            {
+              role: 'system',
+              content: `Eres un asistente legal dentro de una plataforma de tickets.
 
 Reglas:
 - Responde preguntas legales comunes de forma clara.
@@ -35,13 +46,26 @@ Reglas:
 DI EXACTAMENTE:
 "No tengo suficiente información para ayudarte con precisión. Te recomiendo crear un ticket para que un abogado revise tu caso."
 - No inventes información.`,
-        },
-        {
-          role: 'user',
-          content: body.message,
-        },
-      ],
-    })
+            },
+            {
+              role: 'user',
+              content: body.message,
+            },
+          ],
+        }),
+      },
+    )
+
+    if (!completionRes.ok) {
+      const errorText = await completionRes.text().catch(() => '')
+      throw createError({
+        statusCode: completionRes.status,
+        statusMessage:
+          errorText || 'Error al consultar Groq (chat completions)',
+      })
+    }
+
+    const completion = (await completionRes.json()) as any
 
     const respuesta = completion.choices[0]?.message?.content || ''
 
