@@ -3,11 +3,14 @@
   <div class="flex min-h-dvh min-h-screen flex-col">
     <AppSkipLink />
     <PublicHeader />
-    <main id="main-content" class="flex-1 pb-[max(0px,env(safe-area-inset-bottom))]">
+    <main
+      id="main-content"
+      class="flex-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+    >
       <div
-        class="pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-5 sm:pr-5"
+        class="pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:pl-5 sm:pr-5"
       >
-        <UContainer class="app-page-shell py-7 sm:py-10 lg:py-12">
+        <UContainer class="app-page-shell max-w-[var(--app-content-max)] py-5 sm:py-8 lg:py-12">
           <slot />
         </UContainer>
       </div>

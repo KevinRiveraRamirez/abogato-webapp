@@ -4,7 +4,6 @@ import type { AppRole } from '~~/shared/roles'
 
 definePageMeta({ layout: "login-layout" });
 
-
 const supabase = useSupabaseClient();
 const route = useRoute();
 const { start: startSessionLoading, finish: finishSessionLoading } = useSessionLoading()
@@ -18,6 +17,20 @@ const errorMsg = ref("");
 const mostrarRecuperacion = ref(false);
 const emailRecuperacion = ref("");
 const mensajeRecuperacion = ref("");
+
+const testimonial = {
+  quote: 'La plataforma nos ayudó a ordenar mejor el seguimiento de cada trámite.',
+  author: 'Carlos R., usuario activo',
+}
+const blogPost = {
+  title: 'Qué tener listo antes de iniciar un trámite digital',
+  excerpt: 'Una guía rápida para entrar mejor preparado y aprovechar la plataforma desde el primer acceso.',
+  to: '/blog/preparacion-tramite-digital',
+}
+const featurePreview = {
+  title: 'Nueva funcionalidad próximamente',
+  description: 'Seguimiento más visual del estado de tus trámites y recordatorios importantes desde tu panel principal.',
+}
 
 onMounted(() => {
   finishSessionLoading()
@@ -124,8 +137,8 @@ async function enviarRecuperacion() {
 <template>
   <AuthCardShell
     eyebrow="Acceso a tu cuenta"
-    title="Bienvenido"
-    description="Iniciá sesión para continuar con tu seguimiento legal."
+    title="Inicia sesión"
+    description="Entrá a tu cuenta para consultar el estado de tus trámites, revisar documentos y continuar tu proceso legal."
     content-width="sm"
     back-to="/"
     back-label="← Volver al inicio"
@@ -134,7 +147,21 @@ async function enviarRecuperacion() {
       <UColorModeButton />
     </template>
 
-    <UFormField label="Correo" name="email">
+    <div class="grid gap-4">
+      <div class="rounded-2xl border border-default/60 bg-default/40 p-4">
+        <div class="flex items-start gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <UIcon name="i-lucide-scale" class="h-5 w-5" />
+          </div>
+          <div class="space-y-1">
+            <p class="text-sm font-semibold text-highlighted">Abogato</p>
+            <p class="text-sm text-muted">Accedé a tu espacio para gestionar tu información y seguimiento.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <UFormField label="Correo electrónico" name="email">
       <UInput
         v-model="email"
         type="email"
@@ -144,11 +171,23 @@ async function enviarRecuperacion() {
       />
     </UFormField>
 
-    <UFormField label="Contraseña" name="password">
+    <div class="grid gap-2">
+      <div class="flex items-center justify-between gap-3">
+        <label class="text-sm font-medium text-default" for="login-password">Contraseña</label>
+        <button
+          class="text-xs text-primary transition hover:underline"
+          type="button"
+          @click="mostrarRecuperacion = !mostrarRecuperacion"
+        >
+          ¿Olvidaste tu contraseña?
+        </button>
+      </div>
+
       <UInput
+        id="login-password"
         v-model="password"
         :type="mostrarPassword ? 'text' : 'password'"
-        placeholder="••••••••"
+        placeholder="Ingresa tu contraseña"
         autocomplete="current-password"
         size="lg"
       >
@@ -164,7 +203,22 @@ async function enviarRecuperacion() {
           </button>
         </template>
       </UInput>
-    </UFormField>
+    </div>
+
+    <div v-if="mostrarRecuperacion" class="app-subtle-panel app-panel-md grid w-full gap-3 p-4 text-left">
+      <p class="text-sm font-medium text-highlighted">Recuperar contraseña</p>
+      <UInput
+        v-model="emailRecuperacion"
+        type="email"
+        placeholder="Tu correo registrado"
+      />
+      <UButton variant="soft" :loading="loading" @click="enviarRecuperacion">
+        Enviar enlace de recuperación
+      </UButton>
+      <p v-if="mensajeRecuperacion" class="text-xs text-success">
+        {{ mensajeRecuperacion }}
+      </p>
+    </div>
 
     <UAlert
       v-if="errorMsg"
@@ -182,6 +236,29 @@ async function enviarRecuperacion() {
 
     <UDivider label="o" />
 
+        <div class="grid gap-4 rounded-2xl border border-default/60 bg-default/20 p-4">
+      <div>
+        <p class="text-sm font-semibold text-highlighted">Testimonio</p>
+        <p class="mt-2 text-sm italic text-muted">“{{ testimonial.quote }}”</p>
+        <p class="mt-2 text-xs text-muted">{{ testimonial.author }}</p>
+      </div>
+
+      <div class="border-t border-default/60 pt-4">
+        <p class="text-sm font-semibold text-highlighted">Entrada recomendada</p>
+        <p class="mt-2 text-sm font-medium">{{ blogPost.title }}</p>
+        <p class="mt-1 text-sm text-muted">{{ blogPost.excerpt }}</p>
+        <NuxtLink :to="blogPost.to" class="mt-2 inline-flex text-sm font-medium text-primary transition hover:underline">
+          Leer más
+        </NuxtLink>
+      </div>
+
+      <div class="border-t border-default/60 pt-4">
+        <p class="text-sm font-semibold text-highlighted">Próximamente</p>
+        <p class="mt-2 text-sm font-medium">{{ featurePreview.title }}</p>
+        <p class="mt-1 text-sm text-muted">{{ featurePreview.description }}</p>
+      </div>
+    </div>
+
     <p class="text-center text-sm text-muted">
       ¿Todavía no tenés cuenta?
       <NuxtLink to="/signup" class="font-medium text-primary transition hover:underline">
@@ -189,27 +266,6 @@ async function enviarRecuperacion() {
       </NuxtLink>
     </p>
 
-    <div class="grid justify-items-center gap-3 text-center">
-      <button
-        class="text-sm text-muted transition hover:text-highlighted hover:underline"
-        @click="mostrarRecuperacion = !mostrarRecuperacion"
-      >
-        ¿Olvidaste tu contraseña?
-      </button>
 
-      <div v-if="mostrarRecuperacion" class="app-subtle-panel app-panel-md grid w-full gap-3 p-4 text-left">
-        <UInput
-          v-model="emailRecuperacion"
-          type="email"
-          placeholder="Tu correo registrado"
-        />
-        <UButton variant="soft" :loading="loading" @click="enviarRecuperacion">
-          Enviar enlace de recuperación
-        </UButton>
-        <p v-if="mensajeRecuperacion" class="text-xs text-success">
-          {{ mensajeRecuperacion }}
-        </p>
-      </div>
-    </div>
   </AuthCardShell>
 </template>
