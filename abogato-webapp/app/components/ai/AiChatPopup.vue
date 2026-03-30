@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MarkdownIt from "markdown-it";
+
 type ChatRole = "user" | "assistant";
 
 type UiChatMessage = {
@@ -16,6 +18,13 @@ const mensaje = ref("");
 const mensajes = ref<UiChatMessage[]>([]);
 const status = ref<"ready" | "submitted" | "error">("ready");
 const scrollViewport = ref<HTMLElement | null>(null);
+
+const preguntasSugeridas = [
+  "¿Cómo solicito un divorcio en Costa Rica?",
+  "¿Qué documentos necesito para iniciar mi trámite?",
+  "Explícame este proceso en palabras sencillas",
+  "Ayúdame a crear un ticket con mi caso",
+];
 
 const { loading, error, sendMessage } = useAiChat();
 const {
@@ -57,12 +66,26 @@ const {
   },
 });
 
+const md = new MarkdownIt({
+  breaks: true,
+  linkify: true,
+});
+
+const renderMessage = (text?: string) => {
+  if (!text) return "";
+  return md.render(text);
+};
+
 const toggleChat = () => {
   abierto.value = !abierto.value;
 };
 
 const crearTicket = () => {
   navigateTo("/tickets");
+};
+
+const usarPreguntaSugerida = (texto: string) => {
+  mensaje.value = texto;
 };
 
 const newId = () => {
@@ -176,18 +199,6 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", updatePanelPosition);
   window.removeEventListener("scroll", updatePanelPosition, true);
 });
-
-import MarkdownIt from "markdown-it";
-
-const md = new MarkdownIt({
-  breaks: true,
-  linkify: true,
-});
-
-const renderMessage = (text?: string) => {
-  if (!text) return "";
-  return md.render(text);
-};
 </script>
 
 <template>
@@ -214,7 +225,7 @@ const renderMessage = (text?: string) => {
       >
         <div v-if="abierto" ref="panel" class="fixed" :style="panelStyle">
           <UCard
-            class="w-[420px] overflow-hidden rounded-3xl border border-default/70 bg-default/95 shadow-2xl backdrop-blur sm:w-[560px]"
+            class="w-[440px] overflow-hidden rounded-3xl border border-default/70 bg-default/95 shadow-2xl backdrop-blur sm:w-[620px]"
             :ui="{
               body: 'p-0',
               header: 'p-0',
@@ -247,7 +258,7 @@ const renderMessage = (text?: string) => {
               </div>
             </template>
 
-            <div class="flex h-[520px] flex-col">
+            <div class="flex h-[620px] flex-col">
               <div
                 ref="scrollViewport"
                 class="flex-1 overflow-y-auto px-4 py-4"
@@ -256,9 +267,9 @@ const renderMessage = (text?: string) => {
                   v-if="mensajes.length === 0 && !loading"
                   class="flex h-full items-center justify-center"
                 >
-                  <div class="max-w-sm text-center">
+                  <div class="w-full max-w-md text-center">
                     <div
-                      class="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10"
+                      class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10"
                     >
                       <UIcon
                         name="i-lucide-sparkles"
@@ -266,13 +277,48 @@ const renderMessage = (text?: string) => {
                       />
                     </div>
 
-                    <p class="text-sm font-medium text-highlighted">
+                    <p class="text-base font-semibold text-highlighted">
                       Hola, ¿en qué puedo ayudarte?
                     </p>
-                    <p class="mt-1 text-sm text-muted">
-                      Podés hacer una consulta o pedir ayuda para crear un
-                      ticket.
+
+                    <p class="mt-2 text-sm text-muted">
+                      Podés hacer consultas sobre trámites, requisitos,
+                      documentos o pedir ayuda para crear un ticket.
                     </p>
+
+                    <div class="mt-5 text-left">
+                      <p
+                        class="mb-2 text-xs font-medium uppercase tracking-wide text-muted"
+                      >
+                        Ejemplos de preguntas
+                      </p>
+
+                      <div class="grid gap-2">
+                        <UButton
+                          v-for="pregunta in preguntasSugeridas"
+                          :key="pregunta"
+                          variant="soft"
+                          color="neutral"
+                          class="justify-start rounded-2xl px-4 py-3 text-left whitespace-normal"
+                          @click="usarPreguntaSugerida(pregunta)"
+                        >
+                          {{ pregunta }}
+                        </UButton>
+                      </div>
+                    </div>
+
+                    <div
+                      class="mt-4 rounded-2xl border border-default bg-elevated/40 px-4 py-3 text-left"
+                    >
+                      <p class="text-xs font-medium text-highlighted">
+                        Qué podés consultar
+                      </p>
+                      <p class="mt-1 text-sm text-muted">
+                        Consultas legales generales, orientación sobre pasos a
+                        seguir, explicación de documentos y apoyo para crear
+                        tickets más claros.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -366,7 +412,7 @@ const renderMessage = (text?: string) => {
                     type="submit"
                     color="primary"
                     square
-                    class="h-10 w-10 items-center justify-center"
+                    class="flex h-10 w-10 shrink-0 items-center justify-center"
                     :loading="loading"
                     :disabled="!mensaje.trim() || loading"
                   >
