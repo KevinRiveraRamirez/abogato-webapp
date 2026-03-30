@@ -33,12 +33,14 @@ const pillClassMap: Record<NotificationTone, string> = {
 const cardClass = computed(() =>
   props.notification.read_at
     ? 'border-default/80 bg-default/85'
-    : 'border-primary/20 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(240,253,250,0.9))] shadow-[0_12px_30px_-22px_rgba(16,185,129,0.45)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.95),rgba(6,78,59,0.22))]'
+    : 'border-primary/20 bg-primary/5 shadow-[0_12px_30px_-24px_rgba(16,185,129,0.35)]'
 )
 
 const iconClass = computed(() => iconClassMap[meta.value.tone] ?? iconClassMap.neutral)
 const pillClass = computed(() => pillClassMap[meta.value.tone] ?? pillClassMap.neutral)
+
 const relativeDate = computed(() => formatRelativeDate(props.notification.created_at))
+
 const exactDate = computed(() =>
   new Date(props.notification.created_at).toLocaleString('es-CR', {
     day: '2-digit',
@@ -60,29 +62,19 @@ function formatRelativeDate(value: string) {
   const absSeconds = Math.abs(diffInSeconds)
   const formatter = new Intl.RelativeTimeFormat('es', { numeric: 'auto' })
 
-  if (absSeconds < 60) {
-    return formatter.format(diffInSeconds, 'second')
-  }
+  if (absSeconds < 60) return formatter.format(diffInSeconds, 'second')
 
   const diffInMinutes = Math.round(diffInSeconds / 60)
-  if (Math.abs(diffInMinutes) < 60) {
-    return formatter.format(diffInMinutes, 'minute')
-  }
+  if (Math.abs(diffInMinutes) < 60) return formatter.format(diffInMinutes, 'minute')
 
   const diffInHours = Math.round(diffInMinutes / 60)
-  if (Math.abs(diffInHours) < 24) {
-    return formatter.format(diffInHours, 'hour')
-  }
+  if (Math.abs(diffInHours) < 24) return formatter.format(diffInHours, 'hour')
 
   const diffInDays = Math.round(diffInHours / 24)
-  if (Math.abs(diffInDays) < 30) {
-    return formatter.format(diffInDays, 'day')
-  }
+  if (Math.abs(diffInDays) < 30) return formatter.format(diffInDays, 'day')
 
   const diffInMonths = Math.round(diffInDays / 30)
-  if (Math.abs(diffInMonths) < 12) {
-    return formatter.format(diffInMonths, 'month')
-  }
+  if (Math.abs(diffInMonths) < 12) return formatter.format(diffInMonths, 'month')
 
   const diffInYears = Math.round(diffInMonths / 12)
   return formatter.format(diffInYears, 'year')
@@ -92,25 +84,25 @@ function formatRelativeDate(value: string) {
 <template>
   <button
     type="button"
-    class="group flex w-full items-start gap-3 rounded-[1.4rem] border px-4 py-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_14px_36px_-26px_rgba(15,23,42,0.35)]"
+    class="group flex w-full items-start gap-3 rounded-2xl border px-4 py-4 text-left transition duration-200 hover:border-primary/30 hover:shadow-[0_14px_36px_-26px_rgba(15,23,42,0.25)] active:scale-[0.995]"
     :class="cardClass"
     @click="$emit('select', notification)"
   >
     <div
-      class="relative mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border"
+      class="relative mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border sm:h-11 sm:w-11"
       :class="iconClass"
     >
       <UIcon :name="meta.icon" class="h-5 w-5" />
 
       <span
         v-if="!notification.read_at"
-        class="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full bg-emerald-500 ring-4 ring-white dark:ring-slate-950"
+        class="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-white dark:ring-slate-950"
       />
     </div>
 
     <div class="min-w-0 flex-1">
       <div class="flex items-start justify-between gap-3">
-        <p class="line-clamp-2 flex-1 text-[15px] font-semibold leading-6 text-highlighted">
+        <p class="line-clamp-2 flex-1 text-sm font-semibold leading-6 text-highlighted sm:text-[15px]">
           {{ notification.title }}
         </p>
 
@@ -122,7 +114,7 @@ function formatRelativeDate(value: string) {
 
       <p
         v-if="notification.body"
-        class="mt-2 line-clamp-2 text-sm leading-6 text-muted"
+        class="mt-2 line-clamp-3 text-sm leading-6 text-muted"
       >
         {{ notification.body }}
       </p>
