@@ -283,6 +283,17 @@ export default defineNuxtConfig({
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
   ssr: false,
+  app: {
+    head: {
+      meta: [
+        {
+          name: "viewport",
+          content:
+            "width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover",
+        },
+      ],
+    },
+  },
   buildDir: ".nuxt",
   runtimeConfig: {
     padronImportSecret: process.env.PADRON_IMPORT_SECRET,

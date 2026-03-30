@@ -194,7 +194,13 @@ onMounted(() => {
       description="Un panel operativo para ver carga de tickets, reaperturas, revisión documental y salud de usuarios sin mezclarlo con la vista del abogado."
     >
       <template #actions>
-        <UButton color="neutral" variant="outline" :loading="loading" @click="cargarDashboard">
+        <UButton
+          color="neutral"
+          variant="outline"
+          class="w-full justify-center sm:w-auto"
+          :loading="loading"
+          @click="cargarDashboard"
+        >
           Actualizar métricas
         </UButton>
       </template>

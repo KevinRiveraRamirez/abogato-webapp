@@ -96,6 +96,8 @@ const hasCustomSettings = computed(() =>
   hasCustomTabSettings.value || hasCustomPreferences.value
 )
 
+let ignoreOutsideClickUntil = 0
+
 watch(
   () => route.fullPath,
   () => {
@@ -148,6 +150,9 @@ async function togglePanel() {
   isOpen.value = !isOpen.value
 
   if (isOpen.value) {
+    // No llamar closeMobile() aquí: la campana vive dentro del USlideover móvil;
+    // cerrar el menú desmonta el trigger y el panel parece “cerrarse” al instante.
+    ignoreOutsideClickUntil = Date.now() + 500
     await ensureNotificationPreferencesLoaded()
     await refresh()
   }
@@ -213,6 +218,7 @@ async function handleResetSettings() {
 function handleClickOutside(event: MouseEvent) {
   if (!isOpen.value || !root.value) return
   if (shouldIgnoreOutsideClick()) return
+  if (Date.now() < ignoreOutsideClickUntil) return
 
   const target = event.target
   if (!(target instanceof Node)) return
@@ -255,7 +261,7 @@ onBeforeUnmount(() => {
         class="rounded-xl border-default/80 bg-default/90 shadow-sm"
         :aria-expanded="isOpen"
         :aria-label="unreadCount ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'"
-        @click="togglePanel"
+        @click.stop="togglePanel"
       />
 
       <span
@@ -278,8 +284,9 @@ onBeforeUnmount(() => {
         <div
           v-if="isOpen"
           ref="panel"
-          class="fixed z-[240]"
+          class="fixed z-[520] touch-manipulation"
           :style="panelStyle"
+          @click.stop
         >
           <NotificationsNotificationPanel
             :notifications="notifications"

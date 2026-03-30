@@ -187,7 +187,10 @@ async function signOut() {
     }"
   >
     <template #content>
-      <aside class="h-full p-3" aria-label="Navegación móvil">
+      <aside
+        class="h-full p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        aria-label="Navegación móvil"
+      >
         <AppSurface as="div" variant="floating" radius="xl" padding="none" class="flex h-full flex-col p-3">
           <div class="flex items-center justify-between gap-3 px-1 pb-3">
             <NuxtLink :to="dashboardPath" class="flex min-w-0 items-center gap-3" @click="closeMobile">

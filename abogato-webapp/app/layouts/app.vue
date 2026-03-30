@@ -13,10 +13,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen">
+  <div class="flex min-h-dvh min-h-screen flex-col">
     <AppSkipLink />
     <UButton
-      class="fixed left-4 top-4 z-50 rounded-2xl shadow-lg lg:hidden"
+      class="fixed z-50 rounded-2xl shadow-lg lg:hidden"
+      style="
+        left: max(1rem, env(safe-area-inset-left, 0px));
+        top: max(1rem, env(safe-area-inset-top, 0px));
+      "
+      size="lg"
       icon="i-lucide-panel-left-open"
       color="neutral"
       variant="outline"
@@ -25,11 +30,17 @@ onMounted(() => {
       @click="toggleMobile"
     />
 
-    <div class="flex min-h-screen">
+    <div class="flex min-h-dvh min-h-screen flex-1">
       <AppSidebar />
 
-      <main id="main-content" class="min-w-0 flex-1 px-3 pb-3 pt-16 sm:px-4 sm:pb-4 lg:px-5 lg:pb-5 lg:pt-4">
-        <UContainer v-if="!isFullBleedBuilderPage" class="app-page-shell py-6 sm:py-8 lg:py-10">
+      <main
+        id="main-content"
+        class="min-w-0 flex-1 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(4.25rem,calc(1rem+env(safe-area-inset-top)))] sm:px-4 lg:px-5 lg:pb-5 lg:pt-4"
+      >
+        <UContainer
+          v-if="!isFullBleedBuilderPage"
+          class="app-page-shell py-5 sm:py-8 lg:py-10"
+        >
           <slot />
         </UContainer>
 
