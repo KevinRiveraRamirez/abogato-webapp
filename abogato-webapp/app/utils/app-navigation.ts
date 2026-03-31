@@ -13,26 +13,26 @@ export type NavigationSection = {
 
 const clientSections: NavigationSection[] = [
   {
-    id: 'overview',
-    label: 'General',
+    id: 'home',
+    label: 'Inicio',
     items: [
       { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/client/dashboard' },
-      { label: 'Buscar', icon: 'i-lucide-search', to: '/buscar' },
     ],
   },
   {
-    id: 'assets',
-    label: 'Mis bienes',
+    id: 'services',
+    label: 'Servicios',
     items: [
-      { label: 'Bienes y muebles', icon: 'i-lucide-package', to: '/client/bienes' },
+      { label: 'Buscar', icon: 'i-lucide-search', to: '/buscar' },
+      { label: 'Traspaso de carro', icon: 'i-lucide-car-front', to: '/traspaso-carro' },
     ],
   },
   {
-    id: 'matters',
-    label: 'Gestiones',
+    id: 'tracking',
+    label: 'Seguimiento',
     items: [
       { label: 'Mis tickets', icon: 'i-lucide-ticket', to: '/tickets' },
-      { label: 'Traspaso de carro', icon: 'i-lucide-car-front', to: '/traspaso-carro' },
+      { label: 'Mis bienes', icon: 'i-lucide-package', to: '/client/bienes' },
     ],
   },
   {
@@ -47,18 +47,18 @@ const clientSections: NavigationSection[] = [
 
 const lawyerSections: NavigationSection[] = [
   {
-    id: 'overview',
-    label: 'General',
+    id: 'home',
+    label: 'Inicio',
     items: [
       { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/lawyer/dashboard' },
-      { label: 'Buscar', icon: 'i-lucide-search', to: '/buscar' },
     ],
   },
   {
-    id: 'matters',
-    label: 'Casos',
+    id: 'work',
+    label: 'Trabajo',
     items: [
       { label: 'Mis casos', icon: 'i-lucide-scale', to: '/lawyer/tickets' },
+      { label: 'Buscar', icon: 'i-lucide-search', to: '/buscar' },
       { label: 'Traspaso de carro', icon: 'i-lucide-car-front', to: '/traspaso-carro' },
     ],
   },
@@ -74,23 +74,35 @@ const lawyerSections: NavigationSection[] = [
 
 const adminSections: NavigationSection[] = [
   {
-    id: 'overview',
-    label: 'General',
+    id: 'home',
+    label: 'Inicio',
     items: [
       { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', to: '/admin/dashboard' },
       { label: 'Buscar', icon: 'i-lucide-search', to: '/buscar' },
     ],
   },
   {
-    id: 'management',
-    label: 'Administracion',
+    id: 'operations',
+    label: 'Operación',
     items: [
       { label: 'Tickets', icon: 'i-lucide-ticket', to: '/admin/tickets' },
-      { label: 'Plantillas', icon: 'i-lucide-file-text', to: '/admin/plantillas' },
-      { label: 'Plantillas de bienes', icon: 'i-lucide-package', to: '/admin/plantillas/bienes' },
       { label: 'Usuarios', icon: 'i-lucide-users', to: '/admin/usuarios' },
+    ],
+  },
+  {
+    id: 'content',
+    label: 'Contenido y automatización',
+    items: [
+      { label: 'Plantillas legales', icon: 'i-lucide-file-text', to: '/admin/plantillas' },
+      { label: 'Plantillas de bienes', icon: 'i-lucide-package', to: '/admin/plantillas/bienes' },
+      { label: 'Gestion asistente IA', icon: 'i-lucide-bot', to: '/admin/asistente' },
+    ],
+  },
+  {
+    id: 'control',
+    label: 'Control',
+    items: [
       { label: 'Auditoría', icon: 'i-lucide-history', to: '/admin/auditoria' },
-      { label: 'Asistente IA', icon: 'i-lucide-bot', to: '/admin/asistente' },
     ],
   },
   {

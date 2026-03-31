@@ -330,402 +330,543 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-6 p-4 sm:p-6">
-    <!-- Header -->
-    <section
-      class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
-    >
-      <div class="space-y-2">
-        <div class="flex items-center gap-2 text-sm text-muted">
-          <UIcon name="i-lucide-shield-check" class="h-4 w-4" />
-          <span>Módulo administrativo</span>
-        </div>
+  <div class="min-h-full bg-gradient-to-b from-default to-elevated/20">
+    <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+      <!-- Hero -->
+      <section
+        class="relative overflow-hidden rounded-3xl border border-default bg-default shadow-sm"
+      >
+        <div class="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5" />
+        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
+        <div class="absolute -bottom-20 left-0 h-48 w-48 rounded-full bg-primary/5 blur-3xl" />
 
-        <div>
-          <h1
-            class="text-2xl font-bold tracking-tight text-highlighted sm:text-3xl"
-          >
-            Asistente virtual
-          </h1>
-          <p class="mt-1 max-w-2xl text-sm text-muted">
-            Administra preguntas frecuentes, revisa consultas registradas por
-            usuarios y monitorea el desempeño general del asistente.
-          </p>
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-2">
-        <UButton
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-arrow-left"
-          to="/admin/dashboard"
+        <div
+          class="relative flex flex-col gap-6 px-5 py-6 sm:px-6 sm:py-7 lg:flex-row lg:items-start lg:justify-between lg:px-8 lg:py-8"
         >
-          Volver al dashboard
-        </UButton>
-
-        <UButton
-          color="primary"
-          variant="soft"
-          icon="i-lucide-refresh-cw"
-          :loading="loading"
-          @click="withPageState(refreshCurrentTab)"
-        >
-          Recargar
-        </UButton>
-      </div>
-    </section>
-
-    <!-- Error global -->
-    <UAlert
-      v-if="pageError"
-      color="error"
-      variant="soft"
-      icon="i-lucide-alert-triangle"
-      title="No se pudo cargar el módulo"
-      :description="pageError"
-    />
-
-    <!-- Resumen -->
-    <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <UCard v-for="card in resumenCards" :key="card.title" class="rounded-2xl">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="text-sm font-medium text-muted">{{ card.title }}</p>
-            <p class="mt-2 text-3xl font-bold text-highlighted">
-              {{ card.value }}
-            </p>
-            <p class="mt-1 text-sm text-muted">{{ card.description }}</p>
-          </div>
-
-          <div class="rounded-2xl border border-default bg-elevated p-3">
-            <UIcon :name="card.icon" class="h-5 w-5" :class="card.tone" />
-          </div>
-        </div>
-      </UCard>
-    </section>
-
-    <!-- Tabs -->
-    <section class="rounded-2xl border border-default bg-default p-3">
-      <div class="flex flex-wrap gap-2">
-        <UButton
-          v-for="t in tabs"
-          :key="t.key"
-          :variant="tab === t.key ? 'solid' : 'ghost'"
-          :color="tab === t.key ? 'primary' : 'neutral'"
-          :icon="t.icon"
-          class="rounded-xl"
-          @click="tab = t.key"
-        >
-          {{ t.label }}
-        </UButton>
-      </div>
-    </section>
-
-    <!-- FAQ -->
-    <section
-      v-if="tab === 'faq'"
-      class="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]"
-    >
-      <UCard class="rounded-2xl">
-        <template #header>
-          <div class="space-y-1">
-            <h2 class="text-base font-semibold text-highlighted">
-              Nueva pregunta frecuente
-            </h2>
-            <p class="text-sm text-muted">
-              Agrega respuestas base para mejorar la precisión del asistente.
-            </p>
-          </div>
-        </template>
-
-        <div class="space-y-4">
-          <div class="space-y-1.5">
-            <label
-              class="text-xs font-medium uppercase tracking-wide text-muted"
+          <div class="max-w-3xl">
+            <div
+              class="inline-flex items-center gap-2 rounded-full border border-default bg-default/80 px-3 py-1 text-xs font-medium text-muted backdrop-blur"
             >
-              Pregunta
-            </label>
-            <UInput
-              v-model="nuevaPregunta"
-              placeholder="Ej. ¿Cómo solicito un divorcio en Costa Rica?"
-              size="lg"
-            />
+              <UIcon name="i-lucide-shield-check" class="h-4 w-4 text-primary" />
+              <span>Módulo administrativo</span>
+            </div>
+
+            <div class="mt-4">
+              <h1
+                class="text-2xl font-semibold tracking-tight text-highlighted sm:text-3xl lg:text-4xl"
+              >
+                Gestión del asistente virtual
+              </h1>
+              <p class="mt-3 max-w-2xl text-sm leading-6 text-muted sm:text-base">
+                Administra la base de preguntas frecuentes, revisa consultas de
+                usuarios y monitorea el rendimiento del asistente desde una vista
+                más clara y operativa.
+              </p>
+            </div>
+
+            <div class="mt-5 flex flex-wrap gap-2">
+              <UBadge color="primary" variant="soft" class="rounded-full px-3 py-1">
+                {{ totalFaqActivas }} FAQs activas
+              </UBadge>
+              <UBadge color="warning" variant="soft" class="rounded-full px-3 py-1">
+                {{ metricas.escaladas }} escaladas
+              </UBadge>
+              <UBadge color="success" variant="soft" class="rounded-full px-3 py-1">
+                {{ metricas.tasaResolucion }}% resolución
+              </UBadge>
+            </div>
           </div>
 
-          <div class="space-y-1.5">
-            <label
-              class="text-xs font-medium uppercase tracking-wide text-muted"
+          <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+            <UButton
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-arrow-left"
+              class="rounded-xl"
+              to="/admin/dashboard"
             >
-              Respuesta
-            </label>
-            <UTextarea
-              v-model="nuevaRespuesta"
-              placeholder="Escribe una respuesta clara, útil y alineada con el asistente..."
-              :rows="7"
-            />
-          </div>
+              Volver
+            </UButton>
 
-          <div class="flex justify-end">
             <UButton
               color="primary"
-              icon="i-lucide-plus"
-              :loading="guardandoFaq"
-              :disabled="!nuevaPregunta.trim() || !nuevaRespuesta.trim()"
-              @click="agregarFaq"
+              variant="solid"
+              icon="i-lucide-refresh-cw"
+              class="rounded-xl"
+              :loading="loading"
+              @click="withPageState(refreshCurrentTab)"
             >
-              Guardar FAQ
+              Recargar
             </UButton>
           </div>
         </div>
-      </UCard>
+      </section>
 
-      <UCard class="rounded-2xl">
-        <template #header>
-          <div
-            class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div>
-              <h2 class="text-base font-semibold text-highlighted">
-                Base de preguntas frecuentes
-              </h2>
-              <p class="text-sm text-muted">
-                {{ totalFaqActivas }} activas ·
-                {{ totalFaqInactivas }} inactivas
+      <!-- Error -->
+      <UAlert
+        v-if="pageError"
+        color="error"
+        variant="soft"
+        icon="i-lucide-alert-triangle"
+        title="No se pudo cargar el módulo"
+        :description="pageError"
+        class="rounded-2xl"
+      />
+
+      <!-- Summary -->
+      <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <UCard
+          v-for="card in resumenCards"
+          :key="card.title"
+          class="rounded-3xl border border-default/80 shadow-sm"
+          :ui="{
+            body: 'p-5 sm:p-6'
+          }"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-muted">
+                {{ card.title }}
+              </p>
+              <p class="mt-2 text-3xl font-semibold tracking-tight text-highlighted">
+                {{ card.value }}
+              </p>
+              <p class="mt-2 text-sm text-muted">
+                {{ card.description }}
               </p>
             </div>
 
-            <div class="w-full sm:w-72">
-              <UInput
-                v-model="filtroFaq"
-                icon="i-lucide-search"
-                placeholder="Buscar pregunta o respuesta"
-              />
+            <div
+              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-default bg-elevated shadow-sm"
+            >
+              <UIcon :name="card.icon" class="h-5 w-5" :class="card.tone" />
             </div>
           </div>
-        </template>
+        </UCard>
+      </section>
 
-        <div v-if="loading && !faqs.length" class="space-y-3">
-          <USkeleton class="h-24 w-full rounded-xl" />
-          <USkeleton class="h-24 w-full rounded-xl" />
-          <USkeleton class="h-24 w-full rounded-xl" />
-        </div>
-
-        <div v-else-if="faqsFiltradas.length" class="space-y-3">
-          <div
-            v-for="faq in faqsFiltradas"
-            :key="faq.id"
-            class="rounded-2xl border border-default bg-elevated/30 p-4"
+      <!-- Tabs -->
+      <section class="rounded-3xl border border-default bg-default p-2 shadow-sm">
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <UButton
+            v-for="t in tabs"
+            :key="t.key"
+            :variant="tab === t.key ? 'solid' : 'ghost'"
+            :color="tab === t.key ? 'primary' : 'neutral'"
+            :icon="t.icon"
+            class="justify-center rounded-2xl py-3"
+            @click="tab = t.key"
           >
+            {{ t.label }}
+          </UButton>
+        </div>
+      </section>
+
+      <!-- FAQ -->
+      <section
+        v-if="tab === 'faq'"
+        class="grid grid-cols-1 gap-6 xl:grid-cols-[400px_minmax(0,1fr)]"
+      >
+        <!-- Create FAQ -->
+        <UCard
+          class="rounded-3xl border border-default/80 shadow-sm xl:sticky xl:top-6 xl:self-start"
+          :ui="{
+            header: 'p-5 sm:p-6',
+            body: 'p-5 pt-0 sm:p-6 sm:pt-0'
+          }"
+        >
+          <template #header>
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <div
+                  class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10"
+                >
+                  <UIcon name="i-lucide-plus" class="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <h2 class="text-base font-semibold text-highlighted">
+                    Nueva pregunta frecuente
+                  </h2>
+                  <p class="text-sm text-muted">
+                    Agrega contenido base para mejorar las respuestas del asistente.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <div class="space-y-5">
+            <div class="space-y-2">
+              <label class="text-xs font-semibold uppercase tracking-wide text-muted">
+                Pregunta
+              </label>
+              <UInput
+                v-model="nuevaPregunta"
+                placeholder="Ej. ¿Cómo solicito un divorcio en Costa Rica?"
+                size="xl"
+                class="w-full"
+              />
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-semibold uppercase tracking-wide text-muted">
+                Respuesta
+              </label>
+              <UTextarea
+                v-model="nuevaRespuesta"
+                placeholder="Escribe una respuesta clara, útil y alineada con el asistente..."
+                :rows="9"
+                class="w-full"
+              />
+            </div>
+
+            <div class="flex justify-end">
+              <UButton
+                color="primary"
+                variant="solid"
+                icon="i-lucide-plus"
+                class="rounded-xl"
+                :loading="guardandoFaq"
+                :disabled="!nuevaPregunta.trim() || !nuevaRespuesta.trim()"
+                @click="agregarFaq"
+              >
+                Guardar FAQ
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+
+        <!-- FAQ List -->
+        <UCard
+          class="rounded-3xl border border-default/80 shadow-sm"
+          :ui="{
+            header: 'p-5 sm:p-6',
+            body: 'p-5 pt-0 sm:p-6 sm:pt-0'
+          }"
+        >
+          <template #header>
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <div
+                    class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10"
+                  >
+                    <UIcon
+                      name="i-lucide-book-open-text"
+                      class="h-4 w-4 text-primary"
+                    />
+                  </div>
+                  <div>
+                    <h2 class="text-base font-semibold text-highlighted">
+                      Base de preguntas frecuentes
+                    </h2>
+                    <p class="text-sm text-muted">
+                      {{ totalFaqActivas }} activas · {{ totalFaqInactivas }} inactivas
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="w-full lg:w-80">
+                <UInput
+                  v-model="filtroFaq"
+                  icon="i-lucide-search"
+                  size="lg"
+                  placeholder="Buscar pregunta o respuesta"
+                />
+              </div>
+            </div>
+          </template>
+
+          <div v-if="loading && !faqs.length" class="space-y-4">
+            <USkeleton class="h-28 w-full rounded-2xl" />
+            <USkeleton class="h-28 w-full rounded-2xl" />
+            <USkeleton class="h-28 w-full rounded-2xl" />
+          </div>
+
+          <div v-else-if="faqsFiltradas.length" class="space-y-4">
             <div
-              class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
+              v-for="faq in faqsFiltradas"
+              :key="faq.id"
+              class="group rounded-3xl border border-default bg-elevated/30 p-5 transition-colors hover:bg-elevated/50"
             >
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <p class="font-medium text-highlighted">
-                    {{ faq.pregunta }}
+              <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-base font-semibold text-highlighted">
+                      {{ faq.pregunta }}
+                    </p>
+
+                    <UBadge
+                      :color="faq.activa ? 'success' : 'neutral'"
+                      variant="soft"
+                      class="rounded-full"
+                    >
+                      {{ faq.activa ? "Activa" : "Inactiva" }}
+                    </UBadge>
+                  </div>
+
+                  <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted">
+                    {{ faq.respuesta }}
                   </p>
 
-                  <UBadge
-                    :color="faq.activa ? 'success' : 'neutral'"
-                    variant="soft"
-                  >
-                    {{ faq.activa ? "Activa" : "Inactiva" }}
-                  </UBadge>
+                  <div class="mt-4 flex items-center gap-2 text-xs text-muted">
+                    <UIcon name="i-lucide-calendar-days" class="h-3.5 w-3.5" />
+                    <span>{{ formatDate(faq.created_at) }}</span>
+                  </div>
                 </div>
 
-                <p
-                  class="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted"
-                >
-                  {{ faq.respuesta }}
-                </p>
+                <div class="flex shrink-0 flex-wrap gap-2 xl:justify-end">
+                  <UButton
+                    :color="faq.activa ? 'warning' : 'success'"
+                    variant="soft"
+                    size="sm"
+                    class="rounded-xl"
+                    :icon="faq.activa ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                    @click="toggleFaq(faq.id, faq.activa)"
+                  >
+                    {{ faq.activa ? "Desactivar" : "Activar" }}
+                  </UButton>
 
-                <p class="mt-3 text-xs text-muted">
-                  {{ formatDate(faq.created_at) }}
-                </p>
-              </div>
-
-              <div class="flex shrink-0 flex-wrap gap-2">
-                <UButton
-                  :color="faq.activa ? 'warning' : 'success'"
-                  variant="soft"
-                  size="sm"
-                  :icon="faq.activa ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                  @click="toggleFaq(faq.id, faq.activa)"
-                >
-                  {{ faq.activa ? "Desactivar" : "Activar" }}
-                </UButton>
-
-                <UButton
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-trash-2"
-                  @click="eliminarFaq(faq.id)"
-                >
-                  Eliminar
-                </UButton>
+                  <UButton
+                    color="error"
+                    variant="ghost"
+                    size="sm"
+                    class="rounded-xl"
+                    icon="i-lucide-trash-2"
+                    @click="eliminarFaq(faq.id)"
+                  >
+                    Eliminar
+                  </UButton>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div v-else class="py-12 text-center">
-          <UIcon
-            name="i-lucide-book-open-text"
-            class="mx-auto h-8 w-8 text-muted"
-          />
-          <p class="mt-3 text-sm font-medium text-highlighted">
-            No hay preguntas frecuentes registradas
-          </p>
-          <p class="mt-1 text-sm text-muted">
-            Cuando agregues FAQs, aparecerán aquí para administrarlas.
-          </p>
-        </div>
-      </UCard>
-    </section>
+          <div v-else class="py-16 text-center">
+            <div
+              class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-elevated"
+            >
+              <UIcon
+                name="i-lucide-book-open-text"
+                class="h-6 w-6 text-muted"
+              />
+            </div>
+            <p class="mt-4 text-sm font-semibold text-highlighted">
+              No hay preguntas frecuentes registradas
+            </p>
+            <p class="mt-1 text-sm text-muted">
+              Cuando agregues FAQs, aparecerán aquí para administrarlas.
+            </p>
+          </div>
+        </UCard>
+      </section>
 
-    <!-- Consultas -->
-    <section v-else-if="tab === 'consultas'" class="space-y-4">
-      <UCard class="rounded-2xl">
-        <template #header>
-          <div
-            class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      <!-- Consultas -->
+      <section v-else-if="tab === 'consultas'" class="space-y-6">
+        <UCard
+          class="rounded-3xl border border-default/80 shadow-sm"
+          :ui="{
+            header: 'p-5 sm:p-6',
+            body: 'p-5 pt-0 sm:p-6 sm:pt-0'
+          }"
+        >
+          <template #header>
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div class="flex items-start gap-3">
+                <div
+                  class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10"
+                >
+                  <UIcon
+                    name="i-lucide-messages-square"
+                    class="h-5 w-5 text-primary"
+                  />
+                </div>
+
+                <div>
+                  <h2 class="text-base font-semibold text-highlighted">
+                    Consultas de usuarios
+                  </h2>
+                  <p class="text-sm text-muted">
+                    Últimos 100 mensajes del usuario registrados en conversaciones.
+                  </p>
+                </div>
+              </div>
+
+              <div class="w-full lg:w-80">
+                <UInput
+                  v-model="filtroConsulta"
+                  icon="i-lucide-search"
+                  size="lg"
+                  placeholder="Buscar contenido"
+                />
+              </div>
+            </div>
+          </template>
+
+          <div v-if="loading && !consultas.length" class="space-y-4">
+            <USkeleton class="h-24 w-full rounded-2xl" />
+            <USkeleton class="h-24 w-full rounded-2xl" />
+            <USkeleton class="h-24 w-full rounded-2xl" />
+          </div>
+
+          <div v-else-if="consultasFiltradas.length" class="space-y-4">
+            <div
+              v-for="c in consultasFiltradas"
+              :key="c.id"
+              class="rounded-3xl border border-default bg-elevated/30 p-5 transition-colors hover:bg-elevated/50"
+            >
+              <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div class="min-w-0 flex-1">
+                  <p class="whitespace-pre-wrap text-sm leading-6 text-default">
+                    {{ c.content }}
+                  </p>
+
+                  <div class="mt-4 flex items-center gap-2 text-xs text-muted">
+                    <UIcon name="i-lucide-clock-3" class="h-3.5 w-3.5" />
+                    <span>{{ formatDate(c.created_at) }}</span>
+                  </div>
+                </div>
+
+                <div class="flex shrink-0 items-center">
+                  <UBadge
+                    :color="c.was_escalated ? 'warning' : 'success'"
+                    variant="soft"
+                    class="rounded-full"
+                  >
+                    {{ c.was_escalated ? "Escalada" : "Gestionada" }}
+                  </UBadge>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="py-16 text-center">
+            <div
+              class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-elevated"
+            >
+              <UIcon
+                name="i-lucide-messages-square"
+                class="h-6 w-6 text-muted"
+              />
+            </div>
+            <p class="mt-4 text-sm font-semibold text-highlighted">
+              No hay consultas registradas aún
+            </p>
+            <p class="mt-1 text-sm text-muted">
+              Cuando existan mensajes de usuarios, aparecerán aquí.
+            </p>
+          </div>
+        </UCard>
+      </section>
+
+      <!-- Métricas -->
+      <section v-else class="space-y-6">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <UCard
+            class="rounded-3xl border border-default/80 shadow-sm"
+            :ui="{ body: 'p-6 text-center' }"
           >
-            <div>
-              <h2 class="text-base font-semibold text-highlighted">
-                Consultas de usuarios
-              </h2>
-              <p class="text-sm text-muted">
-                Últimos 100 mensajes del usuario registrados en conversaciones.
+            <div
+              class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10"
+            >
+              <UIcon name="i-lucide-bot" class="h-5 w-5 text-primary" />
+            </div>
+            <p class="mt-4 text-sm text-muted">Total de respuestas</p>
+            <p class="mt-2 text-4xl font-semibold tracking-tight text-highlighted">
+              {{ metricas.total }}
+            </p>
+          </UCard>
+
+          <UCard
+            class="rounded-3xl border border-default/80 shadow-sm"
+            :ui="{ body: 'p-6 text-center' }"
+          >
+            <div
+              class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-warning/10"
+            >
+              <UIcon
+                name="i-lucide-triangle-alert"
+                class="h-5 w-5 text-warning"
+              />
+            </div>
+            <p class="mt-4 text-sm text-muted">Consultas escaladas</p>
+            <p class="mt-2 text-4xl font-semibold tracking-tight text-warning">
+              {{ metricas.escaladas }}
+            </p>
+          </UCard>
+
+          <UCard
+            class="rounded-3xl border border-default/80 shadow-sm"
+            :ui="{ body: 'p-6 text-center' }"
+          >
+            <div
+              class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-success/10"
+            >
+              <UIcon
+                name="i-lucide-badge-check"
+                class="h-5 w-5 text-success"
+              />
+            </div>
+            <p class="mt-4 text-sm text-muted">Tasa de resolución</p>
+            <p class="mt-2 text-4xl font-semibold tracking-tight text-success">
+              {{ metricas.tasaResolucion }}%
+            </p>
+          </UCard>
+        </div>
+
+        <UCard
+          class="rounded-3xl border border-default/80 shadow-sm"
+          :ui="{
+            header: 'p-5 sm:p-6',
+            body: 'p-5 pt-0 sm:p-6 sm:pt-0'
+          }"
+        >
+          <template #header>
+            <div class="flex items-start gap-3">
+              <div
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10"
+              >
+                <UIcon name="i-lucide-chart-column" class="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h2 class="text-base font-semibold text-highlighted">
+                  Lectura rápida
+                </h2>
+                <p class="text-sm text-muted">
+                  Resumen operativo del asistente para administración.
+                </p>
+              </div>
+            </div>
+          </template>
+
+          <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div class="rounded-3xl border border-default bg-elevated/30 p-5">
+              <p class="text-sm font-semibold text-highlighted">Estado general</p>
+              <p class="mt-2 text-sm leading-6 text-muted">
+                El módulo muestra el volumen total de respuestas emitidas por el
+                asistente y permite observar su ritmo operativo.
               </p>
             </div>
 
-            <div class="w-full sm:w-80">
-              <UInput
-                v-model="filtroConsulta"
-                icon="i-lucide-search"
-                placeholder="Buscar contenido"
-              />
+            <div class="rounded-3xl border border-default bg-elevated/30 p-5">
+              <p class="text-sm font-semibold text-highlighted">Escalamiento</p>
+              <p class="mt-2 text-sm leading-6 text-muted">
+                Las consultas escaladas ayudan a detectar temas en los que sigue
+                siendo necesaria intervención humana.
+              </p>
+            </div>
+
+            <div class="rounded-3xl border border-default bg-elevated/30 p-5">
+              <p class="text-sm font-semibold text-highlighted">Resolución</p>
+              <p class="mt-2 text-sm leading-6 text-muted">
+                La tasa de resolución permite medir cuántas respuestas del asistente
+                se resolvieron sin escalar el caso.
+              </p>
             </div>
           </div>
-        </template>
-
-        <div v-if="loading && !consultas.length" class="space-y-3">
-          <USkeleton class="h-24 w-full rounded-xl" />
-          <USkeleton class="h-24 w-full rounded-xl" />
-          <USkeleton class="h-24 w-full rounded-xl" />
-        </div>
-
-        <div v-else-if="consultasFiltradas.length" class="space-y-3">
-          <div
-            v-for="c in consultasFiltradas"
-            :key="c.id"
-            class="rounded-2xl border border-default bg-elevated/30 p-4"
-          >
-            <div
-              class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
-            >
-              <div class="min-w-0 flex-1">
-                <p class="whitespace-pre-wrap text-sm leading-6 text-default">
-                  {{ c.content }}
-                </p>
-
-                <p class="mt-3 text-xs text-muted">
-                  {{ formatDate(c.created_at) }}
-                </p>
-              </div>
-
-              <div class="flex shrink-0 items-center gap-2">
-                <UBadge
-                  :color="c.was_escalated ? 'warning' : 'success'"
-                  variant="soft"
-                >
-                  {{ c.was_escalated ? "Escalada" : "Gestionada" }}
-                </UBadge>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-else class="py-12 text-center">
-          <UIcon
-            name="i-lucide-messages-square"
-            class="mx-auto h-8 w-8 text-muted"
-          />
-          <p class="mt-3 text-sm font-medium text-highlighted">
-            No hay consultas registradas aún
-          </p>
-          <p class="mt-1 text-sm text-muted">
-            Cuando existan mensajes de usuarios, aparecerán aquí.
-          </p>
-        </div>
-      </UCard>
-    </section>
-
-    <!-- Métricas -->
-    <section v-else class="space-y-4">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <UCard class="rounded-2xl text-center">
-          <p class="text-sm text-muted">Total de respuestas</p>
-          <p class="mt-3 text-4xl font-bold text-highlighted">
-            {{ metricas.total }}
-          </p>
         </UCard>
-
-        <UCard class="rounded-2xl text-center">
-          <p class="text-sm text-muted">Consultas escaladas</p>
-          <p class="mt-3 text-4xl font-bold text-warning">
-            {{ metricas.escaladas }}
-          </p>
-        </UCard>
-
-        <UCard class="rounded-2xl text-center">
-          <p class="text-sm text-muted">Tasa de resolución</p>
-          <p class="mt-3 text-4xl font-bold text-success">
-            {{ metricas.tasaResolucion }}%
-          </p>
-        </UCard>
-      </div>
-
-      <UCard class="rounded-2xl">
-        <template #header>
-          <div>
-            <h2 class="text-base font-semibold text-highlighted">
-              Lectura rápida
-            </h2>
-            <p class="text-sm text-muted">
-              Resumen operativo del asistente para administración.
-            </p>
-          </div>
-        </template>
-
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <div class="rounded-2xl border border-default bg-elevated/30 p-4">
-            <p class="text-sm font-medium text-highlighted">Estado general</p>
-            <p class="mt-2 text-sm text-muted">
-              El módulo muestra el volumen total de respuestas emitidas por el
-              asistente.
-            </p>
-          </div>
-
-          <div class="rounded-2xl border border-default bg-elevated/30 p-4">
-            <p class="text-sm font-medium text-highlighted">Escalamiento</p>
-            <p class="mt-2 text-sm text-muted">
-              Las consultas escaladas permiten detectar temas donde el asistente
-              necesita apoyo humano.
-            </p>
-          </div>
-
-          <div class="rounded-2xl border border-default bg-elevated/30 p-4">
-            <p class="text-sm font-medium text-highlighted">Resolución</p>
-            <p class="mt-2 text-sm text-muted">
-              La tasa de resolución ayuda a medir cuántas respuestas no
-              requirieron escalamiento.
-            </p>
-          </div>
-        </div>
-      </UCard>
-    </section>
+      </section>
+    </div>
   </div>
 </template>
