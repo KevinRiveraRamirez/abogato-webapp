@@ -19,6 +19,7 @@ const POSITION_STORAGE_KEY = "ai-chat-position-v1";
 
 const root = ref<HTMLElement | null>(null);
 const panel = ref<HTMLElement | null>(null);
+const trigger = ref<HTMLElement | null>(null);
 
 const abierto = ref(false);
 const mensaje = ref("");
@@ -64,7 +65,7 @@ function savePosition() {
 
     localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(value));
   } catch {
-    // ignorar errores de storage
+    // ignore storage errors
   }
 }
 
@@ -75,10 +76,7 @@ function loadSavedPosition(): SavedChatPosition | null {
 
     const parsed = JSON.parse(raw);
 
-    if (
-      typeof parsed?.left !== "number" ||
-      typeof parsed?.top !== "number"
-    ) {
+    if (typeof parsed?.left !== "number" || typeof parsed?.top !== "number") {
       return null;
     }
 
@@ -238,13 +236,9 @@ async function cargarPreguntasSugeridas() {
 
     if (error) throw error;
 
-    const preguntas = (data ?? [])
-      .map((item) => item.pregunta)
-      .filter(Boolean);
+    const preguntas = (data ?? []).map((item) => item.pregunta).filter(Boolean);
 
-    preguntasSugeridas.value = preguntas.length
-      ? preguntas
-      : fallbackSugeridas;
+    preguntasSugeridas.value = preguntas.length ? preguntas : fallbackSugeridas;
   } catch {
     preguntasSugeridas.value = fallbackSugeridas;
   } finally {
@@ -254,7 +248,7 @@ async function cargarPreguntasSugeridas() {
 
 function newId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    // @ts-expect-error runtime moderno
+    // @ts-expect-error modern runtime
     return crypto.randomUUID();
   }
 
@@ -294,20 +288,21 @@ async function enviar() {
   }
 }
 
-function handleClickOutside(event: MouseEvent) {
-  if (!abierto.value || !root.value || !panel.value) return;
+function handleClickOutside(event: PointerEvent) {
+  if (!abierto.value) return;
 
   const target = event.target;
   if (!(target instanceof Node)) return;
 
-  if (root.value.contains(target)) return;
-  if (panel.value.contains(target)) return;
+  if (root.value?.contains(target)) return;
+  if (trigger.value?.contains(target)) return;
+  if (panel.value?.contains(target)) return;
 
   cerrarChat();
 }
 
 function handleEscape(event: KeyboardEvent) {
-  if (event.key === "Escape") {
+  if (event.key === "Escape" && abierto.value) {
     cerrarChat();
   }
 }
@@ -338,13 +333,13 @@ function handleResize() {
 onMounted(() => {
   updateViewportFlags();
 
-  document.addEventListener("click", handleClickOutside);
+  document.addEventListener("pointerdown", handleClickOutside);
   document.addEventListener("keydown", handleEscape);
   window.addEventListener("resize", handleResize);
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener("click", handleClickOutside);
+  document.removeEventListener("pointerdown", handleClickOutside);
   document.removeEventListener("keydown", handleEscape);
   window.removeEventListener("resize", handleResize);
   stopDragging();
@@ -361,6 +356,7 @@ onBeforeUnmount(() => {
     "
   >
     <UButton
+      ref="trigger"
       color="primary"
       variant="solid"
       class="h-14 w-14 rounded-full shadow-lg"
@@ -384,18 +380,13 @@ onBeforeUnmount(() => {
           v-if="abierto"
           ref="panel"
           :style="panelStyle"
-          class="fixed
-                 w-[min(calc(100vw-2rem),22rem)] h-[min(70dvh,34rem)]
-                 sm:w-[26rem] sm:h-[min(72dvh,36rem)]
-                 md:w-[30rem] md:h-[min(74dvh,38rem)]
-                 lg:w-[34rem] lg:h-[min(76dvh,40rem)]
-                 xl:w-[38rem] xl:h-[min(78dvh,42rem)]"
+          class="fixed w-[min(calc(100vw-2rem),22rem)] h-[min(70dvh,34rem)] sm:w-[26rem] sm:h-[min(72dvh,36rem)] md:w-[30rem] md:h-[min(74dvh,38rem)] lg:w-[34rem] lg:h-[min(76dvh,40rem)] xl:w-[38rem] xl:h-[min(78dvh,42rem)]"
         >
           <UCard
             :ui="{
               root: 'flex h-full min-h-0 flex-col overflow-hidden rounded-3xl',
               header: 'shrink-0 px-4 py-3 sm:px-5 sm:py-4',
-              body: 'flex-1 min-h-0 overflow-hidden p-0',
+              body: 'flex-1 min-h-0 p-0',
               footer: 'p-0',
             }"
             class="h-full w-full border border-default/70 bg-default/95 shadow-2xl backdrop-blur"
@@ -403,7 +394,11 @@ onBeforeUnmount(() => {
             <template #header>
               <div
                 class="flex items-center justify-between gap-3"
-                :class="!isMobile ? 'cursor-grab active:cursor-grabbing select-none' : ''"
+                :class="
+                  !isMobile
+                    ? 'cursor-grab active:cursor-grabbing select-none'
+                    : ''
+                "
                 @pointerdown="startDragging"
               >
                 <div class="min-w-0">
@@ -433,17 +428,21 @@ onBeforeUnmount(() => {
 
             <UChatPalette
               :ui="{
-                root: 'relative flex-1 flex flex-col min-h-0 min-w-0',
-                content: 'overflow-y-auto flex-1 flex flex-col min-h-0 py-2 sm:py-3',
-                prompt: 'px-2 sm:px-3 rounded-t-none border-t border-default bg-default/90 shrink-0'
+                root: 'flex h-full min-h-0 flex-1 flex-col',
+                content:
+                  'flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-2 sm:px-3 sm:py-3',
+                prompt:
+                  'shrink-0 border-t border-default bg-default/90 px-2 py-2 sm:px-3 sm:py-3',
               }"
             >
               <div
                 v-if="mensajes.length === 0 && !loading"
-                class="flex min-h-full items-center justify-center px-4 py-6"
+                class="flex min-h-full flex-1 items-center justify-center"
               >
-                <div class="w-full max-w-xl text-center">
-                  <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
+                <div class="w-full max-w-xl px-4 text-center">
+                  <div
+                    class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10"
+                  >
                     <UIcon
                       name="i-lucide-sparkles"
                       class="h-5 w-5 text-primary"
@@ -454,11 +453,14 @@ onBeforeUnmount(() => {
                     Hola, ¿en qué puedo ayudarte?
                   </p>
                   <p class="mt-2 text-sm text-muted">
-                    Consultá sobre trámites, requisitos o documentos legales en Costa Rica.
+                    Consultá sobre trámites, requisitos o documentos legales en
+                    Costa Rica.
                   </p>
 
                   <div class="mt-5 text-left">
-                    <p class="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
+                    <p
+                      class="mb-2 text-xs font-medium uppercase tracking-wide text-muted"
+                    >
                       Ejemplos de preguntas
                     </p>
 
@@ -481,11 +483,13 @@ onBeforeUnmount(() => {
               <UChatMessages
                 v-else
                 :messages="mensajes"
-                :status="loading ? 'submitted' : status === 'error' ? 'error' : 'ready'"
-                :should-auto-scroll="true"
-                :should-scroll-to-bottom="true"
+                :status="
+                  loading ? 'submitted' : status === 'error' ? 'error' : 'ready'
+                "
+                :should-auto-scroll="false"
+                :should-scroll-to-bottom="false"
                 :ui="{
-                  root: 'w-full flex flex-col gap-2 flex-1 px-2 sm:px-3 [&>article]:last-of-type:min-h-(--last-message-height)'
+                  root: 'flex min-h-0 flex-1 flex-col gap-2 w-full',
                 }"
               >
                 <template #default>
@@ -500,7 +504,7 @@ onBeforeUnmount(() => {
                       content:
                         item.role === 'user'
                           ? 'max-w-full bg-primary text-inverted whitespace-pre-wrap break-words leading-relaxed text-sm'
-                          : 'max-w-full bg-elevated/50 ring ring-default/70 text-default whitespace-pre-wrap break-words leading-relaxed text-sm'
+                          : 'max-w-full bg-elevated/50 ring ring-default/70 text-default whitespace-pre-wrap break-words leading-relaxed text-sm',
                     }"
                     :actions="
                       item.role === 'assistant' && item.metadata?.suggestTicket
@@ -520,46 +524,58 @@ onBeforeUnmount(() => {
                 </template>
 
                 <template #indicator>
-                  <div class="flex items-center gap-2 px-2 py-1 text-muted sm:px-3">
+                  <div class="flex items-center gap-2 px-2 py-1 text-muted">
                     <div class="flex items-center gap-1">
-                      <span class="size-1.5 animate-bounce rounded-full bg-elevated" />
-                      <span class="size-1.5 animate-bounce rounded-full bg-elevated [animation-delay:120ms]" />
-                      <span class="size-1.5 animate-bounce rounded-full bg-elevated [animation-delay:240ms]" />
+                      <span
+                        class="size-1.5 animate-bounce rounded-full bg-elevated"
+                      />
+                      <span
+                        class="size-1.5 animate-bounce rounded-full bg-elevated [animation-delay:120ms]"
+                      />
+                      <span
+                        class="size-1.5 animate-bounce rounded-full bg-elevated [animation-delay:240ms]"
+                      />
                     </div>
                     <UChatShimmer text="Pensando..." class="text-xs" />
                   </div>
                 </template>
               </UChatMessages>
 
-              <div v-if="error" class="shrink-0 px-4 pb-2">
-                <UAlert
-                  color="error"
-                  variant="soft"
-                  :title="error"
-                  icon="i-lucide-alert-triangle"
-                />
-              </div>
-
               <template #prompt>
-                <UChatPrompt
-                  v-model="mensaje"
-                  data-no-panel-drag
-                  placeholder="Escribe tu mensaje…"
-                  variant="naked"
-                  :disabled="loading"
-                  :autofocus="false"
-                  :ui="{
-                    root: 'relative flex flex-col items-stretch gap-2 px-0 py-2 w-full rounded-none bg-transparent',
-                    footer: 'flex items-center justify-between gap-1.5'
-                  }"
-                  @submit="enviar"
-                >
-                  <UChatPromptSubmit
-                    data-no-panel-drag
-                    :status="loading ? 'submitted' : status"
-                    color="primary"
+                <div class="flex shrink-0 flex-col gap-2">
+                  <UAlert
+                    v-if="error"
+                    color="error"
+                    variant="soft"
+                    :title="error"
+                    icon="i-lucide-alert-triangle"
                   />
-                </UChatPrompt>
+
+                  <UChatPrompt
+                    v-model="mensaje"
+                    data-no-panel-drag
+                    placeholder="Escribe tu mensaje..."
+                    variant="naked"
+                    :disabled="loading"
+                    :autofocus="false"
+                    :ui="{
+                      root: 'w-full bg-transparent p-0',
+                      base: 'min-h-[56px]',
+                      footer: 'flex items-center justify-between gap-2',
+                    }"
+                    @submit="enviar"
+                  >
+                    <template #footer>
+                      <div class="flex w-full items-center justify-end">
+                        <UChatPromptSubmit
+                          data-no-panel-drag
+                          :status="loading ? 'submitted' : status"
+                          color="primary"
+                        />
+                      </div>
+                    </template>
+                  </UChatPrompt>
+                </div>
               </template>
             </UChatPalette>
           </UCard>
