@@ -50,14 +50,38 @@ async function signUp() {
   errorMsg.value = "";
   successMsg.value = "";
 
-  if (!email.value.trim()) { errorMsg.value = "El correo es obligatorio."; return; }
-  if (!password.value) { errorMsg.value = "La contraseña es obligatoria."; return; }
-  if (password.value.length < 8) { errorMsg.value = "La contraseña debe tener al menos 8 caracteres."; return; }
-  if (!/[A-Z]/.test(password.value)) { errorMsg.value = "La contraseña debe incluir al menos una mayúscula."; return; }
-  if (!/[0-9]/.test(password.value)) { errorMsg.value = "La contraseña debe incluir al menos un número."; return; }
-  if (!/[^A-Za-z0-9]/.test(password.value)) { errorMsg.value = "La contraseña debe incluir al menos un carácter especial."; return; }
+  if (!email.value.trim()) {
+    errorMsg.value = "El correo es obligatorio.";
+    return;
+  }
+
+  if (!password.value) {
+    errorMsg.value = "La contraseña es obligatoria.";
+    return;
+  }
+
+  if (password.value.length < 8) {
+    errorMsg.value = "La contraseña debe tener al menos 8 caracteres.";
+    return;
+  }
+
+  if (!/[A-Z]/.test(password.value)) {
+    errorMsg.value = "La contraseña debe incluir al menos una mayúscula.";
+    return;
+  }
+
+  if (!/[0-9]/.test(password.value)) {
+    errorMsg.value = "La contraseña debe incluir al menos un número.";
+    return;
+  }
+
+  if (!/[^A-Za-z0-9]/.test(password.value)) {
+    errorMsg.value = "La contraseña debe incluir al menos un carácter especial.";
+    return;
+  }
 
   loading.value = true;
+
   try {
     const { data, error } = await supabase.auth.signUp({
       email: email.value.trim(),
@@ -82,7 +106,7 @@ async function signUp() {
         is_active: true,
         contact_email: data.user.email ?? email.value.trim(),
         contact_phone: data.user.phone ?? null,
-      })
+      });
 
       await navigateTo("/tickets", { replace: true });
       return;
@@ -128,23 +152,26 @@ async function signUp() {
       </div>
     </div>
 
-    <UFormField label="Correo electrónico" name="email">
+    <UFormField label="Correo electrónico" name="email" class="w-full">
       <UInput
         v-model="email"
         type="email"
         placeholder="correo@ejemplo.com"
         autocomplete="email"
         size="lg"
+        class="w-full"
       />
     </UFormField>
 
-    <UFormField label="Contraseña" name="password">
+    <UFormField label="Contraseña" name="password" class="w-full">
       <UInput
+        id="signup-password"
         v-model="password"
         :type="mostrarPassword ? 'text' : 'password'"
         placeholder="Crea una contraseña segura"
         autocomplete="new-password"
         size="lg"
+        class="w-full"
       >
         <template #trailing>
           <button
@@ -226,7 +253,8 @@ async function signUp() {
       </NuxtLink>
     </p>
 
-    <!-- <div class="grid gap-4 rounded-2xl border border-default/60 bg-default/20 p-4">
+    <!--
+    <div class="grid gap-4 rounded-2xl border border-default/60 bg-default/20 p-4">
       <div>
         <p class="text-sm font-semibold text-highlighted">Lo que dicen nuestros usuarios</p>
         <p class="mt-2 text-sm italic text-muted">“{{ testimonial.quote }}”</p>
@@ -241,6 +269,7 @@ async function signUp() {
           Leer más
         </NuxtLink>
       </div>
-    </div> -->
+    </div>
+    -->
   </AuthCardShell>
 </template>

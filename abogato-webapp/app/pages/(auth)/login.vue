@@ -44,10 +44,18 @@ async function signIn() {
   errorMsg.value = "";
   let sessionTransitionStarted = false
 
-  if (!email.value.trim()) { errorMsg.value = "El correo es obligatorio."; return; }
-  if (!password.value) { errorMsg.value = "La contraseña es obligatoria."; return; }
+  if (!email.value.trim()) {
+    errorMsg.value = "El correo es obligatorio.";
+    return;
+  }
+
+  if (!password.value) {
+    errorMsg.value = "La contraseña es obligatoria.";
+    return;
+  }
 
   loading.value = true;
+
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.value.trim(),
@@ -60,7 +68,10 @@ async function signIn() {
     }
 
     const userId = data.user?.id;
-    if (!userId) { errorMsg.value = "No se pudo obtener el usuario."; return; }
+    if (!userId) {
+      errorMsg.value = "No se pudo obtener el usuario.";
+      return;
+    }
 
     startSessionLoading({
       title: 'Estamos preparando tu sesión',
@@ -120,15 +131,23 @@ async function enviarRecuperacion() {
   errorMsg.value = "";
 
   const correo = emailRecuperacion.value.trim();
-  if (!correo) { errorMsg.value = "Ingresá tu correo."; return; }
+  if (!correo) {
+    errorMsg.value = "Ingresá tu correo.";
+    return;
+  }
 
   loading.value = true;
+
   const { error } = await supabase.auth.resetPasswordForEmail(correo, {
     redirectTo: `${window.location.origin}/reset-password`,
   });
+
   loading.value = false;
 
-  if (error) { errorMsg.value = error.message; return; }
+  if (error) {
+    errorMsg.value = error.message;
+    return;
+  }
 
   mensajeRecuperacion.value = "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.";
 }
@@ -161,27 +180,30 @@ async function enviarRecuperacion() {
       </div>
     </div>
 
-    <UFormField label="Correo electrónico" name="email">
+    <UFormField label="Correo electrónico" name="email" class="w-full">
       <UInput
         v-model="email"
         type="email"
         placeholder="correo@ejemplo.com"
         autocomplete="email"
         size="lg"
+        class="w-full"
       />
     </UFormField>
 
-    <div class="grid gap-2">
-      <div class="flex items-center justify-between gap-3">
-        <label class="text-sm font-medium text-default" for="login-password">Contraseña</label>
-        <button
-          class="text-xs text-primary transition hover:underline"
-          type="button"
-          @click="mostrarRecuperacion = !mostrarRecuperacion"
-        >
-          ¿Olvidaste tu contraseña?
-        </button>
-      </div>
+    <UFormField name="password" class="w-full">
+      <template #label>
+        <div class="flex w-full items-center justify-between gap-3">
+          <span class="text-sm font-medium text-default">Contraseña</span>
+          <button
+            class="text-xs text-primary transition hover:underline"
+            type="button"
+            @click="mostrarRecuperacion = !mostrarRecuperacion"
+          >
+            ¿Olvidaste tu contraseña?
+          </button>
+        </div>
+      </template>
 
       <UInput
         id="login-password"
@@ -190,6 +212,7 @@ async function enviarRecuperacion() {
         placeholder="Ingresa tu contraseña"
         autocomplete="current-password"
         size="lg"
+        class="w-full"
       >
         <template #trailing>
           <button
@@ -203,7 +226,7 @@ async function enviarRecuperacion() {
           </button>
         </template>
       </UInput>
-    </div>
+    </UFormField>
 
     <div v-if="mostrarRecuperacion" class="app-subtle-panel app-panel-md grid w-full gap-3 p-4 text-left">
       <p class="text-sm font-medium text-highlighted">Recuperar contraseña</p>
@@ -211,6 +234,7 @@ async function enviarRecuperacion() {
         v-model="emailRecuperacion"
         type="email"
         placeholder="Tu correo registrado"
+        class="w-full"
       />
       <UButton variant="soft" :loading="loading" @click="enviarRecuperacion">
         Enviar enlace de recuperación
@@ -236,7 +260,7 @@ async function enviarRecuperacion() {
 
     <UDivider label="o" />
 
-        <div class="grid gap-4 rounded-2xl border border-default/60 bg-default/20 p-4">
+    <div class="grid gap-4 rounded-2xl border border-default/60 bg-default/20 p-4">
       <div>
         <p class="text-sm font-semibold text-highlighted">Testimonio</p>
         <p class="mt-2 text-sm italic text-muted">“{{ testimonial.quote }}”</p>
@@ -265,7 +289,5 @@ async function enviarRecuperacion() {
         Registrate acá
       </NuxtLink>
     </p>
-
-
   </AuthCardShell>
 </template>

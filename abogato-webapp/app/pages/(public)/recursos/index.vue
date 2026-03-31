@@ -1,14 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'public' })
 
-const categorias = [
-  'Todos',
-  'Notarial',
-  'Familia',
-  'Empresas',
-  'Propiedades',
-  'Documentos'
-]
 
 const posts = [
   {
@@ -33,7 +25,7 @@ const posts = [
     categoria: 'Empresas',
     fecha: '18 marzo 2026',
     imagen: '/img/blog/sociedad-anonima.jpg',
-    to: '/blog/constituir-sociedad-anonima'
+    to: '/blog/construir-sociedad-anonima'
   },
   {
     titulo: '¿Cuánto cuesta un traspaso de vehículo?',
@@ -69,29 +61,9 @@ const posts = [
       description="Artículos, guías y explicaciones prácticas para entender mejor trámites, documentos y procesos legales en Costa Rica."
       headline="Blog"
     >
-      <template #links>
-        <div class="w-full max-w-xl">
-          <UInput
-            icon="i-lucide-search"
-            size="xl"
-            placeholder="Buscar artículos, temas o trámites..."
-          />
-        </div>
-      </template>
     </UPageHero>
 
     <div class="max-w-6xl mx-auto px-4 py-12 space-y-10">
-      <section class="flex flex-wrap gap-3">
-        <UButton
-          v-for="(categoria, i) in categorias"
-          :key="i"
-          variant="soft"
-          color="neutral"
-          class="rounded-full"
-        >
-          {{ categoria }}
-        </UButton>
-      </section>
 
       <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <article
