@@ -120,6 +120,10 @@ pnpm install
 SUPABASE_URL=https://qqktuzqdonbvvnbgviam.supabase.co
 SUPABASE_KEY=sb_publishable_your_key_here
 
+# Server-only (required for admin APIs + AI FAQ sync)
+# Use the Supabase "service_role" key (sb_secret_...) and NEVER expose it to the browser.
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_your_service_role_key_here
+
 # 4. Start the development server
 pnpm dev
 # App available at http://localhost:3000
